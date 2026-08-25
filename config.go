@@ -124,11 +124,11 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if path == "" {
 		return DefaultOptions(), result, nil
 	}
-	fileConfig, err := LoadConfigFile(ctx, path)
+	fileConfig, err := loadConfigFile(ctx, path)
 	if err != nil {
 		return Options{}, nil, err
 	}
-	handlerOptions, err := fileConfig.Options()
+	handlerOptions, err := fileConfig.options()
 	if err != nil {
 		return Options{}, nil, err
 	}

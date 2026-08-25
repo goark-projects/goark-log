@@ -199,7 +199,7 @@ func newSmallRollingAppender(t *testing.T, path string, now time.Time) *RollingF
 		WithRollingFileLayout(TextLayout{}),
 		WithRollingMaxSize(120),
 		WithRollingMaxBackups(10),
-		WithRollingClock(func() time.Time { return now }),
+		withRollingClock(func() time.Time { return now }),
 	)
 	if err != nil {
 		t.Fatalf("NewRollingFileAppender() error = %v", err)

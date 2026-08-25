@@ -34,7 +34,7 @@ type LoggerRule struct {
 
 // Handler 是 goark-log 的 slog.Handler 实现。
 type Handler struct {
-	router *Router
+	router *router
 	name   string
 	attrs  []slog.Attr
 	groups []string
@@ -44,7 +44,7 @@ var _ slog.Handler = (*Handler)(nil)
 
 // NewHandler 创建 slog.Handler。
 func NewHandler(options Options) (*Handler, error) {
-	router, err := NewRouter(options)
+	router, err := newRouter(options)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
 	if h == nil || h.router == nil {
 		return level >= slog.LevelInfo
 	}
-	return level >= h.router.Route(h.name).Level
+	return level >= h.router.route(h.name).Level
 }
 
 func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
@@ -74,7 +74,7 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	route := h.router.Route(h.name)
+	route := h.router.route(h.name)
 	if record.Level < route.Level {
 		return nil
 	}
@@ -98,7 +98,7 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	next := h.clone()
 	for _, attr := range attrs {
 		attr = normalizeAttr(attr)
-		if attr.Key == LoggerNameKey {
+		if attr.Key == loggerNameKey {
 			if name := strings.TrimSpace(attr.Value.String()); name != "" {
 				next.name = name
 			}
@@ -156,8 +156,8 @@ func DefaultOptions() Options {
 	}
 }
 
-// Router 保存不可变路由快照，并为后续 reload 留出原子替换边界。
-type Router struct {
+// router 保存不可变路由快照，并为后续 reload 留出原子替换边界。
+type router struct {
 	current atomic.Pointer[runtimeConfig]
 }
 
@@ -174,32 +174,29 @@ type loggerRuntime struct {
 	additivity bool
 }
 
-// Route 是一次 logger 匹配后的最终输出计划。
-type Route struct {
+// route 是一次 logger 匹配后的最终输出计划。
+type route struct {
 	Level     slog.Level
 	Appenders []Appender
 }
 
-type route = Route
-
-// NewRouter 创建日志路由器。
-func NewRouter(options Options) (*Router, error) {
+func newRouter(options Options) (*router, error) {
 	config, err := buildRuntimeConfig(options)
 	if err != nil {
 		return nil, err
 	}
-	router := &Router{}
+	router := &router{}
 	router.current.Store(config)
 	return router, nil
 }
 
-func (r *Router) Route(name string) Route {
+func (r *router) route(name string) route {
 	if r == nil {
-		return Route{Level: slog.LevelInfo}
+		return route{Level: slog.LevelInfo}
 	}
 	config := r.current.Load()
 	if config == nil {
-		return Route{Level: slog.LevelInfo}
+		return route{Level: slog.LevelInfo}
 	}
 	name = strings.TrimSpace(name)
 	for _, logger := range config.loggers {
@@ -214,15 +211,15 @@ func (r *Router) Route(name string) Route {
 		if logger.additivity {
 			appenders = appendUniqueAppenders(appenders, config.root.Appenders)
 		}
-		return Route{Level: level, Appenders: appenders}
+		return route{Level: level, Appenders: appenders}
 	}
-	return Route{
+	return route{
 		Level:     config.root.Level,
 		Appenders: append([]Appender(nil), config.root.Appenders...),
 	}
 }
 
-func (r *Router) Close() error {
+func (r *router) Close() error {
 	config := r.current.Load()
 	if config == nil {
 		return nil
@@ -231,7 +228,7 @@ func (r *Router) Close() error {
 }
 
 // Replace 原子替换运行期配置，只有新配置构建成功后才关闭旧 appender。
-func (r *Router) Replace(options Options) error {
+func (r *router) Replace(options Options) error {
 	if r == nil {
 		return fmt.Errorf("goark-log: router is nil")
 	}

@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// LoggerNameKey 是 Handler 内部识别命名 logger 的属性键。
-const LoggerNameKey = "goark.logger"
+const loggerNameKey = "goark.logger"
 
 const defaultLoggerName = "goark"
 
@@ -46,7 +45,7 @@ func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Att
 		if attr.Key == "" {
 			continue
 		}
-		if attr.Key == LoggerNameKey {
+		if attr.Key == loggerNameKey {
 			continue
 		}
 		if len(groups) > 0 {

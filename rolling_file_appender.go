@@ -95,8 +95,7 @@ func WithRollingGzip(enabled bool) RollingFileOption {
 	}
 }
 
-// WithRollingClock 设置时间源，主要用于确定性测试。
-func WithRollingClock(clock func() time.Time) RollingFileOption {
+func withRollingClock(clock func() time.Time) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.clock = clock
 	}

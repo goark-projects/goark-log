@@ -20,7 +20,7 @@ func TestRollingFileAppender_whenSizeExceeded_shouldArchiveCompressAndRetain(t *
 		WithRollingMaxSize(120),
 		WithRollingMaxBackups(1),
 		WithRollingGzip(true),
-		WithRollingClock(func() time.Time { return now }),
+		withRollingClock(func() time.Time { return now }),
 	)
 	if err != nil {
 		t.Fatalf("NewRollingFileAppender() error = %v", err)
@@ -72,7 +72,7 @@ func TestRollingFileAppender_whenIntervalElapsed_shouldRollByEventTime(t *testin
 		WithRollingMaxSize(0),
 		WithRollingInterval(time.Hour),
 		WithRollingMaxBackups(10),
-		WithRollingClock(func() time.Time { return start }),
+		withRollingClock(func() time.Time { return start }),
 	)
 	if err != nil {
 		t.Fatalf("NewRollingFileAppender() error = %v", err)
@@ -117,7 +117,7 @@ func TestRollingFileAppender_whenStartupEnabled_shouldArchiveExistingFile(t *tes
 		WithRollingMaxSize(0),
 		WithRolloverOnStartup(true),
 		WithRollingMaxBackups(10),
-		WithRollingClock(func() time.Time { return now }),
+		withRollingClock(func() time.Time { return now }),
 	)
 	if err != nil {
 		t.Fatalf("NewRollingFileAppender() error = %v", err)

@@ -19,7 +19,7 @@ func NewDefault() (*slog.Logger, *Handler) {
 
 // NewLogger 基于 handler 创建命名 logger。
 func NewLogger(handler slog.Handler, name string) *slog.Logger {
-	return slog.New(handler).With(LoggerNameKey, name)
+	return slog.New(handler).With(loggerNameKey, name)
 }
 
 // WithName 返回带有 goark-log logger 名称的 logger。
@@ -27,5 +27,5 @@ func WithName(logger *slog.Logger, name string) *slog.Logger {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return logger.With(LoggerNameKey, name)
+	return logger.With(loggerNameKey, name)
 }

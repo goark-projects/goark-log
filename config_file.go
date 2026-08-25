@@ -13,25 +13,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FileConfig 是 goark-log.yml 的根配置结构。
-type FileConfig struct {
-	Appenders map[string]AppenderConfig `yaml:"appenders"`
-	Root      LoggerConfig              `yaml:"root"`
-	Loggers   map[string]LoggerConfig   `yaml:"loggers"`
+type fileConfig struct {
+	Appenders map[string]appenderConfig `yaml:"appenders"`
+	Root      loggerConfig              `yaml:"root"`
+	Loggers   map[string]loggerConfig   `yaml:"loggers"`
 	Goark     struct {
-		Log *FileConfig `yaml:"log"`
+		Log *fileConfig `yaml:"log"`
 	} `yaml:"goark"`
 }
 
-// AppenderConfig 描述一个 appender。
-type AppenderConfig struct {
+type appenderConfig struct {
 	Type                  string        `yaml:"type"`
 	Target                string        `yaml:"target"`
 	FileName              string        `yaml:"fileName"`
 	FileNameKebab         string        `yaml:"file-name"`
 	Path                  string        `yaml:"path"`
-	Layout                LayoutConfig  `yaml:"layout"`
-	Rolling               RollingConfig `yaml:"rolling"`
+	Layout                layoutConfig  `yaml:"layout"`
+	Rolling               rollingConfig `yaml:"rolling"`
 	AppenderRefs          []string      `yaml:"appenderRefs"`
 	AppenderRefsKebab     []string      `yaml:"appender-refs"`
 	Refs                  []string      `yaml:"refs"`
@@ -41,14 +39,12 @@ type AppenderConfig struct {
 	OverflowStrategyKebab string        `yaml:"overflow-strategy"`
 }
 
-// LayoutConfig 描述日志布局。
-type LayoutConfig struct {
+type layoutConfig struct {
 	Type    string `yaml:"type"`
 	Pattern string `yaml:"pattern"`
 }
 
-// RollingConfig 描述滚动策略。
-type RollingConfig struct {
+type rollingConfig struct {
 	MaxSize         string `yaml:"maxSize"`
 	MaxSizeKebab    string `yaml:"max-size"`
 	Interval        string `yaml:"interval"`
@@ -60,8 +56,7 @@ type RollingConfig struct {
 	Compress        bool   `yaml:"compress"`
 }
 
-// LoggerConfig 描述 root 或 named logger。
-type LoggerConfig struct {
+type loggerConfig struct {
 	Level             string   `yaml:"level"`
 	AppenderRefs      []string `yaml:"appenderRefs"`
 	AppenderRefsKebab []string `yaml:"appender-refs"`
@@ -69,8 +64,7 @@ type LoggerConfig struct {
 	Additivity        *bool    `yaml:"additivity"`
 }
 
-// LoadConfigFile 读取并解析配置文件。
-func LoadConfigFile(ctx context.Context, path string) (*FileConfig, error) {
+func loadConfigFile(ctx context.Context, path string) (*fileConfig, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("goark-log: context is nil")
 	}
@@ -89,29 +83,27 @@ func LoadConfigFile(ctx context.Context, path string) (*FileConfig, error) {
 		return nil, fmt.Errorf("goark-log: open config file %q: %w", path, err)
 	}
 	defer file.Close()
-	config, err := DecodeConfig(file)
+	config, err := decodeConfig(file)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: parse config file %q: %w", path, err)
 	}
 	return config, nil
 }
 
-// DecodeConfig 从 reader 解码 YAML 配置。
-func DecodeConfig(reader io.Reader) (*FileConfig, error) {
-	var config FileConfig
+func decodeConfig(reader io.Reader) (*fileConfig, error) {
+	var config fileConfig
 	decoder := yaml.NewDecoder(reader)
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&config); err != nil {
 		if errors.Is(err, io.EOF) {
-			return &FileConfig{}, nil
+			return &fileConfig{}, nil
 		}
 		return nil, err
 	}
 	return config.effective()
 }
 
-// Options 构建 Handler Options，并执行 appender 本地配置校验。
-func (c *FileConfig) Options() (Options, error) {
+func (c *fileConfig) options() (Options, error) {
 	if c == nil || c.empty() {
 		return DefaultOptions(), nil
 	}
@@ -157,7 +149,7 @@ func (c *FileConfig) Options() (Options, error) {
 	return options, nil
 }
 
-func (c *FileConfig) effective() (*FileConfig, error) {
+func (c *fileConfig) effective() (*fileConfig, error) {
 	topLevelUsed := !c.withoutGoark().empty()
 	if c.Goark.Log == nil {
 		return c, nil
@@ -168,25 +160,25 @@ func (c *FileConfig) effective() (*FileConfig, error) {
 	return c.Goark.Log, nil
 }
 
-func (c *FileConfig) withoutGoark() *FileConfig {
+func (c *fileConfig) withoutGoark() *fileConfig {
 	if c == nil {
 		return nil
 	}
-	return &FileConfig{
+	return &fileConfig{
 		Appenders: c.Appenders,
 		Root:      c.Root,
 		Loggers:   c.Loggers,
 	}
 }
 
-func (c *FileConfig) empty() bool {
+func (c *fileConfig) empty() bool {
 	if c == nil {
 		return true
 	}
 	return len(c.Appenders) == 0 && c.Root.empty() && len(c.Loggers) == 0
 }
 
-func (c LoggerConfig) empty() bool {
+func (c loggerConfig) empty() bool {
 	return strings.TrimSpace(c.Level) == "" &&
 		len(c.AppenderRefs) == 0 &&
 		len(c.AppenderRefsKebab) == 0 &&
@@ -194,7 +186,7 @@ func (c LoggerConfig) empty() bool {
 		c.Additivity == nil
 }
 
-func (c *FileConfig) buildAppenders() ([]Appender, error) {
+func (c *fileConfig) buildAppenders() ([]Appender, error) {
 	if len(c.Appenders) == 0 {
 		return DefaultOptions().Appenders, nil
 	}
@@ -228,7 +220,7 @@ func (c *FileConfig) buildAppenders() ([]Appender, error) {
 	return appenders, nil
 }
 
-func buildConcreteAppender(name string, spec AppenderConfig) (Appender, error) {
+func buildConcreteAppender(name string, spec appenderConfig) (Appender, error) {
 	layout, err := buildLayout(spec.Layout)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)
@@ -247,7 +239,7 @@ func buildConcreteAppender(name string, spec AppenderConfig) (Appender, error) {
 	}
 }
 
-func buildConsoleAppender(name string, spec AppenderConfig, layout Layout) (Appender, error) {
+func buildConsoleAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
 	target := strings.ToLower(strings.TrimSpace(spec.Target))
 	switch target {
 	case "", "stderr":
@@ -259,7 +251,7 @@ func buildConsoleAppender(name string, spec AppenderConfig, layout Layout) (Appe
 	}
 }
 
-func buildFileAppender(name string, spec AppenderConfig, layout Layout) (Appender, error) {
+func buildFileAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
 	path := spec.fileName()
 	if path == "" {
 		return nil, fmt.Errorf("goark-log: appender %q fileName is empty", name)
@@ -267,7 +259,7 @@ func buildFileAppender(name string, spec AppenderConfig, layout Layout) (Appende
 	return NewFileAppender(path, WithFileName(name), WithFileLayout(layout))
 }
 
-func buildRollingAppender(name string, spec AppenderConfig, layout Layout) (Appender, error) {
+func buildRollingAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
 	path := spec.fileName()
 	if path == "" {
 		return nil, fmt.Errorf("goark-log: appender %q fileName is empty", name)
@@ -302,7 +294,7 @@ func buildRollingAppender(name string, spec AppenderConfig, layout Layout) (Appe
 	return NewRollingFileAppender(path, options...)
 }
 
-func buildAsyncAppender(name string, spec AppenderConfig, built map[string]Appender) (Appender, error) {
+func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender) (Appender, error) {
 	refs := spec.refs()
 	if len(refs) == 0 {
 		return nil, fmt.Errorf("goark-log: async appender %q requires appenderRefs", name)
@@ -329,7 +321,7 @@ func buildAsyncAppender(name string, spec AppenderConfig, built map[string]Appen
 	return NewAsyncAppender(delegates, options...)
 }
 
-func buildLayout(config LayoutConfig) (Layout, error) {
+func buildLayout(config layoutConfig) (Layout, error) {
 	switch normalizeKind(config.Type) {
 	case "", "pattern":
 		return NewPatternLayout(config.Pattern)
@@ -363,7 +355,7 @@ func filepathExt(path string) string {
 	return path[index:]
 }
 
-func (c AppenderConfig) fileName() string {
+func (c appenderConfig) fileName() string {
 	for _, value := range []string{c.FileName, c.FileNameKebab, c.Path} {
 		if strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
@@ -372,36 +364,36 @@ func (c AppenderConfig) fileName() string {
 	return ""
 }
 
-func (c AppenderConfig) refs() []string {
+func (c appenderConfig) refs() []string {
 	return firstRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
 }
 
-func (c AppenderConfig) queueSize() int {
+func (c appenderConfig) queueSize() int {
 	if c.QueueSize != 0 {
 		return c.QueueSize
 	}
 	return c.QueueSizeKebab
 }
 
-func (c AppenderConfig) overflowStrategy() string {
+func (c appenderConfig) overflowStrategy() string {
 	if strings.TrimSpace(c.OverflowStrategy) != "" {
 		return c.OverflowStrategy
 	}
 	return c.OverflowStrategyKebab
 }
 
-func (c RollingConfig) maxSize() string {
+func (c rollingConfig) maxSize() string {
 	if strings.TrimSpace(c.MaxSize) != "" {
 		return strings.TrimSpace(c.MaxSize)
 	}
 	return strings.TrimSpace(c.MaxSizeKebab)
 }
 
-func (c RollingConfig) onStartup() bool {
+func (c rollingConfig) onStartup() bool {
 	return c.OnStartup || c.OnStartupKebab
 }
 
-func (c RollingConfig) maxBackups() (int, bool) {
+func (c rollingConfig) maxBackups() (int, bool) {
 	if c.MaxBackups != nil {
 		return *c.MaxBackups, true
 	}
@@ -411,11 +403,11 @@ func (c RollingConfig) maxBackups() (int, bool) {
 	return 0, false
 }
 
-func (c RollingConfig) gzipEnabled() bool {
+func (c rollingConfig) gzipEnabled() bool {
 	return c.Gzip || c.Compress
 }
 
-func (c LoggerConfig) refs() []string {
+func (c loggerConfig) refs() []string {
 	return firstRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
 }
 
@@ -434,7 +426,7 @@ func firstRefs(groups ...[]string) []string {
 	return nil
 }
 
-func sortedAppenderNames(appenders map[string]AppenderConfig) []string {
+func sortedAppenderNames(appenders map[string]appenderConfig) []string {
 	names := make([]string, 0, len(appenders))
 	for name := range appenders {
 		names = append(names, name)
@@ -443,7 +435,7 @@ func sortedAppenderNames(appenders map[string]AppenderConfig) []string {
 	return names
 }
 
-func sortedLoggerNames(loggers map[string]LoggerConfig) []string {
+func sortedLoggerNames(loggers map[string]loggerConfig) []string {
 	names := make([]string, 0, len(loggers))
 	for name := range loggers {
 		names = append(names, name)
