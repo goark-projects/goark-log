@@ -51,15 +51,19 @@ type layoutConfig struct {
 }
 
 type rollingConfig struct {
-	MaxSize         string `yaml:"maxSize"`
-	MaxSizeKebab    string `yaml:"max-size"`
-	Interval        string `yaml:"interval"`
-	OnStartup       bool   `yaml:"onStartup"`
-	OnStartupKebab  bool   `yaml:"on-startup"`
-	MaxBackups      *int   `yaml:"maxBackups"`
-	MaxBackupsKebab *int   `yaml:"max-backups"`
-	Gzip            bool   `yaml:"gzip"`
-	Compress        bool   `yaml:"compress"`
+	FilePattern      string `yaml:"filePattern"`
+	FilePatternKebab string `yaml:"file-pattern"`
+	MaxSize          string `yaml:"maxSize"`
+	MaxSizeKebab     string `yaml:"max-size"`
+	Interval         string `yaml:"interval"`
+	OnStartup        bool   `yaml:"onStartup"`
+	OnStartupKebab   bool   `yaml:"on-startup"`
+	MaxBackups       *int   `yaml:"maxBackups"`
+	MaxBackupsKebab  *int   `yaml:"max-backups"`
+	MaxAge           string `yaml:"maxAge"`
+	MaxAgeKebab      string `yaml:"max-age"`
+	Gzip             bool   `yaml:"gzip"`
+	Compress         bool   `yaml:"compress"`
 }
 
 type loggerConfig struct {
@@ -314,6 +318,12 @@ func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
 
 func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
 	var err error
+	if c.FilePattern, err = resolveStringLookup(lookups, c.FilePattern); err != nil {
+		return fmt.Errorf("filePattern: %w", err)
+	}
+	if c.FilePatternKebab, err = resolveStringLookup(lookups, c.FilePatternKebab); err != nil {
+		return fmt.Errorf("file-pattern: %w", err)
+	}
 	if c.MaxSize, err = resolveStringLookup(lookups, c.MaxSize); err != nil {
 		return fmt.Errorf("maxSize: %w", err)
 	}
@@ -322,6 +332,12 @@ func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.Interval, err = resolveStringLookup(lookups, c.Interval); err != nil {
 		return fmt.Errorf("interval: %w", err)
+	}
+	if c.MaxAge, err = resolveStringLookup(lookups, c.MaxAge); err != nil {
+		return fmt.Errorf("maxAge: %w", err)
+	}
+	if c.MaxAgeKebab, err = resolveStringLookup(lookups, c.MaxAgeKebab); err != nil {
+		return fmt.Errorf("max-age: %w", err)
 	}
 	return nil
 }
@@ -611,13 +627,19 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		QueueSize:        c.queueSize(),
 		OverflowStrategy: c.overflowStrategy(),
 		Rolling: RollingBuildConfig{
-			MaxSize:    c.Rolling.maxSize(),
-			Interval:   c.Rolling.Interval,
-			OnStartup:  c.Rolling.onStartup(),
-			MaxBackups: c.Rolling.maxBackupsPointer(),
-			Gzip:       c.Rolling.gzipEnabled(),
+			FilePattern: c.Rolling.filePattern(),
+			MaxSize:     c.Rolling.maxSize(),
+			Interval:    c.Rolling.Interval,
+			OnStartup:   c.Rolling.onStartup(),
+			MaxBackups:  c.Rolling.maxBackupsPointer(),
+			MaxAge:      c.Rolling.maxAge(),
+			Gzip:        c.Rolling.gzipEnabled(),
 		},
 	}
+}
+
+func (c rollingConfig) filePattern() string {
+	return firstNonBlank(c.FilePattern, c.FilePatternKebab)
 }
 
 func (c rollingConfig) maxSize() string {
@@ -625,6 +647,10 @@ func (c rollingConfig) maxSize() string {
 		return strings.TrimSpace(c.MaxSize)
 	}
 	return strings.TrimSpace(c.MaxSizeKebab)
+}
+
+func (c rollingConfig) maxAge() string {
+	return firstNonBlank(c.MaxAge, c.MaxAgeKebab)
 }
 
 func (c rollingConfig) onStartup() bool {

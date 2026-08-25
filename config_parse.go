@@ -72,6 +72,38 @@ func ParseRollingInterval(value string) (time.Duration, error) {
 	}
 }
 
+// ParseRollingMaxAge 解析滚动档案最大保留时间。
+func ParseRollingMaxAge(value string) (time.Duration, error) {
+	text := strings.ToLower(strings.TrimSpace(value))
+	switch text {
+	case "", "0", "off", "none", "disabled":
+		return 0, nil
+	}
+	if strings.HasSuffix(text, "d") {
+		days, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(text, "d")), 64)
+		if err != nil || days < 0 {
+			return 0, fmt.Errorf("goark-log: invalid rolling max age %q", value)
+		}
+		return time.Duration(days * float64(24*time.Hour)), nil
+	}
+	if strings.HasSuffix(text, "day") || strings.HasSuffix(text, "days") {
+		number := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(text, "days"), "day"))
+		days, err := strconv.ParseFloat(number, 64)
+		if err != nil || days < 0 {
+			return 0, fmt.Errorf("goark-log: invalid rolling max age %q", value)
+		}
+		return time.Duration(days * float64(24*time.Hour)), nil
+	}
+	age, err := time.ParseDuration(text)
+	if err != nil {
+		return 0, fmt.Errorf("goark-log: invalid rolling max age %q", value)
+	}
+	if age < 0 {
+		return 0, fmt.Errorf("goark-log: rolling max age must be >= 0")
+	}
+	return age, nil
+}
+
 func byteSizeMultiplier(unit string) (int64, bool) {
 	switch unit {
 	case "", "b", "byte", "bytes":

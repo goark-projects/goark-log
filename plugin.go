@@ -32,11 +32,13 @@ type AppenderBuildConfig struct {
 
 // RollingBuildConfig 是滚动文件插件的构建输入。
 type RollingBuildConfig struct {
-	MaxSize    string
-	Interval   string
-	OnStartup  bool
-	MaxBackups *int
-	Gzip       bool
+	FilePattern string
+	MaxSize     string
+	Interval    string
+	OnStartup   bool
+	MaxBackups  *int
+	MaxAge      string
+	Gzip        bool
 }
 
 // LayoutBuildConfig 是 layout 插件的构建输入。
@@ -265,6 +267,9 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 		WithRollingFileName(config.Name),
 		WithRollingFileLayout(config.Layout),
 	}
+	if strings.TrimSpace(config.Rolling.FilePattern) != "" {
+		options = append(options, WithRollingFilePattern(config.Rolling.FilePattern))
+	}
 	if value := config.Rolling.MaxSize; value != "" {
 		size, err := ParseByteSize(value)
 		if err != nil {
@@ -284,6 +289,13 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	}
 	if config.Rolling.MaxBackups != nil {
 		options = append(options, WithRollingMaxBackups(*config.Rolling.MaxBackups))
+	}
+	if strings.TrimSpace(config.Rolling.MaxAge) != "" {
+		age, err := ParseRollingMaxAge(config.Rolling.MaxAge)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+		}
+		options = append(options, WithRollingMaxAge(age))
 	}
 	if config.Rolling.Gzip {
 		options = append(options, WithRollingGzip(true))

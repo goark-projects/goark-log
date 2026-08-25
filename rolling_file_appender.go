@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,11 +28,13 @@ const (
 type RollingFileAppender struct {
 	name              string
 	path              string
+	filePattern       string
 	layout            Layout
 	maxSize           int64
 	interval          time.Duration
 	rolloverOnStartup bool
 	maxBackups        int
+	maxAge            time.Duration
 	compress          bool
 	clock             func() time.Time
 
@@ -74,6 +77,13 @@ func WithRollingInterval(interval time.Duration) RollingFileOption {
 	}
 }
 
+// WithRollingFilePattern 设置滚动档案路径模式，支持 %d{layout} 和 %i。
+func WithRollingFilePattern(pattern string) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.filePattern = strings.TrimSpace(pattern)
+	}
+}
+
 // WithRolloverOnStartup 设置启动时滚动已有文件。
 func WithRolloverOnStartup(enabled bool) RollingFileOption {
 	return func(appender *RollingFileAppender) {
@@ -85,6 +95,13 @@ func WithRolloverOnStartup(enabled bool) RollingFileOption {
 func WithRollingMaxBackups(maxBackups int) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.maxBackups = maxBackups
+	}
+}
+
+// WithRollingMaxAge 设置档案最大保留时间，0 表示不按时间清理。
+func WithRollingMaxAge(age time.Duration) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.maxAge = age
 	}
 }
 
@@ -208,6 +225,24 @@ func (a *RollingFileAppender) validate() error {
 	if a.maxBackups < 0 {
 		return fmt.Errorf("goark-log: rolling max backups must be >= 0")
 	}
+	if a.maxAge < 0 {
+		return fmt.Errorf("goark-log: rolling max age must be >= 0")
+	}
+	if a.filePattern != "" {
+		if a.maxSize > 0 && !rollingPatternHasIndex(a.filePattern) {
+			return fmt.Errorf("goark-log: rolling filePattern requires %%i when size policy is enabled")
+		}
+		if strings.HasSuffix(strings.ToLower(a.filePattern), ".gz") {
+			a.compress = true
+		}
+		candidate, _, err := a.archivePaths(a.now(), 0)
+		if err != nil {
+			return err
+		}
+		if filepath.Clean(candidate) == filepath.Clean(a.path) {
+			return fmt.Errorf("goark-log: rolling filePattern must not resolve to active log file %q", a.path)
+		}
+	}
 	if a.maxSize == 0 && a.interval == 0 && !a.rolloverOnStartup {
 		return fmt.Errorf("goark-log: rolling policy is empty")
 	}
@@ -266,11 +301,15 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		}
 	}
 	if a.compress {
-		if _, err := compressFile(target); err != nil {
+		_, compressedTarget, err := a.archivePaths(now, a.archiveIndex-1)
+		if err != nil {
+			return err
+		}
+		if _, err := compressFileTo(target, compressedTarget); err != nil {
 			return err
 		}
 	}
-	if err := a.deleteExpiredArchives(); err != nil {
+	if err := a.deleteExpiredArchives(now); err != nil {
 		return err
 	}
 	file, err := openLogFile(a.path)
@@ -284,33 +323,62 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 }
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
-	dir := filepath.Dir(a.path)
-	base := filepath.Base(a.path)
-	stamp := now.Format("20060102-150405.000")
 	for attempt := 0; attempt < 1000; attempt++ {
 		index := a.archiveIndex
 		a.archiveIndex++
-		name := fmt.Sprintf("%s.%s.%03d", base, stamp, index)
-		candidate := filepath.Join(dir, name)
+		candidate, compressedCandidate, err := a.archivePaths(now, index)
+		if err != nil {
+			return "", err
+		}
 		if exists, err := pathExists(candidate); err != nil {
 			return "", fmt.Errorf("goark-log: stat archive log file %q: %w", candidate, err)
 		} else if exists {
 			continue
 		}
-		if a.compress {
-			compressedCandidate := candidate + ".gz"
+		if a.compress && compressedCandidate != candidate {
 			if exists, err := pathExists(compressedCandidate); err != nil {
 				return "", fmt.Errorf("goark-log: stat archive log file %q: %w", compressedCandidate, err)
 			} else if exists {
 				continue
 			}
 		}
+		if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+			return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+		}
 		return candidate, nil
 	}
 	return "", fmt.Errorf("goark-log: cannot allocate archive name for %q", a.path)
 }
 
+func (a *RollingFileAppender) archivePaths(now time.Time, index int) (string, string, error) {
+	if a.filePattern == "" {
+		dir := filepath.Dir(a.path)
+		base := filepath.Base(a.path)
+		stamp := now.Format("20060102-150405.000")
+		candidate := filepath.Join(dir, fmt.Sprintf("%s.%s.%03d", base, stamp, index))
+		if a.compress {
+			return candidate, candidate + ".gz", nil
+		}
+		return candidate, candidate, nil
+	}
+	target, err := formatRollingFilePattern(a.filePattern, now, index)
+	if err != nil {
+		return "", "", err
+	}
+	target = filepath.Clean(target)
+	if a.compress {
+		if strings.HasSuffix(strings.ToLower(target), ".gz") {
+			return strings.TrimSuffix(target, ".gz"), target, nil
+		}
+		return target, target + ".gz", nil
+	}
+	return target, target, nil
+}
+
 func (a *RollingFileAppender) initArchiveIndex() error {
+	if a.filePattern != "" {
+		return a.initArchiveIndexByPattern()
+	}
 	dir := filepath.Dir(a.path)
 	base := filepath.Base(a.path)
 	entries, err := os.ReadDir(dir)
@@ -332,6 +400,35 @@ func (a *RollingFileAppender) initArchiveIndex() error {
 	return nil
 }
 
+func (a *RollingFileAppender) initArchiveIndexByPattern() error {
+	glob := rollingPatternGlob(a.filePattern, a.compress)
+	matches, err := filepath.Glob(glob)
+	if err != nil {
+		return fmt.Errorf("goark-log: glob rolling filePattern %q: %w", a.filePattern, err)
+	}
+	pattern, hasIndex, err := rollingPatternIndexRegexp(a.filePattern, a.compress)
+	if err != nil {
+		return err
+	}
+	maxIndex := -1
+	for _, match := range matches {
+		if !hasIndex {
+			maxIndex++
+			continue
+		}
+		parts := pattern.FindStringSubmatch(filepath.ToSlash(match))
+		if len(parts) != 2 {
+			continue
+		}
+		index, err := strconv.Atoi(parts[1])
+		if err == nil && index > maxIndex {
+			maxIndex = index
+		}
+	}
+	a.archiveIndex = maxIndex + 1
+	return nil
+}
+
 func parseArchiveIndex(name string, prefix string) (int, bool) {
 	tail := strings.TrimPrefix(name, prefix)
 	tail = strings.TrimSuffix(tail, ".gz")
@@ -346,6 +443,207 @@ func parseArchiveIndex(name string, prefix string) (int, bool) {
 	return index, true
 }
 
+func formatRollingFilePattern(pattern string, now time.Time, index int) (string, error) {
+	var builder strings.Builder
+	builder.Grow(len(pattern) + 8)
+	for offset := 0; offset < len(pattern); {
+		if pattern[offset] != '%' {
+			builder.WriteByte(pattern[offset])
+			offset++
+			continue
+		}
+		if offset+1 < len(pattern) && pattern[offset+1] == '%' {
+			builder.WriteByte('%')
+			offset += 2
+			continue
+		}
+		next, err := appendRollingPatternToken(&builder, pattern, offset, now, index)
+		if err != nil {
+			return "", err
+		}
+		offset = next
+	}
+	return builder.String(), nil
+}
+
+func appendRollingPatternToken(builder *strings.Builder, pattern string, offset int, now time.Time, index int) (int, error) {
+	cursor := offset + 1
+	zeroPad := false
+	width := 0
+	if cursor < len(pattern) && pattern[cursor] == '0' {
+		zeroPad = true
+		cursor++
+	}
+	for cursor < len(pattern) && pattern[cursor] >= '0' && pattern[cursor] <= '9' {
+		width = width*10 + int(pattern[cursor]-'0')
+		cursor++
+	}
+	if cursor >= len(pattern) {
+		return 0, fmt.Errorf("goark-log: rolling filePattern token is incomplete near %q", pattern[offset:])
+	}
+	switch pattern[cursor] {
+	case 'i':
+		value := strconv.Itoa(index)
+		if zeroPad && width > len(value) {
+			builder.WriteString(strings.Repeat("0", width-len(value)))
+		}
+		builder.WriteString(value)
+		return cursor + 1, nil
+	case 'd':
+		option := ""
+		cursor++
+		if cursor < len(pattern) && pattern[cursor] == '{' {
+			end := strings.IndexByte(pattern[cursor+1:], '}')
+			if end < 0 {
+				return 0, fmt.Errorf("goark-log: rolling filePattern date option is not closed near %q", pattern[cursor:])
+			}
+			option = pattern[cursor+1 : cursor+1+end]
+			cursor += end + 2
+		}
+		if strings.TrimSpace(option) == "" {
+			option = "yyyyMMdd-HHmmss"
+		}
+		layout, unixMode := normalizeTimePattern(option)
+		switch unixMode {
+		case timeUnixSeconds:
+			builder.WriteString(strconv.FormatInt(now.Unix(), 10))
+		case timeUnixMillis:
+			builder.WriteString(strconv.FormatInt(now.UnixMilli(), 10))
+		case timeUnixMicros:
+			builder.WriteString(strconv.FormatInt(now.UnixMicro(), 10))
+		case timeUnixNanos:
+			builder.WriteString(strconv.FormatInt(now.UnixNano(), 10))
+		default:
+			builder.WriteString(now.Format(layout))
+		}
+		return cursor, nil
+	default:
+		return 0, fmt.Errorf("goark-log: unsupported rolling filePattern token near %q", pattern[offset:])
+	}
+}
+
+func rollingPatternHasIndex(pattern string) bool {
+	for offset := 0; offset < len(pattern); offset++ {
+		if pattern[offset] != '%' {
+			continue
+		}
+		cursor := offset + 1
+		if cursor < len(pattern) && pattern[cursor] == '0' {
+			cursor++
+		}
+		for cursor < len(pattern) && pattern[cursor] >= '0' && pattern[cursor] <= '9' {
+			cursor++
+		}
+		if cursor < len(pattern) && pattern[cursor] == 'i' {
+			return true
+		}
+	}
+	return false
+}
+
+func rollingPatternGlob(pattern string, compress bool) string {
+	var builder strings.Builder
+	builder.Grow(len(pattern) + 8)
+	for offset := 0; offset < len(pattern); {
+		if pattern[offset] != '%' {
+			builder.WriteByte(pattern[offset])
+			offset++
+			continue
+		}
+		if offset+1 < len(pattern) && pattern[offset+1] == '%' {
+			builder.WriteByte('%')
+			offset += 2
+			continue
+		}
+		cursor := offset + 1
+		if cursor < len(pattern) && pattern[cursor] == '0' {
+			cursor++
+		}
+		for cursor < len(pattern) && pattern[cursor] >= '0' && pattern[cursor] <= '9' {
+			cursor++
+		}
+		if cursor < len(pattern) && pattern[cursor] == 'd' {
+			cursor++
+			if cursor < len(pattern) && pattern[cursor] == '{' {
+				end := strings.IndexByte(pattern[cursor+1:], '}')
+				if end >= 0 {
+					cursor += end + 2
+				}
+			}
+			builder.WriteByte('*')
+			offset = cursor
+			continue
+		}
+		if cursor < len(pattern) && pattern[cursor] == 'i' {
+			builder.WriteByte('*')
+			offset = cursor + 1
+			continue
+		}
+		builder.WriteByte('*')
+		offset = cursor
+	}
+	glob := builder.String()
+	if compress && !strings.HasSuffix(strings.ToLower(glob), ".gz") {
+		glob += ".gz"
+	}
+	return filepath.Clean(glob)
+}
+
+func rollingPatternIndexRegexp(pattern string, compress bool) (*regexp.Regexp, bool, error) {
+	var builder strings.Builder
+	builder.WriteByte('^')
+	hasIndex := false
+	slashPattern := filepath.ToSlash(pattern)
+	for offset := 0; offset < len(slashPattern); {
+		if slashPattern[offset] != '%' {
+			builder.WriteString(regexp.QuoteMeta(string(slashPattern[offset])))
+			offset++
+			continue
+		}
+		if offset+1 < len(slashPattern) && slashPattern[offset+1] == '%' {
+			builder.WriteString(regexp.QuoteMeta("%"))
+			offset += 2
+			continue
+		}
+		cursor := offset + 1
+		if cursor < len(slashPattern) && slashPattern[cursor] == '0' {
+			cursor++
+		}
+		for cursor < len(slashPattern) && slashPattern[cursor] >= '0' && slashPattern[cursor] <= '9' {
+			cursor++
+		}
+		if cursor < len(slashPattern) && slashPattern[cursor] == 'i' {
+			builder.WriteString(`(\d+)`)
+			hasIndex = true
+			offset = cursor + 1
+			continue
+		}
+		if cursor < len(slashPattern) && slashPattern[cursor] == 'd' {
+			cursor++
+			if cursor < len(slashPattern) && slashPattern[cursor] == '{' {
+				end := strings.IndexByte(slashPattern[cursor+1:], '}')
+				if end >= 0 {
+					cursor += end + 2
+				}
+			}
+			builder.WriteString(`.+?`)
+			offset = cursor
+			continue
+		}
+		builder.WriteString(`.+?`)
+		offset = cursor
+	}
+	if compress && !strings.HasSuffix(strings.ToLower(slashPattern), ".gz") {
+		builder.WriteString(regexp.QuoteMeta(".gz"))
+	}
+	builder.WriteByte('$')
+	compiled, err := regexp.Compile(builder.String())
+	if err != nil {
+		return nil, false, fmt.Errorf("goark-log: compile rolling filePattern index matcher: %w", err)
+	}
+	return compiled, hasIndex, nil
+}
+
 func pathExists(path string) (bool, error) {
 	if _, err := os.Stat(path); err == nil {
 		return true, nil
@@ -356,12 +654,63 @@ func pathExists(path string) (bool, error) {
 	}
 }
 
-func (a *RollingFileAppender) deleteExpiredArchives() error {
+func (a *RollingFileAppender) deleteExpiredArchives(now time.Time) error {
+	archives, err := a.archiveFiles()
+	if err != nil {
+		return err
+	}
+	if len(archives) <= a.maxBackups {
+		if a.maxAge <= 0 {
+			return nil
+		}
+	}
+	sort.Slice(archives, func(i, j int) bool {
+		return archives[i].name < archives[j].name
+	})
+	var joined error
+	deleteCount := 0
+	if len(archives) > a.maxBackups {
+		deleteCount = len(archives) - a.maxBackups
+	}
+	for _, archive := range archives[:deleteCount] {
+		joined = errors.Join(joined, os.Remove(archive.path))
+	}
+	if a.maxAge > 0 {
+		cutoff := now.Add(-a.maxAge)
+		for _, archive := range archives[deleteCount:] {
+			info, err := os.Stat(archive.path)
+			if err != nil {
+				joined = errors.Join(joined, err)
+				continue
+			}
+			if info.ModTime().Before(cutoff) {
+				joined = errors.Join(joined, os.Remove(archive.path))
+			}
+		}
+	}
+	return joined
+}
+
+func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
+	if a.filePattern != "" {
+		matches, err := filepath.Glob(rollingPatternGlob(a.filePattern, a.compress))
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: glob rolling filePattern %q: %w", a.filePattern, err)
+		}
+		archives := make([]archiveFile, 0, len(matches))
+		for _, match := range matches {
+			info, err := os.Stat(match)
+			if err == nil && !info.IsDir() {
+				archives = append(archives, archiveFile{path: match, name: filepath.ToSlash(match)})
+			}
+		}
+		return archives, nil
+	}
 	dir := filepath.Dir(a.path)
 	base := filepath.Base(a.path)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("goark-log: read log directory %q: %w", dir, err)
+		return nil, fmt.Errorf("goark-log: read log directory %q: %w", dir, err)
 	}
 	prefix := base + "."
 	archives := make([]archiveFile, 0, len(entries))
@@ -374,17 +723,7 @@ func (a *RollingFileAppender) deleteExpiredArchives() error {
 			name: entry.Name(),
 		})
 	}
-	if len(archives) <= a.maxBackups {
-		return nil
-	}
-	sort.Slice(archives, func(i, j int) bool {
-		return archives[i].name < archives[j].name
-	})
-	var joined error
-	for _, archive := range archives[:len(archives)-a.maxBackups] {
-		joined = errors.Join(joined, os.Remove(archive.path))
-	}
-	return joined
+	return archives, nil
 }
 
 type archiveFile struct {
@@ -404,6 +743,10 @@ func nextRolloverAfter(now time.Time, interval time.Duration) time.Time {
 }
 
 func compressFile(path string) (string, error) {
+	return compressFileTo(path, path+".gz")
+}
+
+func compressFileTo(path string, compressedPath string) (string, error) {
 	source, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("goark-log: open archive log file %q: %w", path, err)
@@ -414,7 +757,6 @@ func compressFile(path string) (string, error) {
 			_ = source.Close()
 		}
 	}()
-	compressedPath := path + ".gz"
 	target, err := os.OpenFile(compressedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return "", fmt.Errorf("goark-log: create gzip archive %q: %w", compressedPath, err)
