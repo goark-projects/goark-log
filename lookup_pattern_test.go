@@ -109,6 +109,32 @@ func TestLayout_whenPrimitiveAttrsUsed_shouldRenderWithoutSemanticDrift(t *testi
 	}
 }
 
+func TestPatternLayout_whenAttrsHaveExplicitSeparator_shouldNotDuplicateSpace(t *testing.T) {
+	event := testEvent("attrs", fixedTestTime())
+	event.Attrs = []slog.Attr{slog.String("trace_id", "trace-1")}
+	cases := []struct {
+		pattern string
+		want    string
+	}{
+		{pattern: "%m%attrs%n", want: "attrs trace_id=trace-1\n"},
+		{pattern: "%m %attrs%n", want: "attrs trace_id=trace-1\n"},
+		{pattern: "%attrs%n", want: "trace_id=trace-1\n"},
+	}
+	for _, tt := range cases {
+		layout, err := NewPatternLayout(tt.pattern)
+		if err != nil {
+			t.Fatalf("NewPatternLayout(%q) error = %v", tt.pattern, err)
+		}
+		var buf bytes.Buffer
+		if err := layout.Format(&buf, event); err != nil {
+			t.Fatalf("Format(%q) error = %v", tt.pattern, err)
+		}
+		if buf.String() != tt.want {
+			t.Fatalf("Format(%q) = %q, want %q", tt.pattern, buf.String(), tt.want)
+		}
+	}
+}
+
 func TestNewConfigured_whenLookupsUsedInYaml_shouldExpandBeforeBuild(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOARK_LOG_DIR", filepath.ToSlash(filepath.Join(dir, "logs")))

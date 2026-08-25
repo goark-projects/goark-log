@@ -411,10 +411,26 @@ func isPatternLetter(value byte) bool {
 	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
+func isSpaceByte(value byte) bool {
+	return value == ' ' || value == '\t' || value == '\r' || value == '\n'
+}
+
 func appendPatternAttrs(buf *bytes.Buffer, attrs []slog.Attr) {
 	for _, attr := range attrs {
-		appendKeyValueAttr(buf, attr.Key, attr.Value)
+		appendPatternKeyValueAttr(buf, attr.Key, attr.Value)
 	}
+}
+
+func appendPatternKeyValueAttr(buf *bytes.Buffer, key string, value slog.Value) {
+	if buf.Len() > 0 {
+		data := buf.Bytes()
+		if !isSpaceByte(data[len(data)-1]) {
+			buf.WriteByte(' ')
+		}
+	}
+	buf.WriteString(key)
+	buf.WriteByte('=')
+	appendTextValue(buf, value)
 }
 
 func appendKeyValue(buf *bytes.Buffer, key string, value string) {
