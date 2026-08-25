@@ -726,6 +726,10 @@ func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appen
 	}
 	delegates := make([]Appender, 0, len(refs))
 	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return nil, fmt.Errorf("goark-log: async appender %q appender ref is empty", name)
+		}
 		appender, ok := built[ref]
 		if !ok {
 			return nil, fmt.Errorf("goark-log: async appender %q references unknown or async appender %q", name, ref)
@@ -1012,11 +1016,9 @@ func resolveFilters(filters map[string]Filter, refs []string) ([]Filter, error) 
 func firstRefs(groups ...[]string) []string {
 	for _, refs := range groups {
 		if len(refs) > 0 {
-			out := make([]string, 0, len(refs))
-			for _, ref := range refs {
-				if strings.TrimSpace(ref) != "" {
-					out = append(out, strings.TrimSpace(ref))
-				}
+			out := make([]string, len(refs))
+			for index, ref := range refs {
+				out[index] = strings.TrimSpace(ref)
 			}
 			return out
 		}

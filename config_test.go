@@ -238,6 +238,58 @@ root:
 	}
 }
 
+func TestNewConfigured_whenAppenderRefBlank_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  console:
+    type: console
+root:
+  level: info
+  appenderRefs: [""]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "appender ref is empty") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want blank appender ref rejection", err)
+	}
+}
+
+func TestNewConfigured_whenAsyncAppenderRefBlank_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  console:
+    type: console
+  async:
+    type: async
+    appenderRefs: [""]
+root:
+  level: info
+  appenderRefs: [async]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), `async appender "async" appender ref is empty`) {
+		t.Fatalf("NewConfiguredHandler() error = %v, want blank async appender ref rejection", err)
+	}
+}
+
+func TestNewConfigured_whenFilterRefBlank_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  console:
+    type: console
+root:
+  level: info
+  appenderRefs: [console]
+  filters: [""]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "filter ref is empty") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want blank filter ref rejection", err)
+	}
+}
+
 func TestNewConfigured_whenAppenderFilterRefMissing_shouldCloseBuiltAppender(t *testing.T) {
 	registry := NewPluginRegistry()
 	var built *recordingAppender
