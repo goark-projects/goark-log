@@ -136,15 +136,18 @@ func decodeConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error
 	return effective, nil
 }
 
-func (c *fileConfig) options() (Options, error) {
+func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 	if c == nil || c.empty() {
 		return DefaultOptions(), nil
 	}
-	filters, err := c.buildFilters()
+	if registry == nil {
+		registry = DefaultPluginRegistry()
+	}
+	filters, err := c.buildFilters(registry)
 	if err != nil {
 		return Options{}, err
 	}
-	appenders, err := c.buildAppenders(filters)
+	appenders, err := c.buildAppenders(filters, registry)
 	if err != nil {
 		return Options{}, err
 	}
@@ -455,7 +458,7 @@ func (c loggerConfig) empty() bool {
 		c.Additivity == nil
 }
 
-func (c *fileConfig) buildAppenders(filters map[string]Filter) ([]Appender, error) {
+func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {
 	if len(c.Appenders) == 0 {
 		return DefaultOptions().Appenders, nil
 	}
@@ -469,7 +472,7 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter) ([]Appender, erro
 			asyncNames = append(asyncNames, name)
 			continue
 		}
-		appender, err := buildConcreteAppender(name, spec, filters)
+		appender, err := buildConcreteAppender(name, spec, filters, registry)
 		if err != nil {
 			_ = closeAppenderList(appenders)
 			return nil, err
@@ -478,7 +481,7 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter) ([]Appender, erro
 		appenders = append(appenders, appender)
 	}
 	for _, name := range asyncNames {
-		appender, err := buildAsyncAppender(name, c.Appenders[name], built, filters)
+		appender, err := buildAsyncAppender(name, c.Appenders[name], built, filters, registry)
 		if err != nil {
 			_ = closeAppenderList(appenders)
 			return nil, err
@@ -489,86 +492,27 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter) ([]Appender, erro
 	return appenders, nil
 }
 
-func buildConcreteAppender(name string, spec appenderConfig, filters map[string]Filter) (Appender, error) {
-	layout, err := buildLayout(spec.Layout)
+func buildConcreteAppender(name string, spec appenderConfig, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
+	layout, err := buildLayout(spec.Layout, registry)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)
 	}
-	var appender Appender
-	switch normalizeKind(spec.Type) {
-	case "console":
-		appender, err = buildConsoleAppender(name, spec, layout)
-	case "file":
-		appender, err = buildFileAppender(name, spec, layout)
-	case "rolling", "rollingfile":
-		appender, err = buildRollingAppender(name, spec, layout)
-	case "":
+	kind := normalizeKind(spec.Type)
+	if kind == "" {
 		return nil, fmt.Errorf("goark-log: appender %q type is empty", name)
-	default:
+	}
+	factory, ok := registry.appenderFactory(kind)
+	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
+	appender, err := factory(spec.appenderBuildConfig(name, layout, nil))
 	if err != nil {
 		return nil, err
 	}
 	return wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
 }
 
-func buildConsoleAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
-	target := strings.ToLower(strings.TrimSpace(spec.Target))
-	switch target {
-	case "", "stderr":
-		return NewConsoleAppender(WithConsoleName(name), WithConsoleLayout(layout), WithConsoleWriter(os.Stderr)), nil
-	case "stdout":
-		return NewConsoleAppender(WithConsoleName(name), WithConsoleLayout(layout), WithConsoleWriter(os.Stdout)), nil
-	default:
-		return nil, fmt.Errorf("goark-log: appender %q console target %q is invalid", name, spec.Target)
-	}
-}
-
-func buildFileAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
-	path := spec.fileName()
-	if path == "" {
-		return nil, fmt.Errorf("goark-log: appender %q fileName is empty", name)
-	}
-	return NewFileAppender(path, WithFileName(name), WithFileLayout(layout))
-}
-
-func buildRollingAppender(name string, spec appenderConfig, layout Layout) (Appender, error) {
-	path := spec.fileName()
-	if path == "" {
-		return nil, fmt.Errorf("goark-log: appender %q fileName is empty", name)
-	}
-	options := []RollingFileOption{
-		WithRollingFileName(name),
-		WithRollingFileLayout(layout),
-	}
-	if value := spec.Rolling.maxSize(); value != "" {
-		size, err := ParseByteSize(value)
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)
-		}
-		options = append(options, WithRollingMaxSize(size))
-	}
-	if value := spec.Rolling.Interval; strings.TrimSpace(value) != "" {
-		interval, err := ParseRollingInterval(value)
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)
-		}
-		options = append(options, WithRollingInterval(interval))
-	}
-	if spec.Rolling.onStartup() {
-		options = append(options, WithRolloverOnStartup(true))
-	}
-	if maxBackups, ok := spec.Rolling.maxBackups(); ok {
-		options = append(options, WithRollingMaxBackups(maxBackups))
-	}
-	if spec.Rolling.gzipEnabled() {
-		options = append(options, WithRollingGzip(true))
-	}
-	return NewRollingFileAppender(path, options...)
-}
-
-func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender, filters map[string]Filter) (Appender, error) {
+func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
 	refs := spec.refs()
 	if len(refs) == 0 {
 		return nil, fmt.Errorf("goark-log: async appender %q requires appenderRefs", name)
@@ -581,35 +525,26 @@ func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appen
 		}
 		delegates = append(delegates, appender)
 	}
-	strategy, err := ParseAsyncOverflowStrategy(spec.overflowStrategy())
-	if err != nil {
-		return nil, fmt.Errorf("goark-log: async appender %q: %w", name, err)
+	factory, ok := registry.appenderFactory(spec.Type)
+	if !ok {
+		return nil, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
-	options := []AsyncOption{
-		WithAsyncName(name),
-		WithAsyncOverflowStrategy(strategy),
-	}
-	if queueSize := spec.queueSize(); queueSize != 0 {
-		options = append(options, WithAsyncQueueSize(queueSize))
-	}
-	appender, err := NewAsyncAppender(delegates, options...)
+	appender, err := factory(spec.appenderBuildConfig(name, nil, delegates))
 	if err != nil {
 		return nil, err
 	}
 	return wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
 }
 
-func buildLayout(config layoutConfig) (Layout, error) {
-	switch normalizeKind(config.Type) {
-	case "", "pattern":
-		return NewPatternLayout(config.Pattern)
-	case "text":
-		return TextLayout{}, nil
-	case "json":
-		return JSONLayout{}, nil
-	default:
+func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) {
+	factory, ok := registry.layoutFactory(config.Type)
+	if !ok {
 		return nil, fmt.Errorf("unsupported layout type %q", config.Type)
 	}
+	return factory(LayoutBuildConfig{
+		Type:    config.Type,
+		Pattern: config.Pattern,
+	})
 }
 
 func configFormat(path string) (string, error) {
@@ -664,6 +599,27 @@ func (c appenderConfig) overflowStrategy() string {
 	return c.OverflowStrategyKebab
 }
 
+func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegates []Appender) AppenderBuildConfig {
+	return AppenderBuildConfig{
+		Name:             name,
+		Type:             c.Type,
+		Target:           c.Target,
+		FileName:         c.fileName(),
+		Layout:           layout,
+		AppenderRefs:     c.refs(),
+		Delegates:        append([]Appender(nil), delegates...),
+		QueueSize:        c.queueSize(),
+		OverflowStrategy: c.overflowStrategy(),
+		Rolling: RollingBuildConfig{
+			MaxSize:    c.Rolling.maxSize(),
+			Interval:   c.Rolling.Interval,
+			OnStartup:  c.Rolling.onStartup(),
+			MaxBackups: c.Rolling.maxBackupsPointer(),
+			Gzip:       c.Rolling.gzipEnabled(),
+		},
+	}
+}
+
 func (c rollingConfig) maxSize() string {
 	if strings.TrimSpace(c.MaxSize) != "" {
 		return strings.TrimSpace(c.MaxSize)
@@ -685,6 +641,18 @@ func (c rollingConfig) maxBackups() (int, bool) {
 	return 0, false
 }
 
+func (c rollingConfig) maxBackupsPointer() *int {
+	if c.MaxBackups != nil {
+		value := *c.MaxBackups
+		return &value
+	}
+	if c.MaxBackupsKebab != nil {
+		value := *c.MaxBackupsKebab
+		return &value
+	}
+	return nil
+}
+
 func (c rollingConfig) gzipEnabled() bool {
 	return c.Gzip || c.Compress
 }
@@ -704,14 +672,14 @@ func (c *fileConfig) filterRefs() []string {
 	return firstRefs(c.FilterRefs, c.FilterRefsKebab)
 }
 
-func (c *fileConfig) buildFilters() (map[string]Filter, error) {
+func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, error) {
 	if len(c.Filters) == 0 {
 		return nil, nil
 	}
 	names := sortedFilterNames(c.Filters)
 	filters := make(map[string]Filter, len(c.Filters))
 	for _, name := range names {
-		filter, err := buildFilter(name, c.Filters[name])
+		filter, err := buildFilter(name, c.Filters[name], registry)
 		if err != nil {
 			return nil, err
 		}
@@ -720,113 +688,19 @@ func (c *fileConfig) buildFilters() (map[string]Filter, error) {
 	return filters, nil
 }
 
-func buildFilter(name string, spec filterConfig) (Filter, error) {
-	switch normalizeKind(spec.Type) {
-	case "threshold":
-		level, err := ParseLevel(spec.Level)
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		options, err := spec.filterOptions()
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		return NewThresholdFilter(level, options...), nil
-	case "level":
-		level, err := ParseLevel(spec.Level)
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		options, err := spec.filterOptions()
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		return NewLevelFilter(level, options...), nil
-	case "levelrange":
-		if spec.minLevel() == "" || spec.maxLevel() == "" {
-			return nil, fmt.Errorf("goark-log: filter %q level range requires minLevel and maxLevel", name)
-		}
-		min, err := ParseLevel(spec.minLevel())
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		max, err := ParseLevel(spec.maxLevel())
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		options, err := spec.filterOptions()
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		return NewLevelRangeFilter(min, max, options...)
-	case "regex":
-		if strings.TrimSpace(spec.Pattern) == "" {
-			return nil, fmt.Errorf("goark-log: filter %q regex pattern is empty", name)
-		}
-		options, err := spec.regexOutcomeOptions()
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		if strings.TrimSpace(spec.Field) != "" {
-			field, err := parseRegexFilterField(spec.Field)
-			if err != nil {
-				return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-			}
-			options = append(options, WithRegexField(field))
-		}
-		if strings.TrimSpace(spec.Key) != "" {
-			options = append(options, WithRegexAttrKey(spec.Key))
-		}
-		return NewRegexFilter(spec.Pattern, options...)
-	case "attr", "attribute":
-		options, err := spec.filterOptions()
-		if err != nil {
-			return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
-		}
-		return NewAttrFilter(spec.Key, spec.Value, options...)
-	case "":
+func buildFilter(name string, spec filterConfig, registry *PluginRegistry) (Filter, error) {
+	if normalizeKind(spec.Type) == "" {
 		return nil, fmt.Errorf("goark-log: filter %q type is empty", name)
-	default:
+	}
+	factory, ok := registry.filterFactory(spec.Type)
+	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported filter %q type %q", name, spec.Type)
 	}
-}
-
-func (c filterConfig) filterOptions() ([]FilterOption, error) {
-	onMatch, err := c.onMatch(FilterNeutral)
+	filter, err := factory(spec.filterBuildConfig(name))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
 	}
-	onMismatch, err := c.onMismatch(FilterDeny)
-	if err != nil {
-		return nil, err
-	}
-	return []FilterOption{
-		WithFilterOnMatch(onMatch),
-		WithFilterOnMismatch(onMismatch),
-	}, nil
-}
-
-func (c filterConfig) regexOutcomeOptions() ([]RegexFilterOption, error) {
-	onMatch, err := c.onMatch(FilterNeutral)
-	if err != nil {
-		return nil, err
-	}
-	onMismatch, err := c.onMismatch(FilterDeny)
-	if err != nil {
-		return nil, err
-	}
-	return []RegexFilterOption{
-		WithRegexOnMatch(onMatch),
-		WithRegexOnMismatch(onMismatch),
-	}, nil
-}
-
-func (c filterConfig) onMatch(fallback FilterDecision) (FilterDecision, error) {
-	return parseFilterDecisionOrDefault(firstNonBlank(c.OnMatch, c.OnMatchKebab), fallback)
-}
-
-func (c filterConfig) onMismatch(fallback FilterDecision) (FilterDecision, error) {
-	return parseFilterDecisionOrDefault(firstNonBlank(c.OnMismatch, c.OnMismatchKebab), fallback)
+	return filter, nil
 }
 
 func parseFilterDecisionOrDefault(value string, fallback FilterDecision) (FilterDecision, error) {
@@ -855,6 +729,22 @@ func (c filterConfig) minLevel() string {
 
 func (c filterConfig) maxLevel() string {
 	return firstNonBlank(c.MaxLevel, c.MaxLevelKebab)
+}
+
+func (c filterConfig) filterBuildConfig(name string) FilterBuildConfig {
+	return FilterBuildConfig{
+		Name:       name,
+		Type:       c.Type,
+		Level:      c.Level,
+		MinLevel:   c.minLevel(),
+		MaxLevel:   c.maxLevel(),
+		Field:      c.Field,
+		Key:        c.Key,
+		Value:      c.Value,
+		Pattern:    c.Pattern,
+		OnMatch:    firstNonBlank(c.OnMatch, c.OnMatchKebab),
+		OnMismatch: firstNonBlank(c.OnMismatch, c.OnMismatchKebab),
+	}
 }
 
 func wrapAppenderFilters(name string, appender Appender, refs []string, filters map[string]Filter) (Appender, error) {

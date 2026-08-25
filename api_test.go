@@ -43,6 +43,9 @@ func TestPublicAPICompile(t *testing.T) {
 	var _ func(context.Context, ...goarklog.ConfigLoadOption) (*goarklog.Handler, *goarklog.ConfigResult, error) = goarklog.ConfigureDefault
 	var _ func(context.Context, ...goarklog.ConfigLoadOption) (goarklog.Options, *goarklog.ConfigResult, error) = goarklog.LoadOptions
 	var _ goarklog.ConfigLoadOption = goarklog.WithConfigPath("conf/goark-log.yml")
+	var _ goarklog.ConfigLoadOption = goarklog.WithPluginRegistry(goarklog.NewPluginRegistry())
+	var _ goarklog.LoggerContextOption = goarklog.WithLoggerContextStatus(goarklog.NewStatusLogger())
+	var _ *goarklog.PluginRegistry = goarklog.DefaultPluginRegistry()
 }
 
 func levelPtr(level slog.Level) *slog.Level {

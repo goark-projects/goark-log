@@ -68,6 +68,7 @@ type configLoadSettings struct {
 	boot         PropertyResolver
 	defaultPaths []string
 	lookups      *LookupResolver
+	registry     *PluginRegistry
 }
 
 // WithConfigPath 设置显式配置文件路径，优先级最高。
@@ -112,6 +113,13 @@ func WithConfigLookups(resolver *LookupResolver) ConfigLoadOption {
 	}
 }
 
+// WithPluginRegistry 设置配置构建使用的插件注册表。
+func WithPluginRegistry(registry *PluginRegistry) ConfigLoadOption {
+	return func(settings *configLoadSettings) {
+		settings.registry = registry
+	}
+}
+
 // LoadOptions 按优先级加载并构建 Handler Options。
 func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *ConfigResult, error) {
 	if ctx == nil {
@@ -136,7 +144,7 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if err != nil {
 		return Options{}, nil, err
 	}
-	handlerOptions, err := fileConfig.options()
+	handlerOptions, err := fileConfig.options(settings.registry)
 	if err != nil {
 		return Options{}, nil, err
 	}
@@ -197,6 +205,12 @@ func newConfigLoadSettings(options ...ConfigLoadOption) (*configLoadSettings, er
 	}
 	if strings.TrimSpace(settings.workingDir) == "" {
 		settings.workingDir = workingDir
+	}
+	if settings.registry == nil {
+		settings.registry = DefaultPluginRegistry()
+	}
+	if settings.lookups == nil {
+		settings.lookups = settings.registry.lookupResolver()
 	}
 	return settings, nil
 }
