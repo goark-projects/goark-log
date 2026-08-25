@@ -220,8 +220,18 @@ func (r *Router) Close() error {
 		return nil
 	}
 	var joined error
+	closed := make(map[string]struct{}, len(config.all))
+	for _, appender := range config.all {
+		if _, ok := appender.(*AsyncAppender); ok && appender != nil {
+			closed[appender.Name()] = struct{}{}
+			joined = errors.Join(joined, appender.Close())
+		}
+	}
 	for _, appender := range config.all {
 		if appender != nil {
+			if _, ok := closed[appender.Name()]; ok {
+				continue
+			}
 			joined = errors.Join(joined, appender.Close())
 		}
 	}
