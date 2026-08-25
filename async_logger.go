@@ -1,0 +1,230 @@
+package goarklog
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+)
+
+const (
+	// DefaultAsyncLoggerQueueSize 是 AsyncLogger 默认队列长度。
+	DefaultAsyncLoggerQueueSize = 4096
+	// DefaultAsyncLoggerBatchSize 是 AsyncLogger 默认批量写出数量。
+	DefaultAsyncLoggerBatchSize = 64
+)
+
+// AsyncLoggerOptions 描述 Handler 层异步日志管线。
+type AsyncLoggerOptions struct {
+	Enabled          bool
+	QueueSize        int
+	BatchSize        int
+	OverflowStrategy AsyncOverflowStrategy
+}
+
+type asyncLogger struct {
+	handler *Handler
+	queue   chan asyncLoggerEntry
+	done    chan struct{}
+	closed  atomic.Bool
+	workers sync.WaitGroup
+
+	queueSize int
+	batchSize int
+	strategy  AsyncOverflowStrategy
+	dropped   atomic.Uint64
+	failed    atomic.Uint64
+}
+
+type asyncLoggerEntry struct {
+	event Event
+}
+
+func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger, error) {
+	if handler == nil {
+		return nil, fmt.Errorf("goark-log: async logger handler is nil")
+	}
+	queueSize := options.QueueSize
+	if queueSize <= 0 {
+		queueSize = DefaultAsyncLoggerQueueSize
+	}
+	batchSize := options.BatchSize
+	if batchSize <= 0 {
+		batchSize = DefaultAsyncLoggerBatchSize
+	}
+	if batchSize > queueSize {
+		batchSize = queueSize
+	}
+	strategy := options.OverflowStrategy
+	if strategy == "" {
+		strategy = AsyncOverflowBlock
+	}
+	if _, err := ParseAsyncOverflowStrategy(string(strategy)); err != nil {
+		return nil, err
+	}
+	async := &asyncLogger{
+		handler:   handler,
+		queue:     make(chan asyncLoggerEntry, queueSize),
+		done:      make(chan struct{}),
+		queueSize: queueSize,
+		batchSize: batchSize,
+		strategy:  strategy,
+	}
+	async.workers.Add(1)
+	go async.run()
+	return async, nil
+}
+
+func (a *asyncLogger) append(ctx context.Context, event Event) error {
+	if a == nil {
+		return fmt.Errorf("goark-log: async logger is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.closed.Load() {
+		return fmt.Errorf("goark-log: async logger is closed")
+	}
+	entry := asyncLoggerEntry{event: event}
+	switch a.strategy {
+	case AsyncOverflowBlock:
+		return a.enqueueBlocking(ctx, entry)
+	case AsyncOverflowDrop:
+		return a.enqueueOrDrop(entry)
+	case AsyncOverflowDropDebug:
+		return a.enqueueDropDebug(ctx, entry)
+	case AsyncOverflowSyncFallback:
+		return a.enqueueOrSync(ctx, entry)
+	default:
+		return fmt.Errorf("goark-log: unsupported async overflow strategy %q", a.strategy)
+	}
+}
+
+func (a *asyncLogger) close() error {
+	if a == nil {
+		return nil
+	}
+	if !a.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	close(a.done)
+	a.workers.Wait()
+	return nil
+}
+
+func (a *asyncLogger) enqueueBlocking(ctx context.Context, entry asyncLoggerEntry) error {
+	select {
+	case a.queue <- entry:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-a.done:
+		return fmt.Errorf("goark-log: async logger is closed")
+	}
+}
+
+func (a *asyncLogger) enqueueOrDrop(entry asyncLoggerEntry) error {
+	select {
+	case a.queue <- entry:
+	default:
+		a.dropped.Add(1)
+	}
+	return nil
+}
+
+func (a *asyncLogger) enqueueDropDebug(ctx context.Context, entry asyncLoggerEntry) error {
+	select {
+	case a.queue <- entry:
+		return nil
+	default:
+		if entry.event.Level <= slog.LevelDebug {
+			a.dropped.Add(1)
+			return nil
+		}
+		return a.enqueueBlocking(ctx, entry)
+	}
+}
+
+func (a *asyncLogger) enqueueOrSync(ctx context.Context, entry asyncLoggerEntry) error {
+	select {
+	case a.queue <- entry:
+		return nil
+	default:
+		return a.handler.dispatch(ctx, entry.event)
+	}
+}
+
+func (a *asyncLogger) run() {
+	defer a.workers.Done()
+	batch := make([]asyncLoggerEntry, 0, a.batchSize)
+	for {
+		select {
+		case entry := <-a.queue:
+			batch = append(batch, entry)
+			a.drainBatch(&batch)
+			a.flushBatch(batch)
+			batch = batch[:0]
+		case <-a.done:
+			a.drainAll(&batch)
+			a.flushBatch(batch)
+			return
+		}
+	}
+}
+
+func (a *asyncLogger) drainBatch(batch *[]asyncLoggerEntry) {
+	for len(*batch) < a.batchSize {
+		select {
+		case entry := <-a.queue:
+			*batch = append(*batch, entry)
+		default:
+			return
+		}
+	}
+}
+
+func (a *asyncLogger) drainAll(batch *[]asyncLoggerEntry) {
+	for {
+		select {
+		case entry := <-a.queue:
+			*batch = append(*batch, entry)
+			if len(*batch) >= a.batchSize {
+				a.flushBatch(*batch)
+				*batch = (*batch)[:0]
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (a *asyncLogger) flushBatch(batch []asyncLoggerEntry) {
+	var joined error
+	for _, entry := range batch {
+		if err := a.handler.dispatch(context.Background(), entry.event); err != nil {
+			joined = errors.Join(joined, err)
+		}
+	}
+	if joined != nil {
+		a.failed.Add(1)
+	}
+}
+
+func (a *asyncLogger) droppedCount() uint64 {
+	if a == nil {
+		return 0
+	}
+	return a.dropped.Load()
+}
+
+func (a *asyncLogger) failedCount() uint64 {
+	if a == nil {
+		return 0
+	}
+	return a.failed.Load()
+}

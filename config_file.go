@@ -14,13 +14,16 @@ import (
 )
 
 type fileConfig struct {
-	Appenders       map[string]appenderConfig `yaml:"appenders"`
-	Filters         map[string]filterConfig   `yaml:"filters"`
-	FilterRefs      []string                  `yaml:"filterRefs"`
-	FilterRefsKebab []string                  `yaml:"filter-refs"`
-	Root            loggerConfig              `yaml:"root"`
-	Loggers         map[string]loggerConfig   `yaml:"loggers"`
-	Goark           struct {
+	Appenders        map[string]appenderConfig `yaml:"appenders"`
+	Filters          map[string]filterConfig   `yaml:"filters"`
+	FilterRefs       []string                  `yaml:"filterRefs"`
+	FilterRefsKebab  []string                  `yaml:"filter-refs"`
+	AsyncLogger      asyncLoggerConfig         `yaml:"asyncLogger"`
+	AsyncLoggerKebab asyncLoggerConfig         `yaml:"async-logger"`
+	Async            asyncLoggerConfig         `yaml:"async"`
+	Root             loggerConfig              `yaml:"root"`
+	Loggers          map[string]loggerConfig   `yaml:"loggers"`
+	Goark            struct {
 		Log *fileConfig `yaml:"log"`
 	} `yaml:"goark"`
 }
@@ -64,6 +67,16 @@ type rollingConfig struct {
 	MaxAgeKebab      string `yaml:"max-age"`
 	Gzip             bool   `yaml:"gzip"`
 	Compress         bool   `yaml:"compress"`
+}
+
+type asyncLoggerConfig struct {
+	Enabled               *bool  `yaml:"enabled"`
+	QueueSize             int    `yaml:"queueSize"`
+	QueueSizeKebab        int    `yaml:"queue-size"`
+	BatchSize             int    `yaml:"batchSize"`
+	BatchSizeKebab        int    `yaml:"batch-size"`
+	OverflowStrategy      string `yaml:"overflowStrategy"`
+	OverflowStrategyKebab string `yaml:"overflow-strategy"`
 }
 
 type loggerConfig struct {
@@ -144,6 +157,9 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 	if c == nil || c.empty() {
 		return DefaultOptions(), nil
 	}
+	if err := c.validateAsyncLoggerConfig(); err != nil {
+		return Options{}, err
+	}
 	if registry == nil {
 		registry = DefaultPluginRegistry()
 	}
@@ -173,6 +189,7 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 	options := Options{
 		Appenders: appenders,
 		Filters:   globalFilters,
+		Async:     c.asyncLoggerOptions(),
 		Root: RootLogger{
 			Level:        rootLevel,
 			AppenderRefs: c.Root.refs(),
@@ -210,6 +227,32 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 	return options, nil
 }
 
+func (c *fileConfig) validateAsyncLoggerConfig() error {
+	used := 0
+	for _, candidate := range []asyncLoggerConfig{c.AsyncLogger, c.AsyncLoggerKebab, c.Async} {
+		if !candidate.empty() {
+			used++
+		}
+	}
+	if used > 1 {
+		return fmt.Errorf("goark-log: config must use only one of asyncLogger, async-logger, or async")
+	}
+	config := c.asyncLoggerConfig()
+	if config.empty() {
+		return nil
+	}
+	if config.queueSize() < 0 {
+		return fmt.Errorf("goark-log: asyncLogger queueSize must be >= 0")
+	}
+	if config.batchSize() < 0 {
+		return fmt.Errorf("goark-log: asyncLogger batchSize must be >= 0")
+	}
+	if _, err := ParseAsyncOverflowStrategy(config.overflowStrategy()); err != nil {
+		return fmt.Errorf("goark-log: asyncLogger: %w", err)
+	}
+	return nil
+}
+
 func (c *fileConfig) effective() (*fileConfig, error) {
 	topLevelUsed := !c.withoutGoark().empty()
 	if c.Goark.Log == nil {
@@ -236,6 +279,15 @@ func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
 	c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab)
 	if err != nil {
 		return fmt.Errorf("goark-log: filter-refs: %w", err)
+	}
+	if err := c.AsyncLogger.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("goark-log: asyncLogger: %w", err)
+	}
+	if err := c.AsyncLoggerKebab.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("goark-log: async-logger: %w", err)
+	}
+	if err := c.Async.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("goark-log: async: %w", err)
 	}
 	for name, spec := range c.Appenders {
 		if err := spec.resolveLookups(lookups); err != nil {
@@ -415,6 +467,17 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	return nil
 }
 
+func (c *asyncLoggerConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.OverflowStrategy, err = resolveStringLookup(lookups, c.OverflowStrategy); err != nil {
+		return fmt.Errorf("overflowStrategy: %w", err)
+	}
+	if c.OverflowStrategyKebab, err = resolveStringLookup(lookups, c.OverflowStrategyKebab); err != nil {
+		return fmt.Errorf("overflow-strategy: %w", err)
+	}
+	return nil
+}
+
 func resolveStringLookup(lookups *LookupResolver, value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return value, nil
@@ -442,12 +505,15 @@ func (c *fileConfig) withoutGoark() *fileConfig {
 		return nil
 	}
 	return &fileConfig{
-		Appenders:       c.Appenders,
-		Filters:         c.Filters,
-		FilterRefs:      c.FilterRefs,
-		FilterRefsKebab: c.FilterRefsKebab,
-		Root:            c.Root,
-		Loggers:         c.Loggers,
+		Appenders:        c.Appenders,
+		Filters:          c.Filters,
+		FilterRefs:       c.FilterRefs,
+		FilterRefsKebab:  c.FilterRefsKebab,
+		AsyncLogger:      c.AsyncLogger,
+		AsyncLoggerKebab: c.AsyncLoggerKebab,
+		Async:            c.Async,
+		Root:             c.Root,
+		Loggers:          c.Loggers,
 	}
 }
 
@@ -459,6 +525,9 @@ func (c *fileConfig) empty() bool {
 		len(c.Filters) == 0 &&
 		len(c.FilterRefs) == 0 &&
 		len(c.FilterRefsKebab) == 0 &&
+		c.AsyncLogger.empty() &&
+		c.AsyncLoggerKebab.empty() &&
+		c.Async.empty() &&
 		c.Root.empty() &&
 		len(c.Loggers) == 0
 }
@@ -472,6 +541,59 @@ func (c loggerConfig) empty() bool {
 		len(c.FilterRefs) == 0 &&
 		len(c.FilterRefsKebab) == 0 &&
 		c.Additivity == nil
+}
+
+func (c asyncLoggerConfig) empty() bool {
+	return c.Enabled == nil &&
+		c.QueueSize == 0 &&
+		c.QueueSizeKebab == 0 &&
+		c.BatchSize == 0 &&
+		c.BatchSizeKebab == 0 &&
+		strings.TrimSpace(c.OverflowStrategy) == "" &&
+		strings.TrimSpace(c.OverflowStrategyKebab) == ""
+}
+
+func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
+	config := c.asyncLoggerConfig()
+	if config.empty() {
+		return AsyncLoggerOptions{}
+	}
+	options := AsyncLoggerOptions{
+		QueueSize:        config.queueSize(),
+		BatchSize:        config.batchSize(),
+		OverflowStrategy: AsyncOverflowStrategy(config.overflowStrategy()),
+	}
+	if config.Enabled != nil {
+		options.Enabled = *config.Enabled
+	}
+	return options
+}
+
+func (c *fileConfig) asyncLoggerConfig() asyncLoggerConfig {
+	for _, candidate := range []asyncLoggerConfig{c.AsyncLogger, c.AsyncLoggerKebab, c.Async} {
+		if !candidate.empty() {
+			return candidate
+		}
+	}
+	return asyncLoggerConfig{}
+}
+
+func (c asyncLoggerConfig) queueSize() int {
+	if c.QueueSize != 0 {
+		return c.QueueSize
+	}
+	return c.QueueSizeKebab
+}
+
+func (c asyncLoggerConfig) batchSize() int {
+	if c.BatchSize != 0 {
+		return c.BatchSize
+	}
+	return c.BatchSizeKebab
+}
+
+func (c asyncLoggerConfig) overflowStrategy() string {
+	return firstNonBlank(c.OverflowStrategy, c.OverflowStrategyKebab)
 }
 
 func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {

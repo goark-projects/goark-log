@@ -16,6 +16,7 @@ type Options struct {
 	Filters   []Filter
 	Root      RootLogger
 	Loggers   []LoggerRule
+	Async     AsyncLoggerOptions
 }
 
 // RootLogger 描述根 logger。
@@ -41,6 +42,7 @@ type Handler struct {
 	name   string
 	attrs  []slog.Attr
 	groups []string
+	async  *asyncLogger
 }
 
 var _ slog.Handler = (*Handler)(nil)
@@ -51,7 +53,16 @@ func NewHandler(options Options) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{router: router, name: defaultLoggerName}, nil
+	handler := &Handler{router: router, name: defaultLoggerName}
+	if options.Async.Enabled {
+		async, err := newAsyncLogger(handler, options.Async)
+		if err != nil {
+			_ = router.Close()
+			return nil, err
+		}
+		handler.async = async
+	}
+	return handler, nil
 }
 
 // NewDefaultHandler 创建默认 stderr INFO Handler。
@@ -82,6 +93,21 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 		return nil
 	}
 	event := newEvent(h.name, h.attrs, h.groups, record.Clone())
+	if h.async != nil {
+		return h.async.append(ctx, event)
+	}
+	return h.dispatchRoute(ctx, route, event)
+}
+
+func (h *Handler) dispatch(ctx context.Context, event Event) error {
+	route := h.router.route(event.Logger)
+	if event.Level < route.Level {
+		return nil
+	}
+	return h.dispatchRoute(ctx, route, event)
+}
+
+func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) error {
 	if applyFilters(ctx, route.Filters, event) == FilterDeny {
 		return nil
 	}
@@ -133,6 +159,11 @@ func (h *Handler) Close() error {
 	if h == nil || h.router == nil {
 		return nil
 	}
+	if h.async != nil {
+		if err := h.async.close(); err != nil {
+			return err
+		}
+	}
 	return h.router.Close()
 }
 
@@ -141,7 +172,26 @@ func (h *Handler) Reload(options Options) error {
 	if h == nil || h.router == nil {
 		return fmt.Errorf("goark-log: handler is nil")
 	}
+	if options.Async.Enabled != (h.async != nil) {
+		return fmt.Errorf("goark-log: async logger enablement cannot be changed by reload")
+	}
 	return h.router.Replace(options)
+}
+
+// AsyncDropped 返回 Handler 层异步日志丢弃数量。
+func (h *Handler) AsyncDropped() uint64 {
+	if h == nil || h.async == nil {
+		return 0
+	}
+	return h.async.droppedCount()
+}
+
+// AsyncFailed 返回 Handler 层异步后台写入失败批次数量。
+func (h *Handler) AsyncFailed() uint64 {
+	if h == nil || h.async == nil {
+		return 0
+	}
+	return h.async.failedCount()
 }
 
 func (h *Handler) clone() *Handler {
