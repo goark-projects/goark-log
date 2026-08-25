@@ -13,6 +13,7 @@ import (
 // Options 描述 Handler 的运行期结构。
 type Options struct {
 	Appenders []Appender
+	Filters   []Filter
 	Root      RootLogger
 	Loggers   []LoggerRule
 }
@@ -21,6 +22,7 @@ type Options struct {
 type RootLogger struct {
 	Level        slog.Level
 	AppenderRefs []string
+	Filters      []Filter
 }
 
 // LoggerRule 描述命名 logger 的级别和输出路由。
@@ -28,6 +30,7 @@ type LoggerRule struct {
 	Name          string
 	Level         *slog.Level
 	AppenderRefs  []string
+	Filters       []Filter
 	Additivity    bool
 	AdditivitySet bool
 }
@@ -79,6 +82,9 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 		return nil
 	}
 	event := newEvent(h.name, h.attrs, h.groups, record.Clone())
+	if applyFilters(ctx, route.Filters, event) == FilterDeny {
+		return nil
+	}
 	var joined error
 	for _, appender := range route.Appenders {
 		if appender == nil {
@@ -162,6 +168,7 @@ type router struct {
 }
 
 type runtimeConfig struct {
+	filters []Filter
 	root    route
 	loggers []loggerRuntime
 	all     []Appender
@@ -171,6 +178,7 @@ type loggerRuntime struct {
 	name       string
 	level      *slog.Level
 	appenders  []Appender
+	filters    []Filter
 	additivity bool
 }
 
@@ -178,6 +186,7 @@ type loggerRuntime struct {
 type route struct {
 	Level     slog.Level
 	Appenders []Appender
+	Filters   []Filter
 }
 
 func newRouter(options Options) (*router, error) {
@@ -208,14 +217,18 @@ func (r *router) route(name string) route {
 			level = *logger.level
 		}
 		appenders := append([]Appender(nil), logger.appenders...)
+		filters := append([]Filter(nil), config.filters...)
+		filters = appendFilters(filters, logger.filters)
 		if logger.additivity {
 			appenders = appendUniqueAppenders(appenders, config.root.Appenders)
+			filters = appendFilters(filters, config.root.Filters)
 		}
-		return route{Level: level, Appenders: appenders}
+		return route{Level: level, Appenders: appenders, Filters: filters}
 	}
 	return route{
 		Level:     config.root.Level,
 		Appenders: append([]Appender(nil), config.root.Appenders...),
+		Filters:   appendFilters(append([]Filter(nil), config.filters...), config.root.Filters),
 	}
 }
 
@@ -250,7 +263,7 @@ func (c *runtimeConfig) close() error {
 	var joined error
 	closed := make(map[string]struct{}, len(c.all))
 	for _, appender := range c.all {
-		if _, ok := appender.(*AsyncAppender); ok && appender != nil {
+		if isAsyncAppender(appender) && appender != nil {
 			closed[appender.Name()] = struct{}{}
 			joined = errors.Join(joined, appender.Close())
 		}
@@ -268,7 +281,15 @@ func (c *runtimeConfig) close() error {
 
 func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	if len(options.Appenders) == 0 {
-		options = DefaultOptions()
+		defaults := DefaultOptions()
+		options.Appenders = defaults.Appenders
+		if len(options.Root.AppenderRefs) == 0 {
+			options.Root.AppenderRefs = defaults.Root.AppenderRefs
+		}
+	}
+	globalFilters, err := normalizeFilters("global", options.Filters)
+	if err != nil {
+		return nil, err
 	}
 	appenderByName := make(map[string]Appender, len(options.Appenders))
 	all := make([]Appender, 0, len(options.Appenders))
@@ -294,10 +315,16 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	rootFilters, err := normalizeFilters("root", options.Root.Filters)
+	if err != nil {
+		return nil, err
+	}
 	config := &runtimeConfig{
+		filters: globalFilters,
 		root: route{
 			Level:     options.Root.Level,
 			Appenders: rootAppenders,
+			Filters:   rootFilters,
 		},
 		all: all,
 	}
@@ -317,10 +344,15 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		if !additivity && len(appenders) == 0 {
 			return nil, fmt.Errorf("goark-log: logger %q disables additivity but has no appender", name)
 		}
+		filters, err := normalizeFilters("logger "+name, rule.Filters)
+		if err != nil {
+			return nil, err
+		}
 		config.loggers = append(config.loggers, loggerRuntime{
 			name:       name,
 			level:      rule.Level,
 			appenders:  appenders,
+			filters:    filters,
 			additivity: additivity,
 		})
 	}

@@ -19,6 +19,16 @@ type Event struct {
 	Attrs   []slog.Attr
 }
 
+// Attr 按键查找事件属性。
+func (e Event) Attr(key string) (slog.Value, bool) {
+	for _, attr := range e.Attrs {
+		if attr.Key == key {
+			return attr.Value, true
+		}
+	}
+	return slog.Value{}, false
+}
+
 func newEvent(logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
 	if logger == "" {
 		logger = defaultLoggerName
