@@ -130,6 +130,14 @@ func (h *Handler) Close() error {
 	return h.router.Close()
 }
 
+// Reload 使用新的运行期配置替换当前路由。
+func (h *Handler) Reload(options Options) error {
+	if h == nil || h.router == nil {
+		return fmt.Errorf("goark-log: handler is nil")
+	}
+	return h.router.Replace(options)
+}
+
 func (h *Handler) clone() *Handler {
 	next := *h
 	next.attrs = append([]slog.Attr(nil), h.attrs...)
@@ -219,15 +227,38 @@ func (r *Router) Close() error {
 	if config == nil {
 		return nil
 	}
+	return config.close()
+}
+
+// Replace 原子替换运行期配置，只有新配置构建成功后才关闭旧 appender。
+func (r *Router) Replace(options Options) error {
+	if r == nil {
+		return fmt.Errorf("goark-log: router is nil")
+	}
+	config, err := buildRuntimeConfig(options)
+	if err != nil {
+		return err
+	}
+	old := r.current.Swap(config)
+	if old == nil {
+		return nil
+	}
+	return old.close()
+}
+
+func (c *runtimeConfig) close() error {
+	if c == nil {
+		return nil
+	}
 	var joined error
-	closed := make(map[string]struct{}, len(config.all))
-	for _, appender := range config.all {
+	closed := make(map[string]struct{}, len(c.all))
+	for _, appender := range c.all {
 		if _, ok := appender.(*AsyncAppender); ok && appender != nil {
 			closed[appender.Name()] = struct{}{}
 			joined = errors.Join(joined, appender.Close())
 		}
 	}
-	for _, appender := range config.all {
+	for _, appender := range c.all {
 		if appender != nil {
 			if _, ok := closed[appender.Name()]; ok {
 				continue

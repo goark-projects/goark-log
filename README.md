@@ -1,0 +1,106 @@
+# goark-log
+
+`goark-log` 是 `log/slog` 的 Goark 日志实现，提供并发安全的 `slog.Handler`、Appender、Layout、Logger 层级和配置加载。
+
+默认输出使用 Spring Boot 风格：
+
+```text
+2026-08-25T10:15:30.123+08:00  INFO 12345 --- [main] goark.boot : service started profile=dev
+```
+
+## 快速使用
+
+```go
+package main
+
+import (
+	"context"
+	"log/slog"
+
+	goarklog "goark.dev/goark-log"
+)
+
+func main() {
+	handler, _, err := goarklog.ConfigureDefault(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	defer handler.Close()
+
+	logger := goarklog.WithName(slog.Default(), "goark.boot")
+	logger.Info("service started", slog.String("profile", "dev"))
+}
+```
+
+## 配置优先级
+
+1. 显式路径：`goarklog.WithConfigPath(...)`
+2. 环境变量：默认 `GOARK_LOG_CONFIG`
+3. boot 配置：`goark.log.config`、`goark.logging.config`、`logging.config`
+4. 默认文件：`conf/goark-log.yml`、`conf/goark-log.yaml`、`conf/goark-log.toml`、`conf/goark-log.properties`
+5. 内置默认：`stderr` console，`INFO`
+
+第一版只解析 YAML。发现 TOML 或 properties 会明确报错，避免误以为配置已生效。
+
+## YAML 示例
+
+```yaml
+appenders:
+  console:
+    type: console
+    target: stderr
+    layout:
+      type: pattern
+      pattern: "%d %-5level %pid --- [%thread] %logger : %msg%attrs%n"
+  rolling:
+    type: rolling-file
+    fileName: logs/app.log
+    layout:
+      type: text
+    rolling:
+      maxSize: 100MiB
+      interval: daily
+      onStartup: true
+      maxBackups: 30
+      gzip: true
+  async:
+    type: async
+    appenderRefs: [rolling]
+    queueSize: 8192
+    overflowStrategy: block
+
+root:
+  level: info
+  appenderRefs: [console, async]
+
+loggers:
+  goark.orm:
+    level: debug
+    appenderRefs: [async]
+    additivity: false
+```
+
+也可以放在 `goark.log` 下，方便与 boot 主配置合并：
+
+```yaml
+goark:
+  log:
+    appenders:
+      console:
+        type: console
+    root:
+      level: info
+      appenderRefs: [console]
+```
+
+## Reload
+
+```go
+reloader, err := goarklog.NewConfigReloader(handler, goarklog.WithConfigPath("conf/goark-log.yml"))
+if err != nil {
+	panic(err)
+}
+_, err = reloader.Reload(context.Background())
+```
+
+`Watch` 使用标准库轮询文件修改时间和大小，不依赖 `fsnotify`。
