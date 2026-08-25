@@ -104,3 +104,24 @@ _, err = reloader.Reload(context.Background())
 ```
 
 `Watch` 使用标准库轮询文件修改时间和大小，不依赖 `fsnotify`。
+
+## Examples
+
+示例位于 `examples/`：
+
+- `examples/console`：默认 Spring Boot 风格 console
+- `examples/file`：普通文件 appender
+- `examples/rolling`：大小滚动、启动滚动和 gzip
+- `examples/async`：async 包装 rolling appender
+- `examples/reload`：YAML 配置 reload
+
+```bash
+go test ./examples/...
+go run ./examples/console
+```
+
+## Benchmark
+
+```bash
+go test -run '^$' -bench . -benchmem ./...
+```
