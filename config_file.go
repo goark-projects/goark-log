@@ -90,7 +90,7 @@ type filterConfig struct {
 	OnMismatchKebab string `yaml:"on-mismatch"`
 }
 
-func loadConfigFile(ctx context.Context, path string) (*fileConfig, error) {
+func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (*fileConfig, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("goark-log: context is nil")
 	}
@@ -109,14 +109,14 @@ func loadConfigFile(ctx context.Context, path string) (*fileConfig, error) {
 		return nil, fmt.Errorf("goark-log: open config file %q: %w", path, err)
 	}
 	defer file.Close()
-	config, err := decodeConfig(file)
+	config, err := decodeConfig(file, lookups)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: parse config file %q: %w", path, err)
 	}
 	return config, nil
 }
 
-func decodeConfig(reader io.Reader) (*fileConfig, error) {
+func decodeConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
 	var config fileConfig
 	decoder := yaml.NewDecoder(reader)
 	decoder.KnownFields(true)
@@ -126,7 +126,14 @@ func decodeConfig(reader io.Reader) (*fileConfig, error) {
 		}
 		return nil, err
 	}
-	return config.effective()
+	effective, err := config.effective()
+	if err != nil {
+		return nil, err
+	}
+	if err := effective.resolveLookups(lookups); err != nil {
+		return nil, err
+	}
+	return effective, nil
 }
 
 func (c *fileConfig) options() (Options, error) {
@@ -205,6 +212,210 @@ func (c *fileConfig) effective() (*fileConfig, error) {
 		return nil, fmt.Errorf("goark-log: config must use either top-level fields or goark.log, not both")
 	}
 	return c.Goark.Log, nil
+}
+
+func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
+	if c == nil {
+		return nil
+	}
+	if lookups == nil {
+		lookups = NewLookupResolver()
+	}
+	var err error
+	c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs)
+	if err != nil {
+		return fmt.Errorf("goark-log: filterRefs: %w", err)
+	}
+	c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab)
+	if err != nil {
+		return fmt.Errorf("goark-log: filter-refs: %w", err)
+	}
+	for name, spec := range c.Appenders {
+		if err := spec.resolveLookups(lookups); err != nil {
+			return fmt.Errorf("goark-log: appender %q: %w", name, err)
+		}
+		c.Appenders[name] = spec
+	}
+	for name, spec := range c.Filters {
+		if err := spec.resolveLookups(lookups); err != nil {
+			return fmt.Errorf("goark-log: filter %q: %w", name, err)
+		}
+		c.Filters[name] = spec
+	}
+	if err := c.Root.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("goark-log: root: %w", err)
+	}
+	for name, spec := range c.Loggers {
+		if err := spec.resolveLookups(lookups); err != nil {
+			return fmt.Errorf("goark-log: logger %q: %w", name, err)
+		}
+		c.Loggers[name] = spec
+	}
+	return nil
+}
+
+func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Type, err = resolveStringLookup(lookups, c.Type); err != nil {
+		return fmt.Errorf("type: %w", err)
+	}
+	if c.Target, err = resolveStringLookup(lookups, c.Target); err != nil {
+		return fmt.Errorf("target: %w", err)
+	}
+	if c.FileName, err = resolveStringLookup(lookups, c.FileName); err != nil {
+		return fmt.Errorf("fileName: %w", err)
+	}
+	if c.FileNameKebab, err = resolveStringLookup(lookups, c.FileNameKebab); err != nil {
+		return fmt.Errorf("file-name: %w", err)
+	}
+	if c.Path, err = resolveStringLookup(lookups, c.Path); err != nil {
+		return fmt.Errorf("path: %w", err)
+	}
+	if err := c.Layout.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("layout: %w", err)
+	}
+	if err := c.Rolling.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("rolling: %w", err)
+	}
+	if c.AppenderRefs, err = resolveStringListLookups(lookups, c.AppenderRefs); err != nil {
+		return fmt.Errorf("appenderRefs: %w", err)
+	}
+	if c.AppenderRefsKebab, err = resolveStringListLookups(lookups, c.AppenderRefsKebab); err != nil {
+		return fmt.Errorf("appender-refs: %w", err)
+	}
+	if c.Refs, err = resolveStringListLookups(lookups, c.Refs); err != nil {
+		return fmt.Errorf("refs: %w", err)
+	}
+	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
+		return fmt.Errorf("filters: %w", err)
+	}
+	if c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs); err != nil {
+		return fmt.Errorf("filterRefs: %w", err)
+	}
+	if c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab); err != nil {
+		return fmt.Errorf("filter-refs: %w", err)
+	}
+	return nil
+}
+
+func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Type, err = resolveStringLookup(lookups, c.Type); err != nil {
+		return fmt.Errorf("type: %w", err)
+	}
+	if c.Pattern, err = resolveStringLookup(lookups, c.Pattern); err != nil {
+		return fmt.Errorf("pattern: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.MaxSize, err = resolveStringLookup(lookups, c.MaxSize); err != nil {
+		return fmt.Errorf("maxSize: %w", err)
+	}
+	if c.MaxSizeKebab, err = resolveStringLookup(lookups, c.MaxSizeKebab); err != nil {
+		return fmt.Errorf("max-size: %w", err)
+	}
+	if c.Interval, err = resolveStringLookup(lookups, c.Interval); err != nil {
+		return fmt.Errorf("interval: %w", err)
+	}
+	return nil
+}
+
+func (c *loggerConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Level, err = resolveStringLookup(lookups, c.Level); err != nil {
+		return fmt.Errorf("level: %w", err)
+	}
+	if c.AppenderRefs, err = resolveStringListLookups(lookups, c.AppenderRefs); err != nil {
+		return fmt.Errorf("appenderRefs: %w", err)
+	}
+	if c.AppenderRefsKebab, err = resolveStringListLookups(lookups, c.AppenderRefsKebab); err != nil {
+		return fmt.Errorf("appender-refs: %w", err)
+	}
+	if c.Refs, err = resolveStringListLookups(lookups, c.Refs); err != nil {
+		return fmt.Errorf("refs: %w", err)
+	}
+	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
+		return fmt.Errorf("filters: %w", err)
+	}
+	if c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs); err != nil {
+		return fmt.Errorf("filterRefs: %w", err)
+	}
+	if c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab); err != nil {
+		return fmt.Errorf("filter-refs: %w", err)
+	}
+	return nil
+}
+
+func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Type, err = resolveStringLookup(lookups, c.Type); err != nil {
+		return fmt.Errorf("type: %w", err)
+	}
+	if c.Level, err = resolveStringLookup(lookups, c.Level); err != nil {
+		return fmt.Errorf("level: %w", err)
+	}
+	if c.MinLevel, err = resolveStringLookup(lookups, c.MinLevel); err != nil {
+		return fmt.Errorf("minLevel: %w", err)
+	}
+	if c.MinLevelKebab, err = resolveStringLookup(lookups, c.MinLevelKebab); err != nil {
+		return fmt.Errorf("min-level: %w", err)
+	}
+	if c.MaxLevel, err = resolveStringLookup(lookups, c.MaxLevel); err != nil {
+		return fmt.Errorf("maxLevel: %w", err)
+	}
+	if c.MaxLevelKebab, err = resolveStringLookup(lookups, c.MaxLevelKebab); err != nil {
+		return fmt.Errorf("max-level: %w", err)
+	}
+	if c.Field, err = resolveStringLookup(lookups, c.Field); err != nil {
+		return fmt.Errorf("field: %w", err)
+	}
+	if c.Key, err = resolveStringLookup(lookups, c.Key); err != nil {
+		return fmt.Errorf("key: %w", err)
+	}
+	if c.Value, err = resolveStringLookup(lookups, c.Value); err != nil {
+		return fmt.Errorf("value: %w", err)
+	}
+	if c.Pattern, err = resolveStringLookup(lookups, c.Pattern); err != nil {
+		return fmt.Errorf("pattern: %w", err)
+	}
+	if c.OnMatch, err = resolveStringLookup(lookups, c.OnMatch); err != nil {
+		return fmt.Errorf("onMatch: %w", err)
+	}
+	if c.OnMatchKebab, err = resolveStringLookup(lookups, c.OnMatchKebab); err != nil {
+		return fmt.Errorf("on-match: %w", err)
+	}
+	if c.OnMismatch, err = resolveStringLookup(lookups, c.OnMismatch); err != nil {
+		return fmt.Errorf("onMismatch: %w", err)
+	}
+	if c.OnMismatchKebab, err = resolveStringLookup(lookups, c.OnMismatchKebab); err != nil {
+		return fmt.Errorf("on-mismatch: %w", err)
+	}
+	return nil
+}
+
+func resolveStringLookup(lookups *LookupResolver, value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return value, nil
+	}
+	return lookups.Resolve(value)
+}
+
+func resolveStringListLookups(lookups *LookupResolver, values []string) ([]string, error) {
+	if len(values) == 0 {
+		return values, nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		resolved, err := resolveStringLookup(lookups, value)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
 }
 
 func (c *fileConfig) withoutGoark() *fileConfig {

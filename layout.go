@@ -13,7 +13,7 @@ import (
 
 const (
 	// DefaultSpringBootPattern 是默认控制台输出格式，风格对齐 Spring Boot。
-	DefaultSpringBootPattern = "%d %-5level %pid --- [%thread] %logger : %msg%attrs%n"
+	DefaultSpringBootPattern = "%d %5level %pid --- [%thread] %logger : %msg%attrs%n"
 	defaultTimeFormat        = "2006-01-02T15:04:05.000Z07:00"
 )
 
@@ -66,8 +66,14 @@ type PatternLayout struct {
 }
 
 type patternToken struct {
-	kind    patternTokenKind
-	literal string
+	kind      patternTokenKind
+	literal   string
+	format    string
+	key       string
+	minWidth  int
+	maxWidth  int
+	leftAlign bool
+	timeUnix  timeUnixMode
 }
 
 type patternTokenKind int
@@ -82,7 +88,19 @@ const (
 	tokenLogger
 	tokenMessage
 	tokenAttrs
+	tokenAttr
+	tokenError
 	tokenNewline
+)
+
+type timeUnixMode uint8
+
+const (
+	timeUnixNone timeUnixMode = iota
+	timeUnixSeconds
+	timeUnixMillis
+	timeUnixMicros
+	timeUnixNanos
 )
 
 // NewPatternLayout 编译 pattern，避免热路径反复解析。
@@ -102,28 +120,7 @@ func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
 		return NewDefaultLayout().Format(buf, event)
 	}
 	for _, token := range l.tokens {
-		switch token.kind {
-		case tokenLiteral:
-			buf.WriteString(token.literal)
-		case tokenTime:
-			buf.WriteString(event.Time.Format(defaultTimeFormat))
-		case tokenLevel:
-			buf.WriteString(levelName(event.Level))
-		case tokenLevelPadded:
-			buf.WriteString(leftPad(levelName(event.Level), 5))
-		case tokenPID:
-			buf.WriteString(strconv.Itoa(os.Getpid()))
-		case tokenThread:
-			buf.WriteString("main")
-		case tokenLogger:
-			buf.WriteString(event.Logger)
-		case tokenMessage:
-			buf.WriteString(event.Message)
-		case tokenAttrs:
-			appendPatternAttrs(buf, event.Attrs)
-		case tokenNewline:
-			buf.WriteByte('\n')
-		}
+		appendPatternToken(buf, token, event)
 	}
 	return nil
 }
@@ -152,30 +149,238 @@ func compilePattern(pattern string) ([]patternToken, error) {
 }
 
 func readPatternToken(pattern string) (patternToken, int, error) {
-	for _, item := range []struct {
-		prefix string
-		kind   patternTokenKind
-	}{
-		{"%%", tokenLiteral},
-		{"%-5level", tokenLevelPadded},
-		{"%level", tokenLevel},
-		{"%d", tokenTime},
-		{"%pid", tokenPID},
-		{"%thread", tokenThread},
-		{"%logger", tokenLogger},
-		{"%msg", tokenMessage},
-		{"%attrs", tokenAttrs},
-		{"%n", tokenNewline},
-	} {
-		if strings.HasPrefix(pattern, item.prefix) {
-			token := patternToken{kind: item.kind}
-			if item.prefix == "%%" {
-				token.literal = "%"
-			}
-			return token, len(item.prefix), nil
+	if strings.HasPrefix(pattern, "%%") {
+		return patternToken{kind: tokenLiteral, literal: "%"}, 2, nil
+	}
+	index := 1
+	token := patternToken{}
+	if index < len(pattern) && pattern[index] == '-' {
+		token.leftAlign = true
+		index++
+	}
+	for index < len(pattern) && isPatternDigit(pattern[index]) {
+		token.minWidth = token.minWidth*10 + int(pattern[index]-'0')
+		index++
+	}
+	if index < len(pattern) && pattern[index] == '.' {
+		index++
+		for index < len(pattern) && isPatternDigit(pattern[index]) {
+			token.maxWidth = token.maxWidth*10 + int(pattern[index]-'0')
+			index++
 		}
 	}
-	return patternToken{}, 0, fmt.Errorf("goark-log: unsupported pattern token near %q", pattern)
+	converterStart := index
+	if index < len(pattern) && pattern[index] == 'X' {
+		index++
+	} else {
+		for index < len(pattern) && isPatternLetter(pattern[index]) {
+			index++
+		}
+	}
+	if converterStart == index {
+		return patternToken{}, 0, fmt.Errorf("goark-log: unsupported pattern token near %q", pattern)
+	}
+	converter := pattern[converterStart:index]
+	option := ""
+	if index < len(pattern) && pattern[index] == '{' {
+		var err error
+		option, index, err = readPatternOption(pattern, index)
+		if err != nil {
+			return patternToken{}, 0, err
+		}
+	}
+	if err := configurePatternToken(&token, converter, option); err != nil {
+		return patternToken{}, 0, err
+	}
+	return token, index, nil
+}
+
+func readPatternOption(pattern string, start int) (string, int, error) {
+	end := strings.IndexByte(pattern[start+1:], '}')
+	if end < 0 {
+		return "", 0, fmt.Errorf("goark-log: pattern option is not closed near %q", pattern[start:])
+	}
+	return pattern[start+1 : start+1+end], start + end + 2, nil
+}
+
+func configurePatternToken(token *patternToken, converter string, option string) error {
+	switch strings.ToLower(converter) {
+	case "d", "date":
+		token.kind = tokenTime
+		token.format, token.timeUnix = normalizeTimePattern(option)
+	case "level", "p":
+		token.kind = tokenLevel
+	case "pid", "processid":
+		token.kind = tokenPID
+	case "thread", "t":
+		token.kind = tokenThread
+	case "logger", "c":
+		token.kind = tokenLogger
+	case "msg", "message", "m":
+		token.kind = tokenMessage
+	case "attrs", "kvp":
+		token.kind = tokenAttrs
+	case "x", "mdc":
+		if strings.TrimSpace(option) == "" {
+			token.kind = tokenAttrs
+			return nil
+		}
+		token.kind = tokenAttr
+		token.key = strings.TrimSpace(option)
+	case "ex", "throwable", "exception":
+		token.kind = tokenError
+	case "n":
+		token.kind = tokenNewline
+	default:
+		return fmt.Errorf("goark-log: unsupported pattern converter %q", converter)
+	}
+	return nil
+}
+
+func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event) {
+	if token.kind == tokenLiteral {
+		buf.WriteString(token.literal)
+		return
+	}
+	if token.kind == tokenAttrs && token.minWidth == 0 && token.maxWidth == 0 {
+		appendPatternAttrs(buf, event.Attrs)
+		return
+	}
+	if token.kind == tokenNewline && token.minWidth == 0 && token.maxWidth == 0 {
+		buf.WriteByte('\n')
+		return
+	}
+	value := patternTokenString(token, event)
+	appendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
+}
+
+func patternTokenString(token patternToken, event Event) string {
+	switch token.kind {
+	case tokenTime:
+		when := event.Time
+		if when.IsZero() {
+			when = time.Now()
+		}
+		switch token.timeUnix {
+		case timeUnixSeconds:
+			return strconv.FormatInt(when.Unix(), 10)
+		case timeUnixMillis:
+			return strconv.FormatInt(when.UnixMilli(), 10)
+		case timeUnixMicros:
+			return strconv.FormatInt(when.UnixMicro(), 10)
+		case timeUnixNanos:
+			return strconv.FormatInt(when.UnixNano(), 10)
+		default:
+			return when.Format(token.format)
+		}
+	case tokenLevel, tokenLevelPadded:
+		return levelName(event.Level)
+	case tokenPID:
+		return strconv.Itoa(os.Getpid())
+	case tokenThread:
+		return "main"
+	case tokenLogger:
+		return event.Logger
+	case tokenMessage:
+		return event.Message
+	case tokenAttr:
+		value, ok := event.Attr(token.key)
+		if !ok {
+			return ""
+		}
+		return attrValueString(value)
+	case tokenAttrs:
+		var attrBuf bytes.Buffer
+		appendPatternAttrs(&attrBuf, event.Attrs)
+		return attrBuf.String()
+	case tokenError:
+		return eventErrorString(event)
+	case tokenNewline:
+		return "\n"
+	default:
+		return ""
+	}
+}
+
+func normalizeTimePattern(format string) (string, timeUnixMode) {
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case "", "DEFAULT", "ISO8601", "ISO8601_OFFSET_DATE_TIME":
+		return defaultTimeFormat, timeUnixNone
+	case "RFC3339":
+		return time.RFC3339, timeUnixNone
+	case "RFC3339NANO":
+		return time.RFC3339Nano, timeUnixNone
+	case "UNIX", "UNIX_SECONDS":
+		return "", timeUnixSeconds
+	case "UNIX_MILLIS", "UNIX_MS":
+		return "", timeUnixMillis
+	case "UNIX_MICROS", "UNIX_US":
+		return "", timeUnixMicros
+	case "UNIX_NANOS", "UNIX_NS":
+		return "", timeUnixNanos
+	default:
+		return javaDatePatternToGo(format), timeUnixNone
+	}
+}
+
+func javaDatePatternToGo(format string) string {
+	replacer := strings.NewReplacer(
+		"yyyy", "2006",
+		"yy", "06",
+		"MM", "01",
+		"dd", "02",
+		"HH", "15",
+		"mm", "04",
+		"ss", "05",
+		"SSSSSS", "000000",
+		"SSS", "000",
+		"XXX", "Z07:00",
+		"XX", "-0700",
+		"X", "-07",
+	)
+	return replacer.Replace(format)
+}
+
+func eventErrorString(event Event) string {
+	for _, key := range []string{"error", "err"} {
+		value, ok := event.Attr(key)
+		if ok {
+			return attrValueString(value)
+		}
+	}
+	return ""
+}
+
+func appendPadded(buf *bytes.Buffer, value string, minWidth int, maxWidth int, leftAlign bool) {
+	if maxWidth > 0 && len(value) > maxWidth {
+		value = value[:maxWidth]
+	}
+	if minWidth <= len(value) {
+		buf.WriteString(value)
+		return
+	}
+	padding := minWidth - len(value)
+	if leftAlign {
+		buf.WriteString(value)
+		writeSpaces(buf, padding)
+		return
+	}
+	writeSpaces(buf, padding)
+	buf.WriteString(value)
+}
+
+func writeSpaces(buf *bytes.Buffer, count int) {
+	for index := 0; index < count; index++ {
+		buf.WriteByte(' ')
+	}
+}
+
+func isPatternDigit(value byte) bool {
+	return value >= '0' && value <= '9'
+}
+
+func isPatternLetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
 
 func appendPatternAttrs(buf *bytes.Buffer, attrs []slog.Attr) {
