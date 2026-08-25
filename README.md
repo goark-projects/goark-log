@@ -45,42 +45,53 @@ func main() {
 ## YAML 示例
 
 ```yaml
-appenders:
-  console:
-    type: console
-    target: stderr
-    layout:
-      type: pattern
-      pattern: "%d %-5level %pid --- [%thread] %logger : %msg%attrs%n"
-  rolling:
-    type: rolling-file
-    fileName: logs/app.log
-    layout:
-      type: text
-    rolling:
-      maxSize: 100MiB
-      interval: daily
-      onStartup: true
-      maxBackups: 30
-      gzip: true
-  async:
-    type: async
-    appenderRefs: [rolling]
+configuration:
+  status: warn
+  properties:
+    LOG_DIR: logs
+    LOG_PATTERN: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
+  asyncLogger:
+    enabled: true
     queueSize: 8192
+    batchSize: 128
     overflowStrategy: block
-
-root:
-  level: info
-  appenderRefs: [console, async]
-
-loggers:
-  goark.orm:
-    level: debug
-    appenderRefs: [async]
-    additivity: false
+  filters:
+    keep-info:
+      type: threshold
+      level: info
+  appenders:
+    console:
+      type: console
+      target: stderr
+      layout:
+        type: pattern
+        pattern: "${prop:LOG_PATTERN}"
+    rolling:
+      type: rolling-file
+      fileName: "${prop:LOG_DIR}/app.log"
+      bufferSize: 256KiB
+      layout:
+        type: pattern
+        pattern: "${prop:LOG_PATTERN}"
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/app-%d{yyyyMMdd}-%i.log.gz"
+        maxSize: 100MiB
+        interval: daily
+        onStartup: true
+        maxBackups: 30
+        maxAge: 30d
+  root:
+    level: info
+    appenderRefs: [console, rolling]
+    filters: [keep-info]
+  loggers:
+    goark.orm:
+      level: debug
+      appenderRefs: [rolling]
+      additivity: false
 ```
 
-也可以放在 `goark.log` 下，方便与 boot 主配置合并：
+也可以使用顶层字段，或放在 `goark.log` 下方便与 boot 主配置合并。`configuration`、顶层字段、`goark.log` 三种形式只能选一种，避免配置歧义。
 
 ```yaml
 goark:

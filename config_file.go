@@ -14,6 +14,9 @@ import (
 )
 
 type fileConfig struct {
+	Configuration    *fileConfig               `yaml:"configuration"`
+	Status           string                    `yaml:"status"`
+	Properties       map[string]string         `yaml:"properties"`
 	Appenders        map[string]appenderConfig `yaml:"appenders"`
 	Filters          map[string]filterConfig   `yaml:"filters"`
 	FilterRefs       []string                  `yaml:"filterRefs"`
@@ -151,7 +154,7 @@ func decodeConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error
 	if err != nil {
 		return nil, err
 	}
-	if err := effective.resolveLookups(lookups); err != nil {
+	if err := effective.resolveLookups(lookups.clone()); err != nil {
 		return nil, err
 	}
 	return effective, nil
@@ -258,12 +261,25 @@ func (c *fileConfig) validateAsyncLoggerConfig() error {
 }
 
 func (c *fileConfig) effective() (*fileConfig, error) {
-	topLevelUsed := !c.withoutGoark().empty()
-	if c.Goark.Log == nil {
+	topLevelUsed := !c.withoutWrappers().empty()
+	wrappers := 0
+	if c.Goark.Log != nil {
+		wrappers++
+	}
+	if c.Configuration != nil {
+		wrappers++
+	}
+	if wrappers == 0 {
 		return c, nil
 	}
 	if topLevelUsed {
-		return nil, fmt.Errorf("goark-log: config must use either top-level fields or goark.log, not both")
+		return nil, fmt.Errorf("goark-log: config must use either top-level fields, configuration, or goark.log")
+	}
+	if wrappers > 1 {
+		return nil, fmt.Errorf("goark-log: config must use only one wrapper: configuration or goark.log")
+	}
+	if c.Configuration != nil {
+		return c.Configuration, nil
 	}
 	return c.Goark.Log, nil
 }
@@ -276,6 +292,12 @@ func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
 		lookups = NewLookupResolver()
 	}
 	var err error
+	if c.Status, err = resolveStringLookup(lookups, c.Status); err != nil {
+		return fmt.Errorf("goark-log: status: %w", err)
+	}
+	if err := c.resolveProperties(lookups); err != nil {
+		return err
+	}
 	c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs)
 	if err != nil {
 		return fmt.Errorf("goark-log: filterRefs: %w", err)
@@ -314,6 +336,34 @@ func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
 		}
 		c.Loggers[name] = spec
 	}
+	return nil
+}
+
+func (c *fileConfig) resolveProperties(lookups *LookupResolver) error {
+	if len(c.Properties) == 0 {
+		return nil
+	}
+	resolved := make(map[string]string, len(c.Properties))
+	for key, value := range c.Properties {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return fmt.Errorf("goark-log: property name is empty")
+		}
+		out, err := resolveStringLookup(lookups, value)
+		if err != nil {
+			return fmt.Errorf("goark-log: property %q: %w", key, err)
+		}
+		resolved[key] = out
+	}
+	c.Properties = resolved
+	lookups.Register("prop", func(key string) (string, bool) {
+		value, ok := resolved[strings.TrimSpace(key)]
+		return value, ok
+	})
+	lookups.Register("property", func(key string) (string, bool) {
+		value, ok := resolved[strings.TrimSpace(key)]
+		return value, ok
+	})
 	return nil
 }
 
@@ -510,11 +560,13 @@ func resolveStringListLookups(lookups *LookupResolver, values []string) ([]strin
 	return out, nil
 }
 
-func (c *fileConfig) withoutGoark() *fileConfig {
+func (c *fileConfig) withoutWrappers() *fileConfig {
 	if c == nil {
 		return nil
 	}
 	return &fileConfig{
+		Status:           c.Status,
+		Properties:       c.Properties,
 		Appenders:        c.Appenders,
 		Filters:          c.Filters,
 		FilterRefs:       c.FilterRefs,
@@ -532,6 +584,8 @@ func (c *fileConfig) empty() bool {
 		return true
 	}
 	return len(c.Appenders) == 0 &&
+		strings.TrimSpace(c.Status) == "" &&
+		len(c.Properties) == 0 &&
 		len(c.Filters) == 0 &&
 		len(c.FilterRefs) == 0 &&
 		len(c.FilterRefsKebab) == 0 &&

@@ -43,6 +43,20 @@ func (r *LookupResolver) Register(namespace string, lookup LookupFunc) {
 	r.lookups[namespace] = lookup
 }
 
+func (r *LookupResolver) clone() *LookupResolver {
+	if r == nil {
+		return NewLookupResolver()
+	}
+	copied := &LookupResolver{
+		lookups: make(map[string]LookupFunc, len(r.lookups)),
+		now:     r.now,
+	}
+	for namespace, lookup := range r.lookups {
+		copied.lookups[namespace] = lookup
+	}
+	return copied
+}
+
 // Resolve 替换文本中的配置变量。
 func (r *LookupResolver) Resolve(text string) (string, error) {
 	if !strings.Contains(text, "${") {

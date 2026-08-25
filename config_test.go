@@ -121,6 +121,72 @@ loggers:
 	}
 }
 
+func TestNewConfigured_whenLog4jStyleConfigurationWrapperUsed_shouldBuildGoYamlExperience(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logDir := filepath.ToSlash(filepath.Join(dir, "logs"))
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+configuration:
+  status: warn
+  properties:
+    LOG_DIR: %q
+    LOG_PATTERN: "%%d{yyyy-MM-dd HH:mm:ss.SSS} %%5p %%c %%X{trace_id} %%m%%n"
+  asyncLogger:
+    enabled: true
+    queueSize: 32
+    batchSize: 8
+    overflowStrategy: block
+  filters:
+    keep-info:
+      type: threshold
+      level: info
+  appenders:
+    rolling:
+      type: rollingFile
+      fileName: "${prop:LOG_DIR}/app.log"
+      bufferSize: 64KiB
+      layout:
+        type: pattern
+        pattern: "${prop:LOG_PATTERN}"
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/app-%%d{yyyyMMdd}-%%i.log.gz"
+        maxSize: 1MiB
+        maxBackups: 7
+  root:
+    level: debug
+    appenderRefs: [rolling]
+    filters: [keep-info]
+  loggers:
+    goark.orm:
+      level: debug
+      appenderRefs: [rolling]
+      additivity: false
+`, logDir))
+
+	_, handler, result, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	assertConfigSource(t, result, ConfigSourceExplicit, configPath)
+	root := NewLogger(handler, "goark")
+	root.Debug("hidden by root filter")
+	orm := NewLogger(handler, "goark.orm.mapper")
+	orm.Info("sql done", slog.String("trace_id", "trace-42"))
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "logs", "app.log"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(content), "hidden by root filter") ||
+		!strings.Contains(string(content), "INFO goark.orm.mapper trace-42 sql done") {
+		t.Fatalf("configuration wrapper output is wrong: %q", string(content))
+	}
+}
+
 func TestConfigReloader_whenConfigChanges_shouldSwapHandlerOptions(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -169,6 +235,26 @@ root:
 	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
 	if err == nil {
 		t.Fatalf("NewConfiguredHandler() should reject missing appender ref")
+	}
+}
+
+func TestNewConfigured_whenConfigurationWrapperMixedWithTopLevel_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+configuration:
+  appenders:
+    console:
+      type: console
+  root:
+    level: info
+    appenderRefs: [console]
+appenders:
+  other:
+    type: console
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil {
+		t.Fatalf("NewConfiguredHandler() should reject mixed configuration wrapper and top-level fields")
 	}
 }
 
