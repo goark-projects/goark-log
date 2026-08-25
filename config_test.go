@@ -238,6 +238,38 @@ root:
 	}
 }
 
+func TestNewConfigured_whenAppenderFilterRefMissing_shouldCloseBuiltAppender(t *testing.T) {
+	registry := NewPluginRegistry()
+	var built *recordingAppender
+	if err := registry.RegisterAppender("recording", func(config AppenderBuildConfig) (Appender, error) {
+		built = newRecordingAppender(config.Name)
+		return built, nil
+	}); err != nil {
+		t.Fatalf("RegisterAppender() error = %v", err)
+	}
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  recording:
+    type: recording
+    filters: [missing]
+root:
+  level: info
+  appenderRefs: [recording]
+`)
+
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath), WithPluginRegistry(registry))
+	if err == nil {
+		t.Fatalf("NewConfiguredHandler() should reject missing appender filter ref")
+	}
+	if built == nil {
+		t.Fatalf("recording appender should have been built before filter validation failed")
+	}
+	if built.CloseCount() != 1 {
+		t.Fatalf("built CloseCount() = %d, want 1", built.CloseCount())
+	}
+}
+
 func TestNewConfigured_whenConfigurationWrapperMixedWithTopLevel_shouldReject(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
 	writeConfig(t, configPath, `

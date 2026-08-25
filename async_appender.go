@@ -49,13 +49,15 @@ type AsyncAppender struct {
 	strategy       AsyncOverflowStrategy
 	closeAppenders bool
 
-	queue   chan asyncEntry
-	done    chan struct{}
-	stateMu sync.RWMutex
-	closed  bool
-	workers sync.WaitGroup
-	dropped atomic.Uint64
-	failed  atomic.Uint64
+	queue     chan asyncEntry
+	closing   chan struct{}
+	done      chan struct{}
+	stateMu   sync.RWMutex
+	closed    bool
+	producers sync.WaitGroup
+	workers   sync.WaitGroup
+	dropped   atomic.Uint64
+	failed    atomic.Uint64
 }
 
 type asyncEntry struct {
@@ -110,6 +112,7 @@ func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppen
 	}
 	appender.appenders = append([]Appender(nil), appenders...)
 	appender.queue = make(chan asyncEntry, appender.queueSize)
+	appender.closing = make(chan struct{})
 	appender.done = make(chan struct{})
 	appender.workers.Add(1)
 	go appender.run()
@@ -134,11 +137,10 @@ func (a *AsyncAppender) Append(ctx context.Context, event Event) error {
 		return err
 	}
 	entry := asyncEntry{event: event}
-	a.stateMu.RLock()
-	defer a.stateMu.RUnlock()
-	if a.closed {
+	if !a.beginAppend() {
 		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
 	}
+	defer a.producers.Done()
 	switch a.strategy {
 	case AsyncOverflowBlock:
 		return a.enqueueBlocking(ctx, entry)
@@ -163,8 +165,10 @@ func (a *AsyncAppender) Close() error {
 		return nil
 	}
 	a.closed = true
-	close(a.done)
+	close(a.closing)
 	a.stateMu.Unlock()
+	a.producers.Wait()
+	close(a.done)
 	a.workers.Wait()
 	if !a.closeAppenders {
 		return nil
@@ -186,6 +190,17 @@ func (a *AsyncAppender) Failed() uint64 {
 		return 0
 	}
 	return a.failed.Load()
+}
+
+func (a *AsyncAppender) beginAppend() bool {
+	a.stateMu.RLock()
+	defer a.stateMu.RUnlock()
+	if a.closed {
+		return false
+	}
+	// producer 计数必须在状态锁内增加，避免 Close 与新的 Add 并发。
+	a.producers.Add(1)
+	return true
 }
 
 func (a *AsyncAppender) validate(appenders []Appender) error {
@@ -215,13 +230,15 @@ func (a *AsyncAppender) enqueueBlocking(ctx context.Context, entry asyncEntry) e
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-a.done:
+	case <-a.closing:
 		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
 	}
 }
 
 func (a *AsyncAppender) enqueueOrDrop(entry asyncEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
 	case a.queue <- entry:
 	default:
 		a.dropped.Add(1)
@@ -231,6 +248,8 @@ func (a *AsyncAppender) enqueueOrDrop(entry asyncEntry) error {
 
 func (a *AsyncAppender) enqueueDropDebug(ctx context.Context, entry asyncEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
 	case a.queue <- entry:
 		return nil
 	default:
@@ -244,6 +263,8 @@ func (a *AsyncAppender) enqueueDropDebug(ctx context.Context, entry asyncEntry) 
 
 func (a *AsyncAppender) enqueueOrSync(ctx context.Context, entry asyncEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
 	case a.queue <- entry:
 		return nil
 	default:

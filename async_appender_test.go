@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -166,6 +167,54 @@ func TestAsyncAppender_whenCloseCalled_shouldDrainQueueAndCloseDelegateWhenEnabl
 	}
 	if delegate.CloseCount() != 1 {
 		t.Fatalf("delegate CloseCount() = %d, want 1", delegate.CloseCount())
+	}
+}
+
+func TestAsyncAppender_whenCloseWhileAppendBlocked_shouldUnblockAppend(t *testing.T) {
+	delegate := newGatedAppender("delegate")
+	t.Cleanup(delegate.releaseGate)
+	appender, err := NewAsyncAppender([]Appender{delegate},
+		WithAsyncQueueSize(1),
+		WithAsyncOverflowStrategy(AsyncOverflowBlock),
+	)
+	if err != nil {
+		t.Fatalf("NewAsyncAppender() error = %v", err)
+	}
+
+	if err := appender.Append(context.Background(), testEvent("first", fixedTestTime())); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	<-delegate.started
+	if err := appender.Append(context.Background(), testEvent("second", fixedTestTime())); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+
+	appendDone := make(chan error, 1)
+	go func() {
+		appendDone <- appender.Append(context.Background(), testEvent("blocked", fixedTestTime()))
+	}()
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- appender.Close()
+	}()
+
+	select {
+	case err := <-appendDone:
+		if err == nil || !strings.Contains(err.Error(), "closed") {
+			t.Fatalf("blocked Append() error = %v, want closed error", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("blocked Append() was not unblocked by Close()")
+	}
+
+	delegate.releaseGate()
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("Close() did not finish after delegate was released")
 	}
 }
 

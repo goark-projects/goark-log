@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAsyncLogger_whenCloseCalled_shouldDrainQueuedEvents(t *testing.T) {
@@ -107,6 +108,60 @@ func TestAsyncLogger_whenReloadChangesQueueSettings_shouldReject(t *testing.T) {
 	}
 	if replacement.Contains("old route still active") {
 		t.Fatalf("rejected reload should not install replacement route")
+	}
+}
+
+func TestAsyncLogger_whenCloseWhileHandleBlocked_shouldUnblockHandle(t *testing.T) {
+	delegate := newGatedAppender("delegate")
+	t.Cleanup(delegate.releaseGate)
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{delegate},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"delegate"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        1,
+			BatchSize:        1,
+			OverflowStrategy: AsyncOverflowBlock,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+
+	if err := handler.Handle(context.Background(), slog.NewRecord(fixedTestTime(), slog.LevelInfo, "first", 0)); err != nil {
+		t.Fatalf("Handle(first) error = %v", err)
+	}
+	<-delegate.started
+	if err := handler.Handle(context.Background(), slog.NewRecord(fixedTestTime(), slog.LevelInfo, "second", 0)); err != nil {
+		t.Fatalf("Handle(second) error = %v", err)
+	}
+
+	handleDone := make(chan error, 1)
+	go func() {
+		handleDone <- handler.Handle(context.Background(), slog.NewRecord(fixedTestTime(), slog.LevelInfo, "blocked", 0))
+	}()
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- handler.Close()
+	}()
+
+	select {
+	case err := <-handleDone:
+		if err == nil || !strings.Contains(err.Error(), "closed") {
+			t.Fatalf("blocked Handle() error = %v, want closed error", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("blocked Handle() was not unblocked by Close()")
+	}
+
+	delegate.releaseGate()
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("Close() did not finish after delegate was released")
 	}
 }
 

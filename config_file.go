@@ -711,7 +711,12 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 	if err != nil {
 		return nil, err
 	}
-	return wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
+	wrapped, err := wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
+	if err != nil {
+		_ = appender.Close()
+		return nil, err
+	}
+	return wrapped, nil
 }
 
 func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
@@ -735,7 +740,12 @@ func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appen
 	if err != nil {
 		return nil, err
 	}
-	return wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
+	wrapped, err := wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
+	if err != nil {
+		_ = appender.Close()
+		return nil, err
+	}
+	return wrapped, nil
 }
 
 func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) {

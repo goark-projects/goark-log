@@ -27,12 +27,14 @@ type AsyncLoggerOptions struct {
 type asyncLogger struct {
 	handler *Handler
 	queue   chan asyncLoggerEntry
+	closing chan struct{}
 	done    chan struct{}
 	options AsyncLoggerOptions
 
-	stateMu sync.RWMutex
-	closed  bool
-	workers sync.WaitGroup
+	stateMu   sync.RWMutex
+	closed    bool
+	producers sync.WaitGroup
+	workers   sync.WaitGroup
 
 	queueSize int
 	batchSize int
@@ -56,6 +58,7 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 	async := &asyncLogger{
 		handler:   handler,
 		queue:     make(chan asyncLoggerEntry, normalized.QueueSize),
+		closing:   make(chan struct{}),
 		done:      make(chan struct{}),
 		options:   normalized,
 		queueSize: normalized.QueueSize,
@@ -106,11 +109,10 @@ func (a *asyncLogger) append(ctx context.Context, event Event) error {
 		return err
 	}
 	entry := asyncLoggerEntry{event: event}
-	a.stateMu.RLock()
-	defer a.stateMu.RUnlock()
-	if a.closed {
+	if !a.beginAppend() {
 		return fmt.Errorf("goark-log: async logger is closed")
 	}
+	defer a.producers.Done()
 	switch a.strategy {
 	case AsyncOverflowBlock:
 		return a.enqueueBlocking(ctx, entry)
@@ -135,10 +137,23 @@ func (a *asyncLogger) close() error {
 		return nil
 	}
 	a.closed = true
-	close(a.done)
+	close(a.closing)
 	a.stateMu.Unlock()
+	a.producers.Wait()
+	close(a.done)
 	a.workers.Wait()
 	return nil
+}
+
+func (a *asyncLogger) beginAppend() bool {
+	a.stateMu.RLock()
+	defer a.stateMu.RUnlock()
+	if a.closed {
+		return false
+	}
+	// producer 计数必须在状态锁内增加，避免 Close 与新的 Add 并发。
+	a.producers.Add(1)
+	return true
 }
 
 func (a *asyncLogger) enqueueBlocking(ctx context.Context, entry asyncLoggerEntry) error {
@@ -147,13 +162,15 @@ func (a *asyncLogger) enqueueBlocking(ctx context.Context, entry asyncLoggerEntr
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-a.done:
+	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
 	}
 }
 
 func (a *asyncLogger) enqueueOrDrop(entry asyncLoggerEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async logger is closed")
 	case a.queue <- entry:
 	default:
 		a.dropped.Add(1)
@@ -163,6 +180,8 @@ func (a *asyncLogger) enqueueOrDrop(entry asyncLoggerEntry) error {
 
 func (a *asyncLogger) enqueueDropDebug(ctx context.Context, entry asyncLoggerEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async logger is closed")
 	case a.queue <- entry:
 		return nil
 	default:
@@ -176,6 +195,8 @@ func (a *asyncLogger) enqueueDropDebug(ctx context.Context, entry asyncLoggerEnt
 
 func (a *asyncLogger) enqueueOrSync(ctx context.Context, entry asyncLoggerEntry) error {
 	select {
+	case <-a.closing:
+		return fmt.Errorf("goark-log: async logger is closed")
 	case a.queue <- entry:
 		return nil
 	default:
