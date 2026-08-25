@@ -27,6 +27,8 @@ type AppenderBuildConfig struct {
 	Delegates        []Appender
 	QueueSize        int
 	OverflowStrategy string
+	BufferSize       string
+	FlushOnWrite     bool
 	Rolling          RollingBuildConfig
 }
 
@@ -256,7 +258,21 @@ func buildFilePlugin(config AppenderBuildConfig) (Appender, error) {
 	if config.FileName == "" {
 		return nil, fmt.Errorf("goark-log: appender %q fileName is empty", config.Name)
 	}
-	return NewFileAppender(config.FileName, WithFileName(config.Name), WithFileLayout(config.Layout))
+	options := []FileOption{
+		WithFileName(config.Name),
+		WithFileLayout(config.Layout),
+	}
+	if strings.TrimSpace(config.BufferSize) != "" {
+		size, err := ParseByteSize(config.BufferSize)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+		}
+		options = append(options, WithFileBufferSize(int(size)))
+	}
+	if config.FlushOnWrite {
+		options = append(options, WithFileFlushOnWrite(true))
+	}
+	return NewFileAppender(config.FileName, options...)
 }
 
 func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
@@ -266,6 +282,16 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	options := []RollingFileOption{
 		WithRollingFileName(config.Name),
 		WithRollingFileLayout(config.Layout),
+	}
+	if strings.TrimSpace(config.BufferSize) != "" {
+		size, err := ParseByteSize(config.BufferSize)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+		}
+		options = append(options, WithRollingFileBufferSize(int(size)))
+	}
+	if config.FlushOnWrite {
+		options = append(options, WithRollingFileFlushOnWrite(true))
 	}
 	if strings.TrimSpace(config.Rolling.FilePattern) != "" {
 		options = append(options, WithRollingFilePattern(config.Rolling.FilePattern))

@@ -38,6 +38,30 @@ func TestFileAppender_whenPathIsDirectory_shouldReject(t *testing.T) {
 	}
 }
 
+func TestFileAppender_whenBuffered_shouldFlushBeforeClose(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "buffered.log")
+	appender, err := NewFileAppender(path, WithFileLayout(TextLayout{}))
+	if err != nil {
+		t.Fatalf("NewFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("buffered", fixedTestTime())); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Flush(); err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(content), "buffered") {
+		t.Fatalf("flushed content is wrong: %q", string(content))
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
 func testEvent(message string, when time.Time) Event {
 	return Event{
 		Time:    when,

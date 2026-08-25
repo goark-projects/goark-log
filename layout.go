@@ -17,6 +17,8 @@ const (
 	defaultTimeFormat        = "2006-01-02T15:04:05.000Z07:00"
 )
 
+var processIDString = strconv.Itoa(os.Getpid())
+
 // Layout 把日志事件编码为字节。
 type Layout interface {
 	Format(buf *bytes.Buffer, event Event) error
@@ -32,7 +34,8 @@ func NewDefaultLayout() Layout {
 type TextLayout struct{}
 
 func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
-	appendKeyValue(buf, "time", event.Time.Format(defaultTimeFormat))
+	appendKey(buf, "time")
+	buf.Write(event.Time.AppendFormat(buf.AvailableBuffer(), defaultTimeFormat))
 	appendKeyValue(buf, "level", levelName(event.Level))
 	appendKeyValue(buf, "logger", event.Logger)
 	appendKeyValue(buf, "msg", event.Message)
@@ -47,17 +50,16 @@ func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
 type JSONLayout struct{}
 
 func (JSONLayout) Format(buf *bytes.Buffer, event Event) error {
-	fields := make(map[string]any, len(event.Attrs)+4)
-	fields["time"] = event.Time.Format(defaultTimeFormat)
-	fields["level"] = levelName(event.Level)
-	fields["logger"] = event.Logger
-	fields["msg"] = event.Message
+	buf.WriteByte('{')
+	appendJSONFieldTime(buf, "time", event.Time, defaultTimeFormat, false)
+	appendJSONFieldString(buf, "level", levelName(event.Level), true)
+	appendJSONFieldString(buf, "logger", event.Logger, true)
+	appendJSONFieldString(buf, "msg", event.Message, true)
 	for _, attr := range event.Attrs {
-		fields[attr.Key] = attrValueAny(attr.Value)
+		appendJSONFieldValue(buf, attr.Key, attr.Value, true)
 	}
-	encoder := json.NewEncoder(buf)
-	encoder.SetEscapeHTML(false)
-	return encoder.Encode(fields)
+	buf.WriteString("}\n")
+	return nil
 }
 
 // PatternLayout 支持 Log4j2 风格的基础占位符子集。
@@ -250,8 +252,35 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event) {
 		buf.WriteByte('\n')
 		return
 	}
+	if token.kind == tokenTime && token.minWidth == 0 && token.maxWidth == 0 {
+		appendPatternTime(buf, token, event)
+		return
+	}
+	if token.kind == tokenPID && token.minWidth == 0 && token.maxWidth == 0 {
+		buf.WriteString(processIDString)
+		return
+	}
 	value := patternTokenString(token, event)
 	appendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
+}
+
+func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
+	when := event.Time
+	if when.IsZero() {
+		when = time.Now()
+	}
+	switch token.timeUnix {
+	case timeUnixSeconds:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.Unix(), 10))
+	case timeUnixMillis:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMilli(), 10))
+	case timeUnixMicros:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMicro(), 10))
+	case timeUnixNanos:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixNano(), 10))
+	default:
+		buf.Write(when.AppendFormat(buf.AvailableBuffer(), token.format))
+	}
 }
 
 func patternTokenString(token patternToken, event Event) string {
@@ -276,7 +305,7 @@ func patternTokenString(token patternToken, event Event) string {
 	case tokenLevel, tokenLevelPadded:
 		return levelName(event.Level)
 	case tokenPID:
-		return strconv.Itoa(os.Getpid())
+		return processIDString
 	case tokenThread:
 		return "main"
 	case tokenLogger:
@@ -391,20 +420,109 @@ func appendPatternAttrs(buf *bytes.Buffer, attrs []slog.Attr) {
 }
 
 func appendKeyValue(buf *bytes.Buffer, key string, value string) {
+	appendKey(buf, key)
+	quoteValue(buf, value)
+}
+
+func appendKey(buf *bytes.Buffer, key string) {
 	if buf.Len() > 0 {
 		buf.WriteByte(' ')
 	}
 	buf.WriteString(key)
 	buf.WriteByte('=')
-	quoteValue(buf, value)
 }
 
 func quoteValue(buf *bytes.Buffer, value string) {
 	if value == "" || strings.ContainsAny(value, " \t\r\n\"=") {
-		buf.WriteString(strconv.Quote(value))
+		buf.Write(strconv.AppendQuote(buf.AvailableBuffer(), value))
 		return
 	}
 	buf.WriteString(value)
+}
+
+func appendJSONFieldString(buf *bytes.Buffer, key string, value string, comma bool) {
+	appendJSONKey(buf, key, comma)
+	appendJSONString(buf, value)
+}
+
+func appendJSONFieldValue(buf *bytes.Buffer, key string, value slog.Value, comma bool) {
+	appendJSONKey(buf, key, comma)
+	appendJSONValue(buf, value)
+}
+
+func appendJSONFieldTime(buf *bytes.Buffer, key string, value time.Time, layout string, comma bool) {
+	appendJSONKey(buf, key, comma)
+	buf.WriteByte('"')
+	buf.Write(value.AppendFormat(buf.AvailableBuffer(), layout))
+	buf.WriteByte('"')
+}
+
+func appendJSONKey(buf *bytes.Buffer, key string, comma bool) {
+	if comma {
+		buf.WriteByte(',')
+	}
+	appendJSONString(buf, key)
+	buf.WriteByte(':')
+}
+
+func appendJSONString(buf *bytes.Buffer, value string) {
+	buf.Write(strconv.AppendQuote(buf.AvailableBuffer(), value))
+}
+
+func appendJSONValue(buf *bytes.Buffer, value slog.Value) {
+	value = value.Resolve()
+	switch value.Kind() {
+	case slog.KindString:
+		appendJSONString(buf, value.String())
+	case slog.KindBool:
+		if value.Bool() {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case slog.KindInt64:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), value.Int64(), 10))
+	case slog.KindUint64:
+		buf.Write(strconv.AppendUint(buf.AvailableBuffer(), value.Uint64(), 10))
+	case slog.KindFloat64:
+		buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), value.Float64(), 'g', -1, 64))
+	case slog.KindDuration:
+		appendJSONString(buf, value.Duration().String())
+	case slog.KindTime:
+		buf.WriteByte('"')
+		buf.Write(value.Time().AppendFormat(buf.AvailableBuffer(), time.RFC3339Nano))
+		buf.WriteByte('"')
+	case slog.KindGroup:
+		buf.WriteByte('{')
+		for index, attr := range value.Group() {
+			appendJSONFieldValue(buf, attr.Key, attr.Value, index > 0)
+		}
+		buf.WriteByte('}')
+	case slog.KindAny:
+		appendJSONAny(buf, value.Any())
+	default:
+		appendJSONString(buf, attrValueString(value))
+	}
+}
+
+func appendJSONAny(buf *bytes.Buffer, value any) {
+	switch typed := value.(type) {
+	case nil:
+		buf.WriteString("null")
+	case string:
+		appendJSONString(buf, typed)
+	case error:
+		appendJSONString(buf, typed.Error())
+	case fmt.Stringer:
+		appendJSONString(buf, typed.String())
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			appendJSONString(buf, fmt.Sprint(typed))
+			return
+		}
+		buf.Write(data)
+	}
 }
 
 func attrValueString(value slog.Value) string {

@@ -43,6 +43,10 @@ type appenderConfig struct {
 	QueueSizeKebab        int           `yaml:"queue-size"`
 	OverflowStrategy      string        `yaml:"overflowStrategy"`
 	OverflowStrategyKebab string        `yaml:"overflow-strategy"`
+	BufferSize            string        `yaml:"bufferSize"`
+	BufferSizeKebab       string        `yaml:"buffer-size"`
+	FlushOnWrite          bool          `yaml:"flushOnWrite"`
+	FlushOnWriteKebab     bool          `yaml:"flush-on-write"`
 	Filters               []string      `yaml:"filters"`
 	FilterRefs            []string      `yaml:"filterRefs"`
 	FilterRefsKebab       []string      `yaml:"filter-refs"`
@@ -335,6 +339,12 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if err := c.Rolling.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("rolling: %w", err)
+	}
+	if c.BufferSize, err = resolveStringLookup(lookups, c.BufferSize); err != nil {
+		return fmt.Errorf("bufferSize: %w", err)
+	}
+	if c.BufferSizeKebab, err = resolveStringLookup(lookups, c.BufferSizeKebab); err != nil {
+		return fmt.Errorf("buffer-size: %w", err)
 	}
 	if c.AppenderRefs, err = resolveStringListLookups(lookups, c.AppenderRefs); err != nil {
 		return fmt.Errorf("appenderRefs: %w", err)
@@ -737,6 +747,14 @@ func (c appenderConfig) overflowStrategy() string {
 	return c.OverflowStrategyKebab
 }
 
+func (c appenderConfig) bufferSize() string {
+	return firstNonBlank(c.BufferSize, c.BufferSizeKebab)
+}
+
+func (c appenderConfig) flushOnWrite() bool {
+	return c.FlushOnWrite || c.FlushOnWriteKebab
+}
+
 func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegates []Appender) AppenderBuildConfig {
 	return AppenderBuildConfig{
 		Name:             name,
@@ -748,6 +766,8 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		Delegates:        append([]Appender(nil), delegates...),
 		QueueSize:        c.queueSize(),
 		OverflowStrategy: c.overflowStrategy(),
+		BufferSize:       c.bufferSize(),
+		FlushOnWrite:     c.flushOnWrite(),
 		Rolling: RollingBuildConfig{
 			FilePattern: c.Rolling.filePattern(),
 			MaxSize:     c.Rolling.maxSize(),

@@ -218,18 +218,14 @@ type router struct {
 }
 
 type runtimeConfig struct {
-	filters []Filter
 	root    route
 	loggers []loggerRuntime
 	all     []Appender
 }
 
 type loggerRuntime struct {
-	name       string
-	level      *slog.Level
-	appenders  []Appender
-	filters    []Filter
-	additivity bool
+	name  string
+	route route
 }
 
 // route 是一次 logger 匹配后的最终输出计划。
@@ -262,24 +258,9 @@ func (r *router) route(name string) route {
 		if !loggerMatches(name, logger.name) {
 			continue
 		}
-		level := config.root.Level
-		if logger.level != nil {
-			level = *logger.level
-		}
-		appenders := append([]Appender(nil), logger.appenders...)
-		filters := append([]Filter(nil), config.filters...)
-		filters = appendFilters(filters, logger.filters)
-		if logger.additivity {
-			appenders = appendUniqueAppenders(appenders, config.root.Appenders)
-			filters = appendFilters(filters, config.root.Filters)
-		}
-		return route{Level: level, Appenders: appenders, Filters: filters}
+		return logger.route
 	}
-	return route{
-		Level:     config.root.Level,
-		Appenders: append([]Appender(nil), config.root.Appenders...),
-		Filters:   appendFilters(append([]Filter(nil), config.filters...), config.root.Filters),
-	}
+	return config.root
 }
 
 func (r *router) Close() error {
@@ -365,12 +346,12 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	rootFilters, err := normalizeFilters("root", options.Root.Filters)
+	configRootFilters, err := normalizeFilters("root", options.Root.Filters)
 	if err != nil {
 		return nil, err
 	}
+	rootFilters := appendFilters(append([]Filter(nil), globalFilters...), configRootFilters)
 	config := &runtimeConfig{
-		filters: globalFilters,
 		root: route{
 			Level:     options.Root.Level,
 			Appenders: rootAppenders,
@@ -398,12 +379,18 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+		effectiveFilters := appendFilters(append([]Filter(nil), globalFilters...), filters)
+		if additivity {
+			appenders = appendUniqueAppenders(appenders, config.root.Appenders)
+			effectiveFilters = appendFilters(effectiveFilters, configRootFilters)
+		}
 		config.loggers = append(config.loggers, loggerRuntime{
-			name:       name,
-			level:      rule.Level,
-			appenders:  appenders,
-			filters:    filters,
-			additivity: additivity,
+			name: name,
+			route: route{
+				Level:     loggerLevel(options.Root.Level, rule.Level),
+				Appenders: appenders,
+				Filters:   effectiveFilters,
+			},
 		})
 	}
 	sort.Slice(config.loggers, func(i, j int) bool {
@@ -462,4 +449,11 @@ func appendUniqueAppenders(dst []Appender, src []Appender) []Appender {
 		out = append(out, appender)
 	}
 	return out
+}
+
+func loggerLevel(root slog.Level, level *slog.Level) slog.Level {
+	if level == nil {
+		return root
+	}
+	return *level
 }

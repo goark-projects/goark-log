@@ -1,6 +1,7 @@
 package goarklog
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -30,6 +31,8 @@ type RollingFileAppender struct {
 	path              string
 	filePattern       string
 	layout            Layout
+	bufferSize        int
+	flushOnWrite      bool
 	maxSize           int64
 	interval          time.Duration
 	rolloverOnStartup bool
@@ -40,6 +43,7 @@ type RollingFileAppender struct {
 
 	mu           sync.Mutex
 	file         *os.File
+	writer       *bufio.Writer
 	size         int64
 	nextRollover time.Time
 	archiveIndex int
@@ -60,6 +64,20 @@ func WithRollingFileName(name string) RollingFileOption {
 func WithRollingFileLayout(layout Layout) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.layout = layout
+	}
+}
+
+// WithRollingFileBufferSize 设置滚动文件写缓冲大小，0 表示禁用缓冲。
+func WithRollingFileBufferSize(size int) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.bufferSize = size
+	}
+}
+
+// WithRollingFileFlushOnWrite 设置每次写入后立即 flush。
+func WithRollingFileFlushOnWrite(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.flushOnWrite = enabled
 	}
 }
 
@@ -128,6 +146,7 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		name:       "rollingFile",
 		path:       cleanPath,
 		layout:     NewDefaultLayout(),
+		bufferSize: DefaultFileBufferSize,
 		maxSize:    DefaultRollingMaxSize,
 		maxBackups: DefaultRollingMaxBackups,
 		clock:      time.Now,
@@ -186,9 +205,28 @@ func (a *RollingFileAppender) Append(ctx context.Context, event Event) error {
 			return err
 		}
 	}
-	n, err := a.file.Write(buf.Bytes())
+	var n int
+	var err error
+	if a.writer != nil {
+		n, err = a.writer.Write(buf.Bytes())
+		if err == nil && a.flushOnWrite {
+			err = a.writer.Flush()
+		}
+	} else {
+		n, err = a.file.Write(buf.Bytes())
+	}
 	a.size += int64(n)
 	return err
+}
+
+// Flush 把缓冲日志刷入操作系统文件缓存。
+func (a *RollingFileAppender) Flush() error {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.flushLocked()
 }
 
 func (a *RollingFileAppender) Close() error {
@@ -201,11 +239,16 @@ func (a *RollingFileAppender) Close() error {
 		return nil
 	}
 	a.closed = true
+	flushErr := a.flushLocked()
 	if a.file == nil {
-		return nil
+		return flushErr
 	}
 	err := a.file.Close()
 	a.file = nil
+	a.writer = nil
+	if flushErr != nil {
+		return flushErr
+	}
 	return err
 }
 
@@ -215,6 +258,9 @@ func (a *RollingFileAppender) validate() error {
 	}
 	if a.layout == nil {
 		a.layout = NewDefaultLayout()
+	}
+	if a.bufferSize < 0 {
+		return fmt.Errorf("goark-log: rolling file buffer size must be >= 0")
 	}
 	if a.maxSize < 0 {
 		return fmt.Errorf("goark-log: rolling max size must be >= 0")
@@ -263,6 +309,9 @@ func (a *RollingFileAppender) open() error {
 		return fmt.Errorf("goark-log: stat log file %q: %w", a.path, err)
 	}
 	a.file = file
+	if a.bufferSize > 0 {
+		a.writer = bufio.NewWriterSize(file, a.bufferSize)
+	}
 	a.size = info.Size()
 	a.nextRollover = nextRolloverAfter(a.now(), a.interval)
 	if err := a.initArchiveIndex(); err != nil {
@@ -285,11 +334,15 @@ func (a *RollingFileAppender) shouldRollover(now time.Time, pendingBytes int64) 
 }
 
 func (a *RollingFileAppender) rollover(now time.Time) error {
+	if err := a.flushLocked(); err != nil {
+		return fmt.Errorf("goark-log: flush active log file %q: %w", a.path, err)
+	}
 	if a.file != nil {
 		if err := a.file.Close(); err != nil {
 			return fmt.Errorf("goark-log: close active log file %q: %w", a.path, err)
 		}
 		a.file = nil
+		a.writer = nil
 	}
 	target, err := a.nextArchivePath(now)
 	if err != nil {
@@ -317,9 +370,19 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		return err
 	}
 	a.file = file
+	if a.bufferSize > 0 {
+		a.writer = bufio.NewWriterSize(file, a.bufferSize)
+	}
 	a.size = 0
 	a.nextRollover = nextRolloverAfter(now, a.interval)
 	return nil
+}
+
+func (a *RollingFileAppender) flushLocked() error {
+	if a == nil || a.writer == nil {
+		return nil
+	}
+	return a.writer.Flush()
 }
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
