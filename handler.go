@@ -175,6 +175,15 @@ func (h *Handler) Reload(options Options) error {
 	if options.Async.Enabled != (h.async != nil) {
 		return fmt.Errorf("goark-log: async logger enablement cannot be changed by reload")
 	}
+	if h.async != nil {
+		normalized, err := normalizeAsyncLoggerOptions(options.Async)
+		if err != nil {
+			return err
+		}
+		if normalized != h.async.options {
+			return fmt.Errorf("goark-log: async logger queue settings cannot be changed by reload")
+		}
+	}
 	return h.router.Replace(options)
 }
 

@@ -28,7 +28,10 @@ type asyncLogger struct {
 	handler *Handler
 	queue   chan asyncLoggerEntry
 	done    chan struct{}
-	closed  atomic.Bool
+	options AsyncLoggerOptions
+
+	stateMu sync.RWMutex
+	closed  bool
 	workers sync.WaitGroup
 
 	queueSize int
@@ -46,6 +49,29 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 	if handler == nil {
 		return nil, fmt.Errorf("goark-log: async logger handler is nil")
 	}
+	normalized, err := normalizeAsyncLoggerOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	async := &asyncLogger{
+		handler:   handler,
+		queue:     make(chan asyncLoggerEntry, normalized.QueueSize),
+		done:      make(chan struct{}),
+		options:   normalized,
+		queueSize: normalized.QueueSize,
+		batchSize: normalized.BatchSize,
+		strategy:  normalized.OverflowStrategy,
+	}
+	async.workers.Add(1)
+	go async.run()
+	return async, nil
+}
+
+// normalizeAsyncLoggerOptions 把用户配置转成运行期稳定值，便于 reload 做精确一致性校验。
+func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions, error) {
+	if !options.Enabled {
+		return AsyncLoggerOptions{}, nil
+	}
 	queueSize := options.QueueSize
 	if queueSize <= 0 {
 		queueSize = DefaultAsyncLoggerQueueSize
@@ -57,24 +83,16 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 	if batchSize > queueSize {
 		batchSize = queueSize
 	}
-	strategy := options.OverflowStrategy
-	if strategy == "" {
-		strategy = AsyncOverflowBlock
+	strategy, err := ParseAsyncOverflowStrategy(string(options.OverflowStrategy))
+	if err != nil {
+		return AsyncLoggerOptions{}, err
 	}
-	if _, err := ParseAsyncOverflowStrategy(string(strategy)); err != nil {
-		return nil, err
-	}
-	async := &asyncLogger{
-		handler:   handler,
-		queue:     make(chan asyncLoggerEntry, queueSize),
-		done:      make(chan struct{}),
-		queueSize: queueSize,
-		batchSize: batchSize,
-		strategy:  strategy,
-	}
-	async.workers.Add(1)
-	go async.run()
-	return async, nil
+	return AsyncLoggerOptions{
+		Enabled:          true,
+		QueueSize:        queueSize,
+		BatchSize:        batchSize,
+		OverflowStrategy: strategy,
+	}, nil
 }
 
 func (a *asyncLogger) append(ctx context.Context, event Event) error {
@@ -87,10 +105,12 @@ func (a *asyncLogger) append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if a.closed.Load() {
+	entry := asyncLoggerEntry{event: event}
+	a.stateMu.RLock()
+	defer a.stateMu.RUnlock()
+	if a.closed {
 		return fmt.Errorf("goark-log: async logger is closed")
 	}
-	entry := asyncLoggerEntry{event: event}
 	switch a.strategy {
 	case AsyncOverflowBlock:
 		return a.enqueueBlocking(ctx, entry)
@@ -109,10 +129,14 @@ func (a *asyncLogger) close() error {
 	if a == nil {
 		return nil
 	}
-	if !a.closed.CompareAndSwap(false, true) {
+	a.stateMu.Lock()
+	if a.closed {
+		a.stateMu.Unlock()
 		return nil
 	}
+	a.closed = true
 	close(a.done)
+	a.stateMu.Unlock()
 	a.workers.Wait()
 	return nil
 }

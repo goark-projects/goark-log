@@ -36,6 +36,80 @@ func TestAsyncLogger_whenCloseCalled_shouldDrainQueuedEvents(t *testing.T) {
 	}
 }
 
+func TestAsyncLogger_whenAppendAfterClose_shouldReject(t *testing.T) {
+	delegate := newRecordingAppender("delegate")
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{delegate},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"delegate"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        4,
+			BatchSize:        2,
+			OverflowStrategy: AsyncOverflowBlock,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	record := slog.NewRecord(fixedTestTime(), slog.LevelInfo, "after close", 0)
+	if err := handler.Handle(context.Background(), record); err == nil {
+		t.Fatalf("Handle() after Close should fail")
+	}
+}
+
+func TestAsyncLogger_whenReloadChangesQueueSettings_shouldReject(t *testing.T) {
+	delegate := newRecordingAppender("delegate")
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{delegate},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"delegate"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        8,
+			BatchSize:        4,
+			OverflowStrategy: AsyncOverflowBlock,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = handler.Close()
+	})
+
+	replacement := newRecordingAppender("replacement")
+	err = handler.Reload(Options{
+		Appenders: []Appender{replacement},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"replacement"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        16,
+			BatchSize:        4,
+			OverflowStrategy: AsyncOverflowBlock,
+		},
+	})
+	if err == nil {
+		t.Fatalf("Reload() should reject changed async logger queue settings")
+	}
+	if !strings.Contains(err.Error(), "async logger queue settings") {
+		t.Fatalf("Reload() error = %v, want async logger queue settings error", err)
+	}
+
+	NewLogger(handler, "goark.async.logger").Info("old route still active")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if !delegate.Contains("old route still active") {
+		t.Fatalf("old route should stay active, events=%v", delegate.Events())
+	}
+	if replacement.Contains("old route still active") {
+		t.Fatalf("rejected reload should not install replacement route")
+	}
+}
+
 func TestAsyncLogger_whenDropDebugQueueFull_shouldDropDebugOnly(t *testing.T) {
 	delegate := newGatedAppender("delegate")
 	t.Cleanup(delegate.releaseGate)

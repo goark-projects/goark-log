@@ -84,7 +84,6 @@ const (
 	tokenLiteral patternTokenKind = iota
 	tokenTime
 	tokenLevel
-	tokenLevelPadded
 	tokenPID
 	tokenThread
 	tokenLogger
@@ -302,7 +301,7 @@ func patternTokenString(token patternToken, event Event) string {
 		default:
 			return when.Format(token.format)
 		}
-	case tokenLevel, tokenLevelPadded:
+	case tokenLevel:
 		return levelName(event.Level)
 	case tokenPID:
 		return processIDString
@@ -548,40 +547,4 @@ func attrValueString(value slog.Value) string {
 	default:
 		return fmt.Sprint(value.Any())
 	}
-}
-
-func attrValueAny(value slog.Value) any {
-	value = value.Resolve()
-	switch value.Kind() {
-	case slog.KindString:
-		return value.String()
-	case slog.KindBool:
-		return value.Bool()
-	case slog.KindInt64:
-		return value.Int64()
-	case slog.KindUint64:
-		return value.Uint64()
-	case slog.KindFloat64:
-		return value.Float64()
-	case slog.KindDuration:
-		return value.Duration().String()
-	case slog.KindTime:
-		return value.Time().Format(time.RFC3339Nano)
-	case slog.KindGroup:
-		group := value.Group()
-		out := make(map[string]any, len(group))
-		for _, attr := range group {
-			out[attr.Key] = attrValueAny(attr.Value)
-		}
-		return out
-	default:
-		return value.Any()
-	}
-}
-
-func leftPad(value string, width int) string {
-	if len(value) >= width {
-		return value
-	}
-	return strings.Repeat(" ", width-len(value)) + value
 }
