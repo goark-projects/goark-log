@@ -136,3 +136,8 @@ go run ./examples/console
 ```bash
 go test -run '^$' -bench . -benchmem ./...
 ```
+
+高吞吐路径建议优先使用 `slog.Logger.LogAttrs`，它比 `Info(args ...any)` 少一次
+variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayout` 对常见
+`slog` 基础类型保持低分配编码；文件类 appender 默认启用缓冲写入，延迟敏感场景再打开
+`flushOnWrite`。

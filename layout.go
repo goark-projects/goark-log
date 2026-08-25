@@ -40,7 +40,7 @@ func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
 	appendKeyValue(buf, "logger", event.Logger)
 	appendKeyValue(buf, "msg", event.Message)
 	for _, attr := range event.Attrs {
-		appendKeyValue(buf, attr.Key, attrValueString(attr.Value))
+		appendKeyValueAttr(buf, attr.Key, attr.Value)
 	}
 	buf.WriteByte('\n')
 	return nil
@@ -413,14 +413,18 @@ func isPatternLetter(value byte) bool {
 
 func appendPatternAttrs(buf *bytes.Buffer, attrs []slog.Attr) {
 	for _, attr := range attrs {
-		buf.WriteByte(' ')
-		appendKeyValue(buf, attr.Key, attrValueString(attr.Value))
+		appendKeyValueAttr(buf, attr.Key, attr.Value)
 	}
 }
 
 func appendKeyValue(buf *bytes.Buffer, key string, value string) {
 	appendKey(buf, key)
 	quoteValue(buf, value)
+}
+
+func appendKeyValueAttr(buf *bytes.Buffer, key string, value slog.Value) {
+	appendKey(buf, key)
+	appendTextValue(buf, value)
 }
 
 func appendKey(buf *bytes.Buffer, key string) {
@@ -437,6 +441,51 @@ func quoteValue(buf *bytes.Buffer, value string) {
 		return
 	}
 	buf.WriteString(value)
+}
+
+func appendTextValue(buf *bytes.Buffer, value slog.Value) {
+	value = value.Resolve()
+	switch value.Kind() {
+	case slog.KindString:
+		quoteValue(buf, value.String())
+	case slog.KindBool:
+		if value.Bool() {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case slog.KindInt64:
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), value.Int64(), 10))
+	case slog.KindUint64:
+		buf.Write(strconv.AppendUint(buf.AvailableBuffer(), value.Uint64(), 10))
+	case slog.KindFloat64:
+		buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), value.Float64(), 'g', -1, 64))
+	case slog.KindDuration:
+		quoteValue(buf, value.Duration().String())
+	case slog.KindTime:
+		buf.Write(value.Time().AppendFormat(buf.AvailableBuffer(), time.RFC3339Nano))
+	case slog.KindGroup:
+		quoteValue(buf, attrValueString(value))
+	case slog.KindAny:
+		appendTextAny(buf, value.Any())
+	default:
+		quoteValue(buf, attrValueString(value))
+	}
+}
+
+func appendTextAny(buf *bytes.Buffer, value any) {
+	switch typed := value.(type) {
+	case nil:
+		buf.WriteString("<nil>")
+	case string:
+		quoteValue(buf, typed)
+	case error:
+		quoteValue(buf, typed.Error())
+	case fmt.Stringer:
+		quoteValue(buf, typed.String())
+	default:
+		quoteValue(buf, fmt.Sprint(typed))
+	}
 }
 
 func appendJSONFieldString(buf *bytes.Buffer, key string, value string, comma bool) {
@@ -529,6 +578,17 @@ func attrValueString(value slog.Value) string {
 	switch value.Kind() {
 	case slog.KindString:
 		return value.String()
+	case slog.KindBool:
+		if value.Bool() {
+			return "true"
+		}
+		return "false"
+	case slog.KindInt64:
+		return strconv.FormatInt(value.Int64(), 10)
+	case slog.KindUint64:
+		return strconv.FormatUint(value.Uint64(), 10)
+	case slog.KindFloat64:
+		return strconv.FormatFloat(value.Float64(), 'g', -1, 64)
 	case slog.KindTime:
 		return value.Time().Format(time.RFC3339Nano)
 	case slog.KindDuration:

@@ -36,7 +36,7 @@ func newEvent(logger string, handlerAttrs []slog.Attr, groups []string, record s
 	attrs := make([]slog.Attr, 0, len(handlerAttrs)+record.NumAttrs())
 	attrs = appendAttrs(attrs, nil, handlerAttrs)
 	record.Attrs(func(attr slog.Attr) bool {
-		attrs = appendAttrs(attrs, groups, []slog.Attr{attr})
+		attrs = appendAttr(attrs, groups, attr)
 		return true
 	})
 	return Event{
@@ -51,19 +51,23 @@ func newEvent(logger string, handlerAttrs []slog.Attr, groups []string, record s
 
 func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {
 	for _, attr := range attrs {
-		attr = normalizeAttr(attr)
-		if attr.Key == "" {
-			continue
-		}
-		if attr.Key == loggerNameKey {
-			continue
-		}
-		if len(groups) > 0 {
-			attr.Key = groupKey(groups, attr.Key)
-		}
-		dst = append(dst, attr)
+		dst = appendAttr(dst, groups, attr)
 	}
 	return dst
+}
+
+func appendAttr(dst []slog.Attr, groups []string, attr slog.Attr) []slog.Attr {
+	attr = normalizeAttr(attr)
+	if attr.Key == "" {
+		return dst
+	}
+	if attr.Key == loggerNameKey {
+		return dst
+	}
+	if len(groups) > 0 {
+		attr.Key = groupKey(groups, attr.Key)
+	}
+	return append(dst, attr)
 }
 
 func normalizeAttr(attr slog.Attr) slog.Attr {

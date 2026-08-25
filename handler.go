@@ -92,7 +92,7 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	if record.Level < route.Level {
 		return nil
 	}
-	event := newEvent(h.name, h.attrs, h.groups, record.Clone())
+	event := newEvent(h.name, h.attrs, h.groups, record)
 	if h.async != nil {
 		return h.async.append(ctx, event)
 	}

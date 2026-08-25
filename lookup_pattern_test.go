@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLookupResolver_whenEnvAndSystemLookupsUsed_shouldResolveText(t *testing.T) {
@@ -65,6 +66,46 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 	}
 	if !strings.HasPrefix(buf.String(), "1787624130123 INFO epoch\n") {
 		t.Fatalf("formatted line = %q", buf.String())
+	}
+}
+
+func TestLayout_whenPrimitiveAttrsUsed_shouldRenderWithoutSemanticDrift(t *testing.T) {
+	event := testEvent("primitive attrs", fixedTestTime())
+	event.Attrs = []slog.Attr{
+		slog.String("profile", "bench worker"),
+		slog.Int("index", 42),
+		slog.Bool("cached", true),
+		slog.Float64("ratio", 1.25),
+		slog.Duration("elapsed", 10*time.Millisecond),
+	}
+
+	var text bytes.Buffer
+	if err := (TextLayout{}).Format(&text, event); err != nil {
+		t.Fatalf("TextLayout.Format() error = %v", err)
+	}
+	textLine := text.String()
+	for _, want := range []string{
+		`profile="bench worker"`,
+		"index=42",
+		"cached=true",
+		"ratio=1.25",
+		"elapsed=10ms",
+	} {
+		if !strings.Contains(textLine, want) {
+			t.Fatalf("text line should contain %q, got %q", want, textLine)
+		}
+	}
+
+	layout, err := NewPatternLayout("%m%attrs%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	var pattern bytes.Buffer
+	if err := layout.Format(&pattern, event); err != nil {
+		t.Fatalf("PatternLayout.Format() error = %v", err)
+	}
+	if !strings.Contains(pattern.String(), `primitive attrs profile="bench worker" index=42 cached=true ratio=1.25 elapsed=10ms`) {
+		t.Fatalf("pattern line is wrong: %q", pattern.String())
 	}
 }
 
