@@ -41,11 +41,12 @@ type LoggerRule struct {
 
 // Handler 是 goark-log 的 slog.Handler 实现。
 type Handler struct {
-	router *router
-	name   string
-	attrs  []slog.Attr
-	groups []string
-	async  *asyncLogger
+	router  *router
+	name    string
+	attrs   []slog.Attr
+	groups  []string
+	async   *asyncLogger
+	metrics *handlerMetrics
 }
 
 var _ slog.Handler = (*Handler)(nil)
@@ -56,7 +57,7 @@ func NewHandler(options Options) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	handler := &Handler{router: router, name: defaultLoggerName}
+	handler := &Handler{router: router, name: defaultLoggerName, metrics: &handlerMetrics{}}
 	if options.Async.Enabled {
 		async, err := newAsyncLogger(handler, options.Async)
 		if err != nil {
@@ -134,12 +135,26 @@ func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []sl
 
 func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) error {
 	if applyFilters(ctx, route.Filters, event) == FilterDeny {
+		if h.metrics != nil {
+			h.metrics.filtered.Add(1)
+		}
 		return nil
+	}
+	if h.metrics != nil {
+		h.metrics.events.Add(1)
 	}
 	var joined error
 	for _, appender := range route.Appenders {
-		if err := appender.Append(ctx, event); err != nil {
+		wrote, err := appender.append(ctx, event)
+		if err != nil {
+			if h.metrics != nil {
+				h.metrics.appenderFailures.Add(1)
+			}
 			joined = errors.Join(joined, err)
+			continue
+		}
+		if wrote && h.metrics != nil {
+			h.metrics.appenderWrites.Add(1)
 		}
 	}
 	return joined

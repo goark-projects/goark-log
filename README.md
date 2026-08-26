@@ -172,6 +172,12 @@ logger.InfoContext(ctx, "request done")
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。
 
+## 指标与安全边界
+
+`Handler.Metrics()` 返回核心运行指标快照，包含已派发事件、appender 写入次数、appender 失败次数、过滤丢弃次数、异步丢弃次数、异步失败批次数和异步队列容量。`MetricsExporter`/`MetricsExporterFunc` 提供最小导出接口，Prometheus、OpenTelemetry、expvar 等实现应放在独立模块中适配。
+
+核心 lookup 默认只启用 `env`、`sys`、`go`、`date`。出于安全边界考虑，`jndi`、`ldap`、`rmi` 这类远程解析 namespace 会被拒绝或忽略，不做 Log4j2 历史高风险能力的机械复刻。
+
 ## 外部 Appender
 
 核心库只提供 Appender 接口、插件注册表和配置构建契约，不内置 HTTP、Socket、Syslog、Kafka、SMTP、Database 等外部系统实现。外部系统连接必须放在独立模块中，按需显式导入并注册：

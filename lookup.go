@@ -40,6 +40,9 @@ func (r *LookupResolver) Register(namespace string, lookup LookupFunc) {
 	if namespace == "" {
 		return
 	}
+	if isBlockedLookupNamespace(namespace) {
+		return
+	}
 	r.lookups[namespace] = lookup
 }
 

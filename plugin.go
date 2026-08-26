@@ -203,6 +203,9 @@ func (r *PluginRegistry) RegisterLookup(namespace string, lookup LookupFunc) err
 	if namespace == "" {
 		return fmt.Errorf("goark-log: lookup namespace is empty")
 	}
+	if isBlockedLookupNamespace(namespace) {
+		return fmt.Errorf("goark-log: lookup namespace %q is blocked by security policy", namespace)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lookups[namespace] = lookup

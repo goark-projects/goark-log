@@ -44,16 +44,22 @@ func newAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (ap
 }
 
 func (c appenderControl) Append(ctx context.Context, event Event) error {
+	_, err := c.append(ctx, event)
+	return err
+}
+
+// append 返回底层 appender 是否被实际调用，供核心指标区分跳过和写入。
+func (c appenderControl) append(ctx context.Context, event Event) (bool, error) {
 	if c.appender == nil {
-		return nil
+		return false, nil
 	}
 	if c.level != nil && event.Level < *c.level {
-		return nil
+		return false, nil
 	}
 	if applyFilters(ctx, c.filters, event) == FilterDeny {
-		return nil
+		return false, nil
 	}
-	return c.appender.Append(ctx, event)
+	return true, c.appender.Append(ctx, event)
 }
 
 func (c appenderControl) name() string {
@@ -68,7 +74,8 @@ func (a controlledAppender) Name() string {
 }
 
 func (a controlledAppender) Append(ctx context.Context, event Event) error {
-	return a.control.Append(ctx, event)
+	_, err := a.control.append(ctx, event)
+	return err
 }
 
 func (a controlledAppender) Close() error {

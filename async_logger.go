@@ -288,3 +288,10 @@ func (a *asyncLogger) failedCount() uint64 {
 	}
 	return a.failed.Load()
 }
+
+func (a *asyncLogger) remainingCapacity() int64 {
+	if a == nil || a.queue == nil {
+		return 0
+	}
+	return a.queue.RemainingCapacity()
+}
