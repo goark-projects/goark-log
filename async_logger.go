@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+
+	"goark.dev/goark-log/internal/disruptor"
 )
 
 const (
@@ -22,11 +24,12 @@ type AsyncLoggerOptions struct {
 	QueueSize        int
 	BatchSize        int
 	OverflowStrategy AsyncOverflowStrategy
+	WaitStrategy     AsyncWaitStrategy
 }
 
 type asyncLogger struct {
 	handler *Handler
-	queue   *asyncRingBuffer
+	queue   *disruptor.RingBuffer[asyncLoggerEntry]
 	closing chan struct{}
 	done    chan struct{}
 	options AsyncLoggerOptions
@@ -39,6 +42,7 @@ type asyncLogger struct {
 	queueSize int
 	batchSize int
 	strategy  AsyncOverflowStrategy
+	wait      AsyncWaitStrategy
 	dropped   atomic.Uint64
 	failed    atomic.Uint64
 }
@@ -57,13 +61,17 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 	}
 	async := &asyncLogger{
 		handler:   handler,
-		queue:     newAsyncRingBuffer(normalized.QueueSize),
 		closing:   make(chan struct{}),
 		done:      make(chan struct{}),
 		options:   normalized,
 		queueSize: normalized.QueueSize,
 		batchSize: normalized.BatchSize,
 		strategy:  normalized.OverflowStrategy,
+		wait:      normalized.WaitStrategy,
+	}
+	async.queue, err = disruptor.NewRingBuffer[asyncLoggerEntry](normalized.QueueSize, newAsyncWaitStrategy(normalized.WaitStrategy))
+	if err != nil {
+		return nil, err
 	}
 	async.workers.Add(1)
 	go async.run()
@@ -79,6 +87,10 @@ func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions
 	if queueSize <= 0 {
 		queueSize = DefaultAsyncLoggerQueueSize
 	}
+	queueSize, err := normalizeAsyncQueueSize(queueSize, DefaultAsyncLoggerQueueSize)
+	if err != nil {
+		return AsyncLoggerOptions{}, err
+	}
 	batchSize := options.BatchSize
 	if batchSize <= 0 {
 		batchSize = DefaultAsyncLoggerBatchSize
@@ -90,11 +102,16 @@ func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions
 	if err != nil {
 		return AsyncLoggerOptions{}, err
 	}
+	wait, err := ParseAsyncWaitStrategy(string(options.WaitStrategy))
+	if err != nil {
+		return AsyncLoggerOptions{}, err
+	}
 	return AsyncLoggerOptions{
 		Enabled:          true,
 		QueueSize:        queueSize,
 		BatchSize:        batchSize,
 		OverflowStrategy: strategy,
+		WaitStrategy:     wait,
 	}, nil
 }
 
@@ -158,15 +175,15 @@ func (a *asyncLogger) beginAppend() bool {
 
 func (a *asyncLogger) enqueueBlocking(ctx context.Context, entry asyncLoggerEntry) error {
 	for {
-		if a.queue.tryPush(entry) {
+		if a.queue.TryPublish(entry) {
 			return nil
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-a.closing:
+		err := a.queue.WaitWritable(ctx, a.closing)
+		if errors.Is(err, disruptor.ErrInterrupted) {
 			return fmt.Errorf("goark-log: async logger is closed")
-		case <-a.queue.writableSignal():
+		}
+		if err != nil {
+			return err
 		}
 	}
 }
@@ -176,7 +193,7 @@ func (a *asyncLogger) enqueueOrDrop(entry asyncLoggerEntry) error {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
 	default:
-		if a.queue.tryPush(entry) {
+		if a.queue.TryPublish(entry) {
 			return nil
 		}
 		a.dropped.Add(1)
@@ -189,7 +206,7 @@ func (a *asyncLogger) enqueueDropDebug(ctx context.Context, entry asyncLoggerEnt
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
 	default:
-		if a.queue.tryPush(entry) {
+		if a.queue.TryPublish(entry) {
 			return nil
 		}
 		if entry.event.Level <= slog.LevelDebug {
@@ -205,10 +222,12 @@ func (a *asyncLogger) enqueueOrSync(ctx context.Context, entry asyncLoggerEntry)
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
 	default:
-		if a.queue.tryPush(entry) {
+		if a.queue.TryPublish(entry) {
 			return nil
 		}
-		return a.handler.dispatch(ctx, entry.event)
+		event := entry.event
+		event.EndOfBatch = true
+		return a.handler.dispatch(ctx, event)
 	}
 }
 
@@ -216,14 +235,13 @@ func (a *asyncLogger) run() {
 	defer a.workers.Done()
 	batch := make([]asyncLoggerEntry, 0, a.batchSize)
 	for {
-		if a.queue.popBatch(&batch, a.batchSize) {
+		if a.queue.PopBatch(&batch, a.batchSize) {
 			a.flushBatch(batch)
 			batch = batch[:0]
 			continue
 		}
-		select {
-		case <-a.queue.readableSignal():
-		case <-a.done:
+		err := a.queue.WaitReadable(context.Background(), a.done)
+		if errors.Is(err, disruptor.ErrInterrupted) {
 			a.drainAll(&batch)
 			a.flushBatch(batch)
 			return
@@ -233,7 +251,7 @@ func (a *asyncLogger) run() {
 
 func (a *asyncLogger) drainAll(batch *[]asyncLoggerEntry) {
 	for {
-		if !a.queue.popBatch(batch, a.batchSize) {
+		if !a.queue.PopBatch(batch, a.batchSize) {
 			return
 		}
 		if len(*batch) >= a.batchSize {
@@ -245,8 +263,10 @@ func (a *asyncLogger) drainAll(batch *[]asyncLoggerEntry) {
 
 func (a *asyncLogger) flushBatch(batch []asyncLoggerEntry) {
 	var joined error
-	for _, entry := range batch {
-		if err := a.handler.dispatch(context.Background(), entry.event); err != nil {
+	for index, entry := range batch {
+		event := entry.event
+		event.EndOfBatch = index == len(batch)-1
+		if err := a.handler.dispatch(context.Background(), event); err != nil {
 			joined = errors.Join(joined, err)
 		}
 	}

@@ -27,6 +27,7 @@ type AppenderBuildConfig struct {
 	Delegates        []Appender
 	QueueSize        int
 	OverflowStrategy string
+	WaitStrategy     string
 	BufferSize       string
 	FlushOnWrite     bool
 	Rolling          RollingBuildConfig
@@ -397,6 +398,11 @@ func buildAsyncPlugin(config AppenderBuildConfig) (Appender, error) {
 		WithAsyncName(config.Name),
 		WithAsyncOverflowStrategy(strategy),
 	}
+	waitStrategy, err := ParseAsyncWaitStrategy(config.WaitStrategy)
+	if err != nil {
+		return nil, fmt.Errorf("goark-log: async appender %q: %w", config.Name, err)
+	}
+	options = append(options, WithAsyncWaitStrategy(waitStrategy))
 	if config.QueueSize != 0 {
 		options = append(options, WithAsyncQueueSize(config.QueueSize))
 	}

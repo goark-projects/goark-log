@@ -46,6 +46,8 @@ type appenderConfig struct {
 	QueueSizeKebab        int           `yaml:"queue-size"`
 	OverflowStrategy      string        `yaml:"overflowStrategy"`
 	OverflowStrategyKebab string        `yaml:"overflow-strategy"`
+	WaitStrategy          string        `yaml:"waitStrategy"`
+	WaitStrategyKebab     string        `yaml:"wait-strategy"`
 	BufferSize            string        `yaml:"bufferSize"`
 	BufferSizeKebab       string        `yaml:"buffer-size"`
 	FlushOnWrite          bool          `yaml:"flushOnWrite"`
@@ -168,6 +170,8 @@ type asyncLoggerConfig struct {
 	BatchSizeKebab        int    `yaml:"batch-size"`
 	OverflowStrategy      string `yaml:"overflowStrategy"`
 	OverflowStrategyKebab string `yaml:"overflow-strategy"`
+	WaitStrategy          string `yaml:"waitStrategy"`
+	WaitStrategyKebab     string `yaml:"wait-strategy"`
 }
 
 type loggerConfig struct {
@@ -486,6 +490,9 @@ func (c *fileConfig) validateAsyncLoggerConfig() error {
 	if _, err := ParseAsyncOverflowStrategy(config.overflowStrategy()); err != nil {
 		return fmt.Errorf("goark-log: asyncLogger: %w", err)
 	}
+	if _, err := ParseAsyncWaitStrategy(config.waitStrategy()); err != nil {
+		return fmt.Errorf("goark-log: asyncLogger: %w", err)
+	}
 	return nil
 }
 
@@ -624,6 +631,12 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.BufferSizeKebab, err = resolveStringLookup(lookups, c.BufferSizeKebab); err != nil {
 		return fmt.Errorf("buffer-size: %w", err)
+	}
+	if c.WaitStrategy, err = resolveStringLookup(lookups, c.WaitStrategy); err != nil {
+		return fmt.Errorf("waitStrategy: %w", err)
+	}
+	if c.WaitStrategyKebab, err = resolveStringLookup(lookups, c.WaitStrategyKebab); err != nil {
+		return fmt.Errorf("wait-strategy: %w", err)
 	}
 	if c.AppenderRefs, err = c.AppenderRefs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appenderRefs: %w", err)
@@ -899,6 +912,12 @@ func (c *asyncLoggerConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.OverflowStrategyKebab, err = resolveStringLookup(lookups, c.OverflowStrategyKebab); err != nil {
 		return fmt.Errorf("overflow-strategy: %w", err)
 	}
+	if c.WaitStrategy, err = resolveStringLookup(lookups, c.WaitStrategy); err != nil {
+		return fmt.Errorf("waitStrategy: %w", err)
+	}
+	if c.WaitStrategyKebab, err = resolveStringLookup(lookups, c.WaitStrategyKebab); err != nil {
+		return fmt.Errorf("wait-strategy: %w", err)
+	}
 	return nil
 }
 
@@ -978,7 +997,9 @@ func (c asyncLoggerConfig) empty() bool {
 		c.BatchSize == 0 &&
 		c.BatchSizeKebab == 0 &&
 		strings.TrimSpace(c.OverflowStrategy) == "" &&
-		strings.TrimSpace(c.OverflowStrategyKebab) == ""
+		strings.TrimSpace(c.OverflowStrategyKebab) == "" &&
+		strings.TrimSpace(c.WaitStrategy) == "" &&
+		strings.TrimSpace(c.WaitStrategyKebab) == ""
 }
 
 func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
@@ -990,6 +1011,7 @@ func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
 		QueueSize:        config.queueSize(),
 		BatchSize:        config.batchSize(),
 		OverflowStrategy: AsyncOverflowStrategy(config.overflowStrategy()),
+		WaitStrategy:     AsyncWaitStrategy(config.waitStrategy()),
 	}
 	if config.Enabled != nil {
 		options.Enabled = *config.Enabled
@@ -1022,6 +1044,10 @@ func (c asyncLoggerConfig) batchSize() int {
 
 func (c asyncLoggerConfig) overflowStrategy() string {
 	return firstNonBlank(c.OverflowStrategy, c.OverflowStrategyKebab)
+}
+
+func (c asyncLoggerConfig) waitStrategy() string {
+	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
 }
 
 func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {
@@ -1198,6 +1224,10 @@ func (c appenderConfig) overflowStrategy() string {
 	return c.OverflowStrategyKebab
 }
 
+func (c appenderConfig) waitStrategy() string {
+	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
+}
+
 func (c appenderConfig) bufferSize() string {
 	return firstNonBlank(c.BufferSize, c.BufferSizeKebab)
 }
@@ -1217,6 +1247,7 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		Delegates:        append([]Appender(nil), delegates...),
 		QueueSize:        c.queueSize(),
 		OverflowStrategy: c.overflowStrategy(),
+		WaitStrategy:     c.waitStrategy(),
 		BufferSize:       c.bufferSize(),
 		FlushOnWrite:     c.flushOnWrite(),
 		Rolling: RollingBuildConfig{

@@ -149,6 +149,7 @@ func TestAsyncAppender_whenCloseCalled_shouldDrainQueueAndCloseDelegateWhenEnabl
 	delegate := newRecordingAppender("delegate")
 	appender, err := NewAsyncAppender([]Appender{delegate},
 		WithAsyncQueueSize(8),
+		WithAsyncWaitStrategy(AsyncWaitYield),
 		WithAsyncCloseAppenders(true),
 	)
 	if err != nil {
@@ -165,8 +166,21 @@ func TestAsyncAppender_whenCloseCalled_shouldDrainQueueAndCloseDelegateWhenEnabl
 	if got := len(delegate.Events()); got != 5 {
 		t.Fatalf("delegate event count = %d, want 5", got)
 	}
+	events := delegate.Events()
+	if !events[len(events)-1].EndOfBatch {
+		t.Fatalf("last async appender event should be marked EndOfBatch, events=%+v", events)
+	}
 	if delegate.CloseCount() != 1 {
 		t.Fatalf("delegate CloseCount() = %d, want 1", delegate.CloseCount())
+	}
+}
+
+func TestNewAsyncAppender_whenWaitStrategyInvalid_shouldReject(t *testing.T) {
+	_, err := NewAsyncAppender([]Appender{newRecordingAppender("delegate")},
+		WithAsyncWaitStrategy("park-forever"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "wait strategy") {
+		t.Fatalf("NewAsyncAppender() error = %v, want wait strategy rejection", err)
 	}
 }
 

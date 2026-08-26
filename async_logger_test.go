@@ -35,6 +35,10 @@ func TestAsyncLogger_whenCloseCalled_shouldDrainQueuedEvents(t *testing.T) {
 	if got := len(delegate.Events()); got != 12 {
 		t.Fatalf("delegate event count = %d, want 12", got)
 	}
+	events := delegate.Events()
+	if !events[len(events)-1].EndOfBatch {
+		t.Fatalf("last async logger event should be marked EndOfBatch, events=%+v", events)
+	}
 }
 
 func TestAsyncLogger_whenAppendAfterClose_shouldReject(t *testing.T) {
@@ -208,6 +212,7 @@ asyncLogger:
   queueSize: 32
   batchSize: 8
   overflowStrategy: block
+  waitStrategy: yield
 appenders:
   file:
     type: file
@@ -253,5 +258,24 @@ root:
 	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
 	if err == nil {
 		t.Fatalf("NewConfiguredHandler() should reject invalid async logger strategy")
+	}
+}
+
+func TestNewConfigured_whenAsyncLoggerWaitStrategyInvalid_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+asyncLogger:
+  enabled: true
+  waitStrategy: park-forever
+appenders:
+  console:
+    type: console
+root:
+  level: info
+  appenderRefs: [console]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "wait strategy") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want wait strategy rejection", err)
 	}
 }

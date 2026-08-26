@@ -8,11 +8,15 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"goark.dev/goark-log/internal/disruptor"
 )
 
 const (
 	// DefaultAsyncQueueSize 是 AsyncAppender 默认有界队列长度。
 	DefaultAsyncQueueSize = 1024
+	// DefaultAsyncAppenderBatchSize 是 AsyncAppender 默认批量写出数量。
+	DefaultAsyncAppenderBatchSize = 64
 )
 
 // AsyncOverflowStrategy 定义异步队列满时的处理策略。
@@ -46,10 +50,11 @@ type AsyncAppender struct {
 	name           string
 	appenders      []Appender
 	queueSize      int
+	waitStrategy   AsyncWaitStrategy
 	strategy       AsyncOverflowStrategy
 	closeAppenders bool
 
-	queue     chan asyncEntry
+	queue     *disruptor.RingBuffer[asyncEntry]
 	closing   chan struct{}
 	done      chan struct{}
 	stateMu   sync.RWMutex
@@ -88,6 +93,13 @@ func WithAsyncOverflowStrategy(strategy AsyncOverflowStrategy) AsyncOption {
 	}
 }
 
+// WithAsyncWaitStrategy 设置异步队列等待策略。
+func WithAsyncWaitStrategy(strategy AsyncWaitStrategy) AsyncOption {
+	return func(appender *AsyncAppender) {
+		appender.waitStrategy = strategy
+	}
+}
+
 // WithAsyncCloseAppenders 设置关闭 async 时是否同时关闭下游 appender。
 func WithAsyncCloseAppenders(enabled bool) AsyncOption {
 	return func(appender *AsyncAppender) {
@@ -98,9 +110,10 @@ func WithAsyncCloseAppenders(enabled bool) AsyncOption {
 // NewAsyncAppender 创建异步 appender。
 func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppender, error) {
 	appender := &AsyncAppender{
-		name:      "async",
-		queueSize: DefaultAsyncQueueSize,
-		strategy:  AsyncOverflowBlock,
+		name:         "async",
+		queueSize:    DefaultAsyncQueueSize,
+		waitStrategy: AsyncWaitBlock,
+		strategy:     AsyncOverflowBlock,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -110,8 +123,21 @@ func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppen
 	if err := appender.validate(appenders); err != nil {
 		return nil, err
 	}
+	normalizedQueueSize, err := normalizeAsyncQueueSize(appender.queueSize, DefaultAsyncQueueSize)
+	if err != nil {
+		return nil, err
+	}
+	waitStrategy, err := ParseAsyncWaitStrategy(string(appender.waitStrategy))
+	if err != nil {
+		return nil, err
+	}
+	appender.queueSize = normalizedQueueSize
+	appender.waitStrategy = waitStrategy
 	appender.appenders = append([]Appender(nil), appenders...)
-	appender.queue = make(chan asyncEntry, appender.queueSize)
+	appender.queue, err = disruptor.NewRingBuffer[asyncEntry](appender.queueSize, newAsyncWaitStrategy(appender.waitStrategy))
+	if err != nil {
+		return nil, err
+	}
 	appender.closing = make(chan struct{})
 	appender.done = make(chan struct{})
 	appender.workers.Add(1)
@@ -225,13 +251,17 @@ func (a *AsyncAppender) validate(appenders []Appender) error {
 }
 
 func (a *AsyncAppender) enqueueBlocking(ctx context.Context, entry asyncEntry) error {
-	select {
-	case a.queue <- entry:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-a.closing:
-		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
+	for {
+		if a.queue.TryPublish(entry) {
+			return nil
+		}
+		err := a.queue.WaitWritable(ctx, a.closing)
+		if errors.Is(err, disruptor.ErrInterrupted) {
+			return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
+		}
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -239,8 +269,10 @@ func (a *AsyncAppender) enqueueOrDrop(entry asyncEntry) error {
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	case a.queue <- entry:
 	default:
+		if a.queue.TryPublish(entry) {
+			return nil
+		}
 		a.dropped.Add(1)
 	}
 	return nil
@@ -250,9 +282,10 @@ func (a *AsyncAppender) enqueueDropDebug(ctx context.Context, entry asyncEntry) 
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	case a.queue <- entry:
-		return nil
 	default:
+		if a.queue.TryPublish(entry) {
+			return nil
+		}
 		if entry.event.Level <= slog.LevelDebug {
 			a.dropped.Add(1)
 			return nil
@@ -265,39 +298,56 @@ func (a *AsyncAppender) enqueueOrSync(ctx context.Context, entry asyncEntry) err
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	case a.queue <- entry:
-		return nil
 	default:
-		return a.appendSync(ctx, entry.event)
+		if a.queue.TryPublish(entry) {
+			return nil
+		}
+		event := entry.event
+		event.EndOfBatch = true
+		return a.appendSync(ctx, event)
 	}
 }
 
 func (a *AsyncAppender) run() {
 	defer a.workers.Done()
+	batch := make([]asyncEntry, 0, min(a.queueSize, DefaultAsyncAppenderBatchSize))
 	for {
-		select {
-		case entry := <-a.queue:
-			a.appendQueued(entry.event)
-		case <-a.done:
-			a.drain()
+		if a.queue.PopBatch(&batch, cap(batch)) {
+			a.flushBatch(batch)
+			batch = batch[:0]
+			continue
+		}
+		err := a.queue.WaitReadable(context.Background(), a.done)
+		if errors.Is(err, disruptor.ErrInterrupted) {
+			a.drain(&batch)
+			a.flushBatch(batch)
 			return
 		}
 	}
 }
 
-func (a *AsyncAppender) drain() {
+func (a *AsyncAppender) drain(batch *[]asyncEntry) {
 	for {
-		select {
-		case entry := <-a.queue:
-			a.appendQueued(entry.event)
-		default:
+		if !a.queue.PopBatch(batch, cap(*batch)) {
 			return
+		}
+		if len(*batch) >= cap(*batch) {
+			a.flushBatch(*batch)
+			*batch = (*batch)[:0]
 		}
 	}
 }
 
-func (a *AsyncAppender) appendQueued(event Event) {
-	if err := a.appendSync(context.Background(), event); err != nil {
+func (a *AsyncAppender) flushBatch(batch []asyncEntry) {
+	var joined error
+	for index, entry := range batch {
+		event := entry.event
+		event.EndOfBatch = index == len(batch)-1
+		if err := a.appendSync(context.Background(), event); err != nil {
+			joined = errors.Join(joined, err)
+		}
+	}
+	if joined != nil {
 		a.failed.Add(1)
 	}
 }

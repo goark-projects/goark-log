@@ -89,6 +89,7 @@ appenders:
     appenderRefs: [file]
     queueSize: 8
     overflowStrategy: block
+    waitStrategy: sleep
 root:
   level: error
   appenderRefs: [async]
