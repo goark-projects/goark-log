@@ -48,6 +48,7 @@ type RollingBuildConfig struct {
 	FilePattern     string
 	MaxSize         string
 	Interval        string
+	CronSchedule    string
 	TimeModulate    *bool
 	OnStartup       bool
 	MaxBackups      *int
@@ -65,6 +66,8 @@ type RollingDeleteBuildConfig struct {
 	MaxDepth int
 	Glob     string
 	MaxAge   string
+	MaxCount int
+	MaxSize  string
 }
 
 // LayoutBuildConfig 是 layout 插件的构建输入。
@@ -382,6 +385,9 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 		}
 		options = append(options, WithRollingInterval(interval))
 	}
+	if strings.TrimSpace(config.Rolling.CronSchedule) != "" {
+		options = append(options, WithRollingCronSchedule(config.Rolling.CronSchedule))
+	}
 	if config.Rolling.TimeModulate != nil {
 		options = append(options, WithRollingTimeModulate(*config.Rolling.TimeModulate))
 	}
@@ -426,6 +432,7 @@ func buildRollingDeleteAction(config RollingDeleteBuildConfig) (RollingDeleteAct
 		BasePath: config.BasePath,
 		MaxDepth: config.MaxDepth,
 		Glob:     config.Glob,
+		MaxCount: config.MaxCount,
 	}
 	if strings.TrimSpace(config.MaxAge) != "" {
 		age, err := ParseRollingMaxAge(config.MaxAge)
@@ -433,6 +440,13 @@ func buildRollingDeleteAction(config RollingDeleteBuildConfig) (RollingDeleteAct
 			return RollingDeleteAction{}, err
 		}
 		action.MaxAge = age
+	}
+	if strings.TrimSpace(config.MaxSize) != "" {
+		size, err := ParseByteSize(config.MaxSize)
+		if err != nil {
+			return RollingDeleteAction{}, err
+		}
+		action.MaxSize = size
 	}
 	return action, nil
 }

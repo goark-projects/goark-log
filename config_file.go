@@ -83,6 +83,9 @@ type rollingConfig struct {
 	MaxSize              string                `yaml:"maxSize"`
 	MaxSizeKebab         string                `yaml:"max-size"`
 	Interval             string                `yaml:"interval"`
+	Cron                 string                `yaml:"cron"`
+	CronSchedule         string                `yaml:"cronSchedule"`
+	CronScheduleKebab    string                `yaml:"cron-schedule"`
 	OnStartup            bool                  `yaml:"onStartup"`
 	OnStartupKebab       bool                  `yaml:"on-startup"`
 	MaxBackups           *int                  `yaml:"maxBackups"`
@@ -108,6 +111,10 @@ type rollingPoliciesConfig struct {
 	TimeKebab                    rollingTimePolicyConfig    `yaml:"time-based-triggering-policy"`
 	TimeBasedTriggeringPolicy    rollingTimePolicyConfig    `yaml:"timeBasedTriggeringPolicy"`
 	TimeBasedTriggeringPolicyXML rollingTimePolicyConfig    `yaml:"TimeBasedTriggeringPolicy"`
+	Cron                         rollingCronPolicyConfig    `yaml:"cron"`
+	CronKebab                    rollingCronPolicyConfig    `yaml:"cron-triggering-policy"`
+	CronTriggeringPolicy         rollingCronPolicyConfig    `yaml:"cronTriggeringPolicy"`
+	CronTriggeringPolicyXML      rollingCronPolicyConfig    `yaml:"CronTriggeringPolicy"`
 	Startup                      rollingStartupPolicyConfig `yaml:"startup"`
 	StartupKebab                 rollingStartupPolicyConfig `yaml:"on-startup-triggering-policy"`
 	OnStartupTriggeringPolicy    rollingStartupPolicyConfig `yaml:"onStartupTriggeringPolicy"`
@@ -125,6 +132,14 @@ type rollingTimePolicyConfig struct {
 	Every    string `yaml:"every"`
 	Unit     string `yaml:"unit"`
 	Modulate *bool  `yaml:"modulate"`
+}
+
+type rollingCronPolicyConfig struct {
+	Schedule          string `yaml:"schedule"`
+	Cron              string `yaml:"cron"`
+	CronSchedule      string `yaml:"cronSchedule"`
+	CronKebab         string `yaml:"cron-schedule"`
+	EvaluateOnStartup bool   `yaml:"evaluateOnStartup"`
 }
 
 type rollingStartupPolicyConfig struct {
@@ -156,17 +171,25 @@ type rollingCompressionConfig struct {
 }
 
 type rollingDeleteActionConfig struct {
-	BasePath            string                          `yaml:"basePath"`
-	BasePathKebab       string                          `yaml:"base-path"`
-	MaxDepth            *int                            `yaml:"maxDepth"`
-	MaxDepthKebab       *int                            `yaml:"max-depth"`
-	Glob                string                          `yaml:"glob"`
-	Age                 string                          `yaml:"age"`
-	Async               bool                            `yaml:"async"`
-	IfFileName          rollingDeleteFileNameConfig     `yaml:"ifFileName"`
-	IfFileNameKebab     rollingDeleteFileNameConfig     `yaml:"if-file-name"`
-	IfLastModified      rollingDeleteLastModifiedConfig `yaml:"ifLastModified"`
-	IfLastModifiedKebab rollingDeleteLastModifiedConfig `yaml:"if-last-modified"`
+	BasePath                    string                              `yaml:"basePath"`
+	BasePathKebab               string                              `yaml:"base-path"`
+	MaxDepth                    *int                                `yaml:"maxDepth"`
+	MaxDepthKebab               *int                                `yaml:"max-depth"`
+	MaxCount                    *int                                `yaml:"maxCount"`
+	MaxCountKebab               *int                                `yaml:"max-count"`
+	MaxSize                     string                              `yaml:"maxSize"`
+	MaxSizeKebab                string                              `yaml:"max-size"`
+	Glob                        string                              `yaml:"glob"`
+	Age                         string                              `yaml:"age"`
+	Async                       bool                                `yaml:"async"`
+	IfFileName                  rollingDeleteFileNameConfig         `yaml:"ifFileName"`
+	IfFileNameKebab             rollingDeleteFileNameConfig         `yaml:"if-file-name"`
+	IfLastModified              rollingDeleteLastModifiedConfig     `yaml:"ifLastModified"`
+	IfLastModifiedKebab         rollingDeleteLastModifiedConfig     `yaml:"if-last-modified"`
+	IfAccumulatedFileCount      rollingDeleteAccumulatedCountConfig `yaml:"ifAccumulatedFileCount"`
+	IfAccumulatedFileCountKebab rollingDeleteAccumulatedCountConfig `yaml:"if-accumulated-file-count"`
+	IfAccumulatedFileSize       rollingDeleteAccumulatedSizeConfig  `yaml:"ifAccumulatedFileSize"`
+	IfAccumulatedFileSizeKebab  rollingDeleteAccumulatedSizeConfig  `yaml:"if-accumulated-file-size"`
 }
 
 type rollingDeleteFileNameConfig struct {
@@ -175,6 +198,14 @@ type rollingDeleteFileNameConfig struct {
 
 type rollingDeleteLastModifiedConfig struct {
 	Age string `yaml:"age"`
+}
+
+type rollingDeleteAccumulatedCountConfig struct {
+	Exceeds int `yaml:"exceeds"`
+}
+
+type rollingDeleteAccumulatedSizeConfig struct {
+	Exceeds string `yaml:"exceeds"`
 }
 
 type asyncLoggerConfig struct {
@@ -785,6 +816,15 @@ func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.Interval, err = resolveStringLookup(lookups, c.Interval); err != nil {
 		return fmt.Errorf("interval: %w", err)
 	}
+	if c.Cron, err = resolveStringLookup(lookups, c.Cron); err != nil {
+		return fmt.Errorf("cron: %w", err)
+	}
+	if c.CronSchedule, err = resolveStringLookup(lookups, c.CronSchedule); err != nil {
+		return fmt.Errorf("cronSchedule: %w", err)
+	}
+	if c.CronScheduleKebab, err = resolveStringLookup(lookups, c.CronScheduleKebab); err != nil {
+		return fmt.Errorf("cron-schedule: %w", err)
+	}
 	if c.MaxAge, err = resolveStringLookup(lookups, c.MaxAge); err != nil {
 		return fmt.Errorf("maxAge: %w", err)
 	}
@@ -823,6 +863,17 @@ func (c *rollingPoliciesConfig) resolveLookups(lookups *LookupResolver) error {
 			return err
 		}
 	}
+	cronPolicies := []*rollingCronPolicyConfig{
+		&c.Cron,
+		&c.CronKebab,
+		&c.CronTriggeringPolicy,
+		&c.CronTriggeringPolicyXML,
+	}
+	for _, policy := range cronPolicies {
+		if err := policy.resolveLookups(lookups); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -850,6 +901,23 @@ func (c *rollingTimePolicyConfig) resolveLookups(lookups *LookupResolver) error 
 	}
 	if c.Unit, err = resolveStringLookup(lookups, c.Unit); err != nil {
 		return fmt.Errorf("unit: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingCronPolicyConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Schedule, err = resolveStringLookup(lookups, c.Schedule); err != nil {
+		return fmt.Errorf("schedule: %w", err)
+	}
+	if c.Cron, err = resolveStringLookup(lookups, c.Cron); err != nil {
+		return fmt.Errorf("cron: %w", err)
+	}
+	if c.CronSchedule, err = resolveStringLookup(lookups, c.CronSchedule); err != nil {
+		return fmt.Errorf("cronSchedule: %w", err)
+	}
+	if c.CronKebab, err = resolveStringLookup(lookups, c.CronKebab); err != nil {
+		return fmt.Errorf("cron-schedule: %w", err)
 	}
 	return nil
 }
@@ -898,6 +966,12 @@ func (c *rollingDeleteActionConfig) resolveLookups(lookups *LookupResolver) erro
 	if c.Age, err = resolveStringLookup(lookups, c.Age); err != nil {
 		return fmt.Errorf("age: %w", err)
 	}
+	if c.MaxSize, err = resolveStringLookup(lookups, c.MaxSize); err != nil {
+		return fmt.Errorf("maxSize: %w", err)
+	}
+	if c.MaxSizeKebab, err = resolveStringLookup(lookups, c.MaxSizeKebab); err != nil {
+		return fmt.Errorf("max-size: %w", err)
+	}
 	if err := c.IfFileName.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("ifFileName: %w", err)
 	}
@@ -909,6 +983,12 @@ func (c *rollingDeleteActionConfig) resolveLookups(lookups *LookupResolver) erro
 	}
 	if err := c.IfLastModifiedKebab.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("if-last-modified: %w", err)
+	}
+	if err := c.IfAccumulatedFileSize.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("ifAccumulatedFileSize: %w", err)
+	}
+	if err := c.IfAccumulatedFileSizeKebab.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("if-accumulated-file-size: %w", err)
 	}
 	return nil
 }
@@ -925,6 +1005,14 @@ func (c *rollingDeleteLastModifiedConfig) resolveLookups(lookups *LookupResolver
 	var err error
 	if c.Age, err = resolveStringLookup(lookups, c.Age); err != nil {
 		return fmt.Errorf("age: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingDeleteAccumulatedSizeConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Exceeds, err = resolveStringLookup(lookups, c.Exceeds); err != nil {
+		return fmt.Errorf("exceeds: %w", err)
 	}
 	return nil
 }
@@ -1463,6 +1551,7 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 			FilePattern:     c.Rolling.filePattern(),
 			MaxSize:         c.Rolling.maxSize(),
 			Interval:        c.Rolling.interval(),
+			CronSchedule:    c.Rolling.cronSchedule(),
 			TimeModulate:    c.Rolling.timeModulate(),
 			OnStartup:       c.Rolling.onStartup(),
 			MaxBackups:      c.Rolling.maxBackupsPointer(),
@@ -1495,6 +1584,13 @@ func (c rollingConfig) interval() string {
 		return value
 	}
 	return strings.TrimSpace(c.Interval)
+}
+
+func (c rollingConfig) cronSchedule() string {
+	if value := c.Policies.cronPolicy().schedule(); value != "" {
+		return value
+	}
+	return firstNonBlank(c.CronSchedule, c.CronScheduleKebab, c.Cron)
 }
 
 func (c rollingConfig) timeModulate() *bool {
@@ -1640,6 +1736,20 @@ func (c rollingPoliciesConfig) timePolicy() rollingTimePolicyConfig {
 	return rollingTimePolicyConfig{}
 }
 
+func (c rollingPoliciesConfig) cronPolicy() rollingCronPolicyConfig {
+	for _, policy := range []rollingCronPolicyConfig{
+		c.Cron,
+		c.CronKebab,
+		c.CronTriggeringPolicy,
+		c.CronTriggeringPolicyXML,
+	} {
+		if !policy.empty() {
+			return policy
+		}
+	}
+	return rollingCronPolicyConfig{}
+}
+
 func (c rollingPoliciesConfig) startupPolicy() rollingStartupPolicyConfig {
 	for _, policy := range []rollingStartupPolicyConfig{
 		c.Startup,
@@ -1673,11 +1783,23 @@ func (c rollingTimePolicyConfig) interval() string {
 	return strings.TrimSpace(firstNonBlank(c.Interval, c.Every)) + strings.TrimSpace(c.Unit)
 }
 
+func (c rollingCronPolicyConfig) empty() bool {
+	return c.schedule() == ""
+}
+
+func (c rollingCronPolicyConfig) schedule() string {
+	return firstNonBlank(c.Schedule, c.CronSchedule, c.CronKebab, c.Cron)
+}
+
 func (c rollingDeleteActionConfig) empty() bool {
 	return firstNonBlank(c.BasePath, c.BasePathKebab, c.Glob, c.Age,
 		c.IfFileName.Glob, c.IfFileNameKebab.Glob,
-		c.IfLastModified.Age, c.IfLastModifiedKebab.Age) == "" &&
-		c.MaxDepth == nil && c.MaxDepthKebab == nil
+		c.IfLastModified.Age, c.IfLastModifiedKebab.Age,
+		c.MaxSize, c.MaxSizeKebab,
+		c.IfAccumulatedFileSize.Exceeds, c.IfAccumulatedFileSizeKebab.Exceeds) == "" &&
+		c.MaxDepth == nil && c.MaxDepthKebab == nil &&
+		c.MaxCount == nil && c.MaxCountKebab == nil &&
+		c.IfAccumulatedFileCount.Exceeds == 0 && c.IfAccumulatedFileCountKebab.Exceeds == 0
 }
 
 func (c rollingDeleteActionConfig) build(defaultBase string) RollingDeleteBuildConfig {
@@ -1685,11 +1807,21 @@ func (c rollingDeleteActionConfig) build(defaultBase string) RollingDeleteBuildC
 		BasePath: firstNonBlank(c.BasePath, c.BasePathKebab, defaultBase),
 		Glob:     firstNonBlank(c.Glob, c.IfFileName.Glob, c.IfFileNameKebab.Glob),
 		MaxAge:   firstNonBlank(c.Age, c.IfLastModified.Age, c.IfLastModifiedKebab.Age),
+		MaxSize:  firstNonBlank(c.MaxSize, c.MaxSizeKebab, c.IfAccumulatedFileSize.Exceeds, c.IfAccumulatedFileSizeKebab.Exceeds),
 	}
 	if c.MaxDepth != nil {
 		config.MaxDepth = *c.MaxDepth
 	} else if c.MaxDepthKebab != nil {
 		config.MaxDepth = *c.MaxDepthKebab
+	}
+	if c.MaxCount != nil {
+		config.MaxCount = *c.MaxCount
+	} else if c.MaxCountKebab != nil {
+		config.MaxCount = *c.MaxCountKebab
+	} else if c.IfAccumulatedFileCount.Exceeds > 0 {
+		config.MaxCount = c.IfAccumulatedFileCount.Exceeds
+	} else if c.IfAccumulatedFileCountKebab.Exceeds > 0 {
+		config.MaxCount = c.IfAccumulatedFileCountKebab.Exceeds
 	}
 	return config
 }

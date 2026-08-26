@@ -38,6 +38,8 @@ type RollingFileAppender struct {
 	flushOnWrite      bool
 	maxSize           int64
 	interval          time.Duration
+	cronExpression    string
+	cron              *cronSchedule
 	modulate          bool
 	rolloverOnStartup bool
 	maxBackups        int
@@ -53,6 +55,7 @@ type RollingFileAppender struct {
 	writer       *bufio.Writer
 	size         int64
 	nextRollover time.Time
+	nextCron     time.Time
 	archiveIndex int
 	closed       bool
 
@@ -72,6 +75,8 @@ type RollingDeleteAction struct {
 	MaxDepth int
 	Glob     string
 	MaxAge   time.Duration
+	MaxCount int
+	MaxSize  int64
 }
 
 // WithRollingFileName 设置 appender 名称。
@@ -113,6 +118,13 @@ func WithRollingMaxSize(bytes int64) RollingFileOption {
 func WithRollingInterval(interval time.Duration) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.interval = interval
+	}
+}
+
+// WithRollingCronSchedule 设置 cron 触发滚动表达式。
+func WithRollingCronSchedule(expression string) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.cronExpression = strings.TrimSpace(expression)
 	}
 }
 
@@ -321,6 +333,13 @@ func (a *RollingFileAppender) validate() error {
 	if a.interval < 0 {
 		return fmt.Errorf("goark-log: rolling interval must be >= 0")
 	}
+	if strings.TrimSpace(a.cronExpression) != "" {
+		cron, err := parseCronSchedule(a.cronExpression)
+		if err != nil {
+			return fmt.Errorf("goark-log: rolling cron schedule %q is invalid: %w", a.cronExpression, err)
+		}
+		a.cron = cron
+	}
 	if a.maxBackups < 0 {
 		return fmt.Errorf("goark-log: rolling max backups must be >= 0")
 	}
@@ -355,7 +374,7 @@ func (a *RollingFileAppender) validate() error {
 			return fmt.Errorf("goark-log: rolling filePattern must not resolve to active log file %q", a.path)
 		}
 	}
-	if a.maxSize == 0 && a.interval == 0 && !a.rolloverOnStartup {
+	if a.maxSize == 0 && a.interval == 0 && a.cron == nil && !a.rolloverOnStartup {
 		return fmt.Errorf("goark-log: rolling policy is empty")
 	}
 	if a.clock == nil {
@@ -380,6 +399,7 @@ func (a *RollingFileAppender) open() error {
 	}
 	a.size = info.Size()
 	a.nextRollover = nextRolloverAfter(a.now(), a.interval, a.modulate)
+	a.nextCron = nextCronRolloverAfter(a.now(), a.cron)
 	if err := a.initArchiveIndex(); err != nil {
 		_ = file.Close()
 		a.file = nil
@@ -394,6 +414,9 @@ func (a *RollingFileAppender) now() time.Time {
 
 func (a *RollingFileAppender) shouldRollover(now time.Time, pendingBytes int64) bool {
 	if a.interval > 0 && !a.nextRollover.IsZero() && !now.Before(a.nextRollover) {
+		return true
+	}
+	if a.cron != nil && !a.nextCron.IsZero() && !now.Before(a.nextCron) {
 		return true
 	}
 	return a.maxSize > 0 && a.size > 0 && a.size+pendingBytes > a.maxSize
@@ -430,6 +453,7 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 	}
 	a.size = 0
 	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = nextCronRolloverAfter(now, a.cron)
 	return a.runRolloverActions(now, target, archiveIndex)
 }
 
@@ -873,6 +897,14 @@ func nextRolloverAfter(now time.Time, interval time.Duration, modulate bool) tim
 	return truncated.Add(interval)
 }
 
+func nextCronRolloverAfter(now time.Time, cron *cronSchedule) time.Time {
+	next, ok := cron.next(now)
+	if !ok {
+		return time.Time{}
+	}
+	return next
+}
+
 func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteAction, error) {
 	action.BasePath = strings.TrimSpace(action.BasePath)
 	if action.BasePath == "" {
@@ -894,6 +926,12 @@ func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteActi
 	}
 	if action.MaxAge < 0 {
 		return RollingDeleteAction{}, fmt.Errorf("maxAge must be >= 0")
+	}
+	if action.MaxCount < 0 {
+		return RollingDeleteAction{}, fmt.Errorf("maxCount must be >= 0")
+	}
+	if action.MaxSize < 0 {
+		return RollingDeleteAction{}, fmt.Errorf("maxSize must be >= 0")
 	}
 	return action, nil
 }
@@ -989,6 +1027,11 @@ func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
 }
 
 func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
+	var err error
+	action, err = normalizeRollingDeleteAction(action)
+	if err != nil {
+		return err
+	}
 	info, err := os.Stat(action.BasePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -1003,7 +1046,8 @@ func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
 	if action.MaxAge > 0 {
 		cutoff = now.Add(-action.MaxAge)
 	}
-	return filepath.WalkDir(action.BasePath, func(path string, entry fs.DirEntry, walkErr error) error {
+	candidates := make([]deleteCandidate, 0, 16)
+	if err := filepath.WalkDir(action.BasePath, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -1031,14 +1075,75 @@ func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
 		if err != nil {
 			return err
 		}
-		if !cutoff.IsZero() && !info.ModTime().Before(cutoff) {
-			return nil
-		}
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
+		candidates = append(candidates, deleteCandidate{
+			path:    path,
+			name:    filepath.ToSlash(path),
+			modTime: info.ModTime(),
+			size:    info.Size(),
+		})
 		return nil
+	}); err != nil {
+		return err
+	}
+	return deleteArchiveCandidates(candidates, cutoff, action.MaxCount, action.MaxSize)
+}
+
+type deleteCandidate struct {
+	path    string
+	name    string
+	modTime time.Time
+	size    int64
+}
+
+func deleteArchiveCandidates(candidates []deleteCandidate, cutoff time.Time, maxCount int, maxSize int64) error {
+	if len(candidates) == 0 {
+		return nil
+	}
+	deleteSet := make(map[string]struct{}, len(candidates))
+	if !cutoff.IsZero() {
+		for _, candidate := range candidates {
+			if candidate.modTime.Before(cutoff) {
+				deleteSet[candidate.path] = struct{}{}
+			}
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].modTime.Equal(candidates[j].modTime) {
+			return candidates[i].name > candidates[j].name
+		}
+		return candidates[i].modTime.After(candidates[j].modTime)
 	})
+	if maxCount > 0 {
+		for index, candidate := range candidates {
+			if index >= maxCount {
+				deleteSet[candidate.path] = struct{}{}
+			}
+		}
+	}
+	if maxSize > 0 {
+		var accumulated int64
+		for _, candidate := range candidates {
+			accumulated += candidate.size
+			if accumulated > maxSize {
+				deleteSet[candidate.path] = struct{}{}
+			}
+		}
+	}
+	if len(deleteSet) == 0 {
+		return nil
+	}
+	var joined error
+	paths := make([]string, 0, len(deleteSet))
+	for path := range deleteSet {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			joined = errors.Join(joined, err)
+		}
+	}
+	return joined
 }
 
 func relativeDepth(basePath string, path string) int {

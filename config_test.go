@@ -599,6 +599,27 @@ root:
 	}
 }
 
+func TestNewConfigured_whenRollingCronScheduleInvalid_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  rolling:
+    type: rollingFile
+    fileName: app.log
+    rolling:
+      policies:
+        cron:
+          schedule: "0 0 24 * * *"
+root:
+  level: info
+  appenderRefs: [rolling]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "cron schedule") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want cron schedule rejection", err)
+	}
+}
+
 func TestNewConfigured_whenAppenderRefBlank_shouldReject(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
 	writeConfig(t, configPath, `

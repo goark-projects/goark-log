@@ -212,6 +212,24 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Rolling.MaxSize = value
 	case "rolling.interval":
 		appender.Rolling.Interval = value
+	case "rolling.cron", "rolling.cronSchedule", "rolling.cron-schedule", "rolling.policies.cron.schedule", "rolling.policies.cronTriggeringPolicy.schedule", "rolling.policies.cron-triggering-policy.schedule":
+		appender.Rolling.CronSchedule = value
+	case "rolling.strategy.delete.maxCount", "rolling.strategy.delete.max-count":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		appender.Rolling.Strategy.Delete.MaxCount = &parsed
+	case "rolling.strategy.delete.maxSize", "rolling.strategy.delete.max-size":
+		appender.Rolling.Strategy.Delete.MaxSize = value
+	case "rolling.strategy.delete.ifAccumulatedFileCount.exceeds", "rolling.strategy.delete.if-accumulated-file-count.exceeds":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		appender.Rolling.Strategy.Delete.IfAccumulatedFileCount.Exceeds = parsed
+	case "rolling.strategy.delete.ifAccumulatedFileSize.exceeds", "rolling.strategy.delete.if-accumulated-file-size.exceeds":
+		appender.Rolling.Strategy.Delete.IfAccumulatedFileSize.Exceeds = value
 	}
 	config.Appenders[id] = appender
 	return nil

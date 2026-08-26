@@ -87,6 +87,7 @@ type xmlFilterRef struct {
 type xmlRollingPolicies struct {
 	Size    xmlRollingSizePolicy `xml:"SizeBasedTriggeringPolicy"`
 	Time    xmlRollingTimePolicy `xml:"TimeBasedTriggeringPolicy"`
+	Cron    xmlRollingCronPolicy `xml:"CronTriggeringPolicy"`
 	Startup xmlRollingStartup    `xml:"OnStartupTriggeringPolicy"`
 }
 
@@ -99,12 +100,46 @@ type xmlRollingTimePolicy struct {
 	Modulate string `xml:"modulate,attr"`
 }
 
+type xmlRollingCronPolicy struct {
+	Schedule string `xml:"schedule,attr"`
+}
+
 type xmlRollingStartup struct {
 	Enabled string `xml:"enabled,attr"`
 }
 
 type xmlRollingStrategy struct {
-	Max string `xml:"max,attr"`
+	Max    string                 `xml:"max,attr"`
+	Delete xmlRollingDeleteAction `xml:"Delete"`
+}
+
+type xmlRollingDeleteAction struct {
+	BasePath               string                           `xml:"basePath,attr"`
+	MaxDepth               string                           `xml:"maxDepth,attr"`
+	MaxCount               string                           `xml:"maxCount,attr"`
+	MaxSize                string                           `xml:"maxSize,attr"`
+	Glob                   string                           `xml:"glob,attr"`
+	Age                    string                           `xml:"age,attr"`
+	IfFileName             xmlRollingDeleteFileName         `xml:"IfFileName"`
+	IfLastModified         xmlRollingDeleteLastModified     `xml:"IfLastModified"`
+	IfAccumulatedFileCount xmlRollingDeleteAccumulatedCount `xml:"IfAccumulatedFileCount"`
+	IfAccumulatedFileSize  xmlRollingDeleteAccumulatedSize  `xml:"IfAccumulatedFileSize"`
+}
+
+type xmlRollingDeleteFileName struct {
+	Glob string `xml:"glob,attr"`
+}
+
+type xmlRollingDeleteLastModified struct {
+	Age string `xml:"age,attr"`
+}
+
+type xmlRollingDeleteAccumulatedCount struct {
+	Exceeds string `xml:"exceeds,attr"`
+}
+
+type xmlRollingDeleteAccumulatedSize struct {
+	Exceeds string `xml:"exceeds,attr"`
 }
 
 type xmlFilters struct {
@@ -354,12 +389,16 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 					Interval: a.Policies.Time.Interval,
 					Modulate: parseXMLBoolPointer(a.Policies.Time.Modulate),
 				},
+				CronTriggeringPolicy: rollingCronPolicyConfig{
+					Schedule: a.Policies.Cron.Schedule,
+				},
 				OnStartupTriggeringPolicy: rollingStartupPolicyConfig{
 					Enabled: parseXMLBoolPointer(a.Policies.Startup.Enabled),
 				},
 			},
 			Strategy: rollingStrategyConfig{
-				Max: parseXMLIntPointer(a.Strategy.Max),
+				Max:    parseXMLIntPointer(a.Strategy.Max),
+				Delete: a.Strategy.Delete.config(),
 			},
 		},
 	}
@@ -444,6 +483,29 @@ func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
 		OverflowStrategy: c.OverflowStrategy,
 		WaitStrategy:     c.WaitStrategy,
 	}, nil
+}
+
+func (a xmlRollingDeleteAction) config() rollingDeleteActionConfig {
+	return rollingDeleteActionConfig{
+		BasePath: a.BasePath,
+		MaxDepth: parseXMLIntPointer(a.MaxDepth),
+		MaxCount: parseXMLIntPointer(a.MaxCount),
+		MaxSize:  a.MaxSize,
+		Glob:     firstNonBlank(a.Glob, a.IfFileName.Glob),
+		Age:      firstNonBlank(a.Age, a.IfLastModified.Age),
+		IfFileName: rollingDeleteFileNameConfig{
+			Glob: a.IfFileName.Glob,
+		},
+		IfLastModified: rollingDeleteLastModifiedConfig{
+			Age: a.IfLastModified.Age,
+		},
+		IfAccumulatedFileCount: rollingDeleteAccumulatedCountConfig{
+			Exceeds: parseXMLIntValue(a.IfAccumulatedFileCount.Exceeds),
+		},
+		IfAccumulatedFileSize: rollingDeleteAccumulatedSizeConfig{
+			Exceeds: a.IfAccumulatedFileSize.Exceeds,
+		},
+	}
 }
 
 func (l xmlLogger) config(named bool) (loggerConfig, error) {
@@ -544,6 +606,14 @@ func parseXMLIntPointer(value string) *int {
 		return nil
 	}
 	return &parsed
+}
+
+func parseXMLIntValue(value string) int {
+	parsed, err := parseXMLInt(value, "")
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 func parseXMLBool(value string, field string) (bool, error) {
