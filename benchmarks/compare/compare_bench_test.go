@@ -1,0 +1,205 @@
+package compare
+
+import (
+	"bufio"
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	goarklog "goark.dev/goark-log"
+)
+
+func BenchmarkCompareDiscard(b *testing.B) {
+	b.Run("goark-logattrs-json", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewConsoleAppender(
+					goarklog.WithConsoleWriter(io.Discard),
+					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+				),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger := goarklog.NewLogger(handler, "bench.compare")
+		benchmarkGoarkLogAttrs(b, logger)
+	})
+
+	b.Run("goark-info-json", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewConsoleAppender(
+					goarklog.WithConsoleWriter(io.Discard),
+					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+				),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger := goarklog.NewLogger(handler, "bench.compare")
+		benchmarkGoarkInfo(b, logger)
+	})
+
+	b.Run("zap-json", func(b *testing.B) {
+		logger := newZapLogger(io.Discard)
+		defer logger.Sync()
+		benchmarkZap(b, logger)
+	})
+
+	b.Run("zerolog-json", func(b *testing.B) {
+		logger := zerolog.New(io.Discard)
+		benchmarkZerolog(b, logger)
+	})
+}
+
+func BenchmarkCompareBufferedFile(b *testing.B) {
+	b.Run("goark-file-json", func(b *testing.B) {
+		appender, err := goarklog.NewFileAppender(
+			filePath(b, "goark.log"),
+			goarklog.WithFileLayout(goarklog.JSONLayout{}),
+			goarklog.WithFileBufferSize(256*1024),
+		)
+		if err != nil {
+			b.Fatalf("NewFileAppender() error = %v", err)
+		}
+		defer appender.Close()
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{appender},
+			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger := goarklog.NewLogger(handler, "bench.compare")
+		benchmarkGoarkLogAttrs(b, logger)
+	})
+
+	b.Run("goark-rolling-json", func(b *testing.B) {
+		appender, err := goarklog.NewRollingFileAppender(
+			filePath(b, "goark-rolling.log"),
+			goarklog.WithRollingFileLayout(goarklog.JSONLayout{}),
+			goarklog.WithRollingFileBufferSize(256*1024),
+			goarklog.WithRollingMaxSize(1<<62),
+			goarklog.WithRollingMaxBackups(1),
+		)
+		if err != nil {
+			b.Fatalf("NewRollingFileAppender() error = %v", err)
+		}
+		defer appender.Close()
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{appender},
+			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"rollingFile"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger := goarklog.NewLogger(handler, "bench.compare")
+		benchmarkGoarkLogAttrs(b, logger)
+	})
+
+	b.Run("zap-json", func(b *testing.B) {
+		writer, closeWriter := bufferedFileWriter(b, "zap.log")
+		defer closeWriter()
+		logger := newZapLogger(writer)
+		defer logger.Sync()
+		benchmarkZap(b, logger)
+	})
+
+	b.Run("zerolog-json", func(b *testing.B) {
+		writer, closeWriter := bufferedFileWriter(b, "zerolog.log")
+		defer closeWriter()
+		logger := zerolog.New(writer)
+		benchmarkZerolog(b, logger)
+	})
+}
+
+func benchmarkGoarkLogAttrs(b *testing.B, logger *slog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		logger.LogAttrs(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", index),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		)
+	}
+}
+
+func benchmarkGoarkInfo(b *testing.B, logger *slog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		logger.Info("event",
+			slog.String("profile", "bench"),
+			slog.Int("index", index),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		)
+	}
+}
+
+func benchmarkZap(b *testing.B, logger *zap.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		logger.Info("event",
+			zap.String("profile", "bench"),
+			zap.Int("index", index),
+			zap.Duration("elapsed", 10*time.Millisecond),
+		)
+	}
+}
+
+func benchmarkZerolog(b *testing.B, logger zerolog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		logger.Info().
+			Str("profile", "bench").
+			Int("index", index).
+			Dur("elapsed", 10*time.Millisecond).
+			Msg("event")
+	}
+}
+
+func newZapLogger(writer io.Writer) *zap.Logger {
+	config := zap.NewProductionEncoderConfig()
+	core := zapcore.NewCore(zapcore.NewJSONEncoder(config), zapcore.AddSync(writer), zapcore.InfoLevel)
+	return zap.New(core)
+}
+
+func bufferedFileWriter(b *testing.B, name string) (io.Writer, func()) {
+	b.Helper()
+	file, err := os.Create(filePath(b, name))
+	if err != nil {
+		b.Fatalf("Create(%s) error = %v", name, err)
+	}
+	writer := bufio.NewWriterSize(file, 256*1024)
+	return writer, func() {
+		if err := writer.Flush(); err != nil {
+			b.Fatalf("Flush(%s) error = %v", name, err)
+		}
+		if err := file.Close(); err != nil {
+			b.Fatalf("Close(%s) error = %v", name, err)
+		}
+	}
+}
+
+func filePath(b *testing.B, name string) string {
+	b.Helper()
+	return filepath.Join(b.TempDir(), name)
+}

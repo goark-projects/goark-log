@@ -177,3 +177,10 @@ go test -run '^$' -bench . -benchmem ./...
 variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayout` 对常见
 `slog` 基础类型保持低分配编码；文件类 appender 默认启用缓冲写入，延迟敏感场景再打开
 `flushOnWrite`。
+
+和 zap、zerolog 的对标基准放在独立子模块，避免核心库引入额外依赖：
+
+```bash
+cd benchmarks/compare
+go test -run '^$' -bench . -benchmem
+```
