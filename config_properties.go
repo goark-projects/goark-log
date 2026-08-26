@@ -467,6 +467,12 @@ func applyLayoutProperty(config *layoutConfig, key string, value string) error {
 			return err
 		}
 		config.IncludeNullDelimiter = parsed
+	case "disableAnsi", "disable-ansi":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.DisableANSI = parsed
 	case "header":
 		config.Header = value
 	case "footer":

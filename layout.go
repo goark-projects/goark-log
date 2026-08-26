@@ -25,6 +25,7 @@ const (
 
 var processIDString = strconv.Itoa(os.Getpid())
 var patternSequence atomic.Uint64
+var patternStartTime = time.Now()
 
 // Layout 把日志事件编码为字节。
 type Layout interface {
@@ -178,7 +179,8 @@ func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, l
 
 // PatternLayout 支持 Log4j2 风格的基础占位符子集。
 type PatternLayout struct {
-	tokens []patternToken
+	tokens  []patternToken
+	options LayoutOptions
 }
 
 type patternToken struct {
@@ -221,6 +223,8 @@ const (
 	tokenCallerLine
 	tokenCallerLocation
 	tokenUUID
+	tokenRelative
+	tokenHost
 	tokenSubPattern
 	tokenHighlight
 	tokenStyle
@@ -245,14 +249,19 @@ const (
 
 // NewPatternLayout 编译 pattern，避免热路径反复解析。
 func NewPatternLayout(pattern string) (*PatternLayout, error) {
+	return NewPatternLayoutWithOptions(pattern, LayoutOptions{})
+}
+
+// NewPatternLayoutWithOptions 使用指定布局参数编译 pattern。
+func NewPatternLayoutWithOptions(pattern string, options LayoutOptions) (*PatternLayout, error) {
 	if strings.TrimSpace(pattern) == "" {
 		pattern = DefaultSpringBootPattern
 	}
-	tokens, err := compilePattern(pattern)
+	tokens, err := compilePattern(pattern, options)
 	if err != nil {
 		return nil, err
 	}
-	return &PatternLayout{tokens: tokens}, nil
+	return &PatternLayout{tokens: tokens, options: options}, nil
 }
 
 func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
@@ -261,12 +270,12 @@ func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
 	}
 	var caller callerCache
 	for _, token := range l.tokens {
-		appendPatternToken(buf, token, event, &caller)
+		appendPatternToken(buf, token, event, &caller, l.options)
 	}
 	return nil
 }
 
-func compilePattern(pattern string) ([]patternToken, error) {
+func compilePattern(pattern string, options LayoutOptions) ([]patternToken, error) {
 	tokens := make([]patternToken, 0, 16)
 	for len(pattern) > 0 {
 		index := strings.IndexByte(pattern, '%')
@@ -279,7 +288,7 @@ func compilePattern(pattern string) ([]patternToken, error) {
 			pattern = pattern[index:]
 			continue
 		}
-		token, size, err := readPatternToken(pattern)
+		token, size, err := readPatternToken(pattern, options)
 		if err != nil {
 			return nil, err
 		}
@@ -289,7 +298,7 @@ func compilePattern(pattern string) ([]patternToken, error) {
 	return tokens, nil
 }
 
-func readPatternToken(pattern string) (patternToken, int, error) {
+func readPatternToken(pattern string, layoutOptions LayoutOptions) (patternToken, int, error) {
 	if strings.HasPrefix(pattern, "%%") {
 		return patternToken{kind: tokenLiteral, literal: "%"}, 2, nil
 	}
@@ -333,7 +342,7 @@ func readPatternToken(pattern string) (patternToken, int, error) {
 			index = next
 		}
 	}
-	if err := configurePatternToken(&token, converter, options); err != nil {
+	if err := configurePatternToken(&token, converter, options, layoutOptions); err != nil {
 		return patternToken{}, 0, err
 	}
 	return token, index, nil
@@ -355,7 +364,7 @@ func readPatternOption(pattern string, start int) (string, int, error) {
 	return "", 0, fmt.Errorf("goark-log: pattern option is not closed near %q", pattern[start:])
 }
 
-func configurePatternToken(token *patternToken, converter string, options []string) error {
+func configurePatternToken(token *patternToken, converter string, options []string, layoutOptions LayoutOptions) error {
 	normalized := strings.ToLower(converter)
 	option := firstPatternOption(options)
 	switch {
@@ -403,17 +412,21 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.kind = tokenNewline
 	case normalized == "uuid":
 		token.kind = tokenUUID
+	case normalized == "relative" || normalized == "r":
+		token.kind = tokenRelative
+	case normalized == "host" || normalized == "hostname":
+		token.kind = tokenHost
 	case normalized == "sequencenumber" || normalized == "sn":
 		token.kind = tokenSequence
 	case normalized == "highlight":
-		child, err := NewPatternLayout(option)
+		child, err := NewPatternLayoutWithOptions(option, layoutOptions)
 		if err != nil {
 			return err
 		}
 		token.kind = tokenHighlight
 		token.child = child
 	case normalized == "style":
-		child, err := NewPatternLayout(option)
+		child, err := NewPatternLayoutWithOptions(option, layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -421,7 +434,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.child = child
 		token.value = patternOption(options, 1)
 	case normalized == "notempty":
-		child, err := NewPatternLayout(option)
+		child, err := NewPatternLayoutWithOptions(option, layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -431,7 +444,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		if len(options) < 3 {
 			return fmt.Errorf("goark-log: replace pattern converter requires pattern, regex and replacement")
 		}
-		child, err := NewPatternLayout(options[0])
+		child, err := NewPatternLayoutWithOptions(options[0], layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -444,7 +457,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.regex = expression
 		token.repl = options[2]
 	case normalized == "enc" || normalized == "encode":
-		child, err := NewPatternLayout(option)
+		child, err := NewPatternLayoutWithOptions(option, layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -455,7 +468,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		if len(options) < 3 {
 			return fmt.Errorf("goark-log: %s pattern converter requires pattern, test and substitution", converter)
 		}
-		child, err := NewPatternLayout(options[0])
+		child, err := NewPatternLayoutWithOptions(options[0], layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -468,7 +481,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		if len(options) < 2 {
 			return fmt.Errorf("goark-log: maxLen pattern converter requires pattern and length")
 		}
-		child, err := NewPatternLayout(options[0])
+		child, err := NewPatternLayoutWithOptions(options[0], layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -483,7 +496,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		if len(options) < 2 {
 			return fmt.Errorf("goark-log: repeat pattern converter requires pattern and count")
 		}
-		child, err := NewPatternLayout(options[0])
+		child, err := NewPatternLayoutWithOptions(options[0], layoutOptions)
 		if err != nil {
 			return err
 		}
@@ -500,7 +513,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 	return nil
 }
 
-func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callerCache) {
+func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callerCache, options LayoutOptions) {
 	if token.kind == tokenLiteral {
 		buf.WriteString(token.literal)
 		return
@@ -521,7 +534,15 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, call
 		buf.WriteString(processIDString)
 		return
 	}
-	value := patternTokenString(token, event, caller)
+	if token.kind == tokenRelative && token.minWidth == 0 && token.maxWidth == 0 {
+		appendPatternRelative(buf)
+		return
+	}
+	if token.kind == tokenHost && token.minWidth == 0 && token.maxWidth == 0 {
+		buf.WriteString(hostNameString)
+		return
+	}
+	value := patternTokenString(token, event, caller, options)
 	appendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
 }
 
@@ -544,7 +565,7 @@ func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
 	}
 }
 
-func patternTokenString(token patternToken, event Event, caller *callerCache) string {
+func patternTokenString(token patternToken, event Event, caller *callerCache, options LayoutOptions) string {
 	switch token.kind {
 	case tokenTime:
 		when := event.Time
@@ -607,13 +628,23 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 		return caller.resolve(event).location()
 	case tokenUUID:
 		return newPatternUUID()
+	case tokenRelative:
+		return patternRelativeString()
+	case tokenHost:
+		return hostNameString
 	case tokenSequence:
 		return strconv.FormatUint(patternSequence.Add(1), 10)
 	case tokenSubPattern:
 		return formatChildPattern(token.child, event)
 	case tokenHighlight:
+		if options.DisableANSI {
+			return formatChildPattern(token.child, event)
+		}
 		return applyANSIStyle(formatChildPattern(token.child, event), highlightStyle(event.Level))
 	case tokenStyle:
+		if options.DisableANSI {
+			return formatChildPattern(token.child, event)
+		}
 		return applyANSIStyle(formatChildPattern(token.child, event), token.value)
 	case tokenNotEmpty:
 		value := formatChildPattern(token.child, event)
@@ -683,6 +714,22 @@ func formatChildPattern(layout *PatternLayout, event Event) string {
 		return ""
 	}
 	return buf.String()
+}
+
+func appendPatternRelative(buf *bytes.Buffer) {
+	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), patternRelativeMillis(), 10))
+}
+
+func patternRelativeString() string {
+	return strconv.FormatInt(patternRelativeMillis(), 10)
+}
+
+func patternRelativeMillis() int64 {
+	elapsed := time.Since(patternStartTime).Milliseconds()
+	if elapsed < 0 {
+		return 0
+	}
+	return elapsed
 }
 
 func newPatternUUID() string {
@@ -836,11 +883,15 @@ func eventErrorString(event Event) string {
 }
 
 func eventErrorStringWithOption(event Event, option string) string {
+	option = strings.ToLower(strings.TrimSpace(option))
+	if option == "none" {
+		return ""
+	}
 	if event.Throwable != nil {
-		if option == "short" {
-			return event.Throwable.Message
-		}
-		return event.Throwable.String()
+		return throwableStringWithPatternOption(event.Throwable, option)
+	}
+	if throwable := throwableFromAttrs(event.Attrs); throwable != nil {
+		return throwableStringWithPatternOption(throwable, option)
 	}
 	for _, key := range []string{"error", "err"} {
 		value, ok := event.Attr(key)
@@ -849,6 +900,22 @@ func eventErrorStringWithOption(event Event, option string) string {
 		}
 	}
 	return ""
+}
+
+func throwableStringWithPatternOption(throwable *Throwable, option string) string {
+	if throwable == nil {
+		return ""
+	}
+	switch option {
+	case "none":
+		return ""
+	case "short":
+		return throwable.Message
+	case "full":
+		return throwableStackString(throwable)
+	default:
+		return throwable.String()
+	}
 }
 
 func encodePatternValue(value string, mode string) string {

@@ -300,6 +300,87 @@ rootLogger.appenderRefs = file
 	}
 }
 
+func TestLoadOptions_whenPatternLayoutOptionsConfigured_shouldPopulateANSIControl(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name       string
+		configName string
+		content    func(logPath string) string
+	}{
+		{
+			name:       "yaml",
+			configName: "goark-log.yml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+appenders:
+  file:
+    type: file
+    fileName: %q
+    layout:
+      type: pattern
+      pattern: "%%style{%%m}{red}%%n"
+      disableAnsi: true
+root:
+  level: info
+  appenderRefs: [file]
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "xml",
+			configName: "goark-log.xml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+<Configuration>
+  <Appenders>
+    <File name="file" fileName="%s">
+      <PatternLayout pattern="%%style{%%m}{red}%%n" disableAnsi="true"/>
+    </File>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="file"/>
+    </Root>
+  </Loggers>
+</Configuration>
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "properties",
+			configName: "goark-log.properties",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+appender.file.type = file
+appender.file.fileName = %s
+appender.file.layout.type = pattern
+appender.file.layout.pattern = %%style{%%m}{red}%%n
+appender.file.layout.disableAnsi = true
+rootLogger.level = info
+rootLogger.appenderRefs = file
+`, filepath.ToSlash(logPath))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			logPath := filepath.Join(dir, "logs", "app.log")
+			configPath := filepath.Join(dir, tc.configName)
+			writeConfig(t, configPath, tc.content(logPath))
+
+			options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+			if err != nil {
+				t.Fatalf("LoadOptions() error = %v", err)
+			}
+			defer closeAppenderList(options.Appenders)
+			layout := configuredFilePatternLayout(t, options.Appenders, "file")
+			if !layout.options.DisableANSI {
+				t.Fatalf("pattern layout options = %+v, want DisableANSI", layout.options)
+			}
+		})
+	}
+}
+
 func TestNewConfigured_whenLog4jStyleConfigurationWrapperUsed_shouldBuildGoYamlExperience(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -1135,6 +1216,23 @@ func configuredFileJSONLayout(t *testing.T, appenders []Appender, name string) J
 	}
 	t.Fatalf("file appender %q was not built: %+v", name, appenders)
 	return JSONLayout{}
+}
+
+func configuredFilePatternLayout(t *testing.T, appenders []Appender, name string) *PatternLayout {
+	t.Helper()
+	for _, appender := range appenders {
+		file, ok := appender.(*FileAppender)
+		if !ok || file.Name() != name {
+			continue
+		}
+		layout, ok := file.layout.(*PatternLayout)
+		if !ok {
+			t.Fatalf("file layout type = %T, want *PatternLayout", file.layout)
+		}
+		return layout
+	}
+	t.Fatalf("file appender %q was not built: %+v", name, appenders)
+	return nil
 }
 
 func assertFullLayoutOptions(t *testing.T, options LayoutOptions) {

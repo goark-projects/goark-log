@@ -357,7 +357,7 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterAppender("rewriteAppender", buildRewritePlugin)
 
 	_ = registry.RegisterLayout("pattern", func(config LayoutBuildConfig) (Layout, error) {
-		return NewPatternLayout(config.Pattern)
+		return NewPatternLayoutWithOptions(config.Pattern, config.Options)
 	})
 	_ = registry.RegisterLayout("text", func(_ LayoutBuildConfig) (Layout, error) {
 		return TextLayout{}, nil

@@ -122,6 +122,7 @@ type xmlLayout struct {
 	StacktraceAsString   string `xml:"stacktraceAsString,attr"`
 	PropertiesAsList     string `xml:"propertiesAsList,attr"`
 	IncludeNullDelimiter string `xml:"includeNullDelimiter,attr"`
+	DisableANSI          string `xml:"disableAnsi,attr"`
 	Header               string `xml:"header,attr"`
 	Footer               string `xml:"footer,attr"`
 }
@@ -616,6 +617,7 @@ func (l xmlLayout) emptyOptions() bool {
 		strings.TrimSpace(l.StacktraceAsString) == "" &&
 		strings.TrimSpace(l.PropertiesAsList) == "" &&
 		strings.TrimSpace(l.IncludeNullDelimiter) == "" &&
+		strings.TrimSpace(l.DisableANSI) == "" &&
 		strings.TrimSpace(l.Header) == "" &&
 		strings.TrimSpace(l.Footer) == ""
 }
@@ -676,6 +678,10 @@ func (l xmlLayout) config() (layoutConfig, error) {
 	if err != nil {
 		return layoutConfig{}, err
 	}
+	disableANSI, err := parseXMLBool(l.DisableANSI, "disableAnsi")
+	if err != nil {
+		return layoutConfig{}, err
+	}
 	return layoutConfig{
 		Type:                 kind,
 		Pattern:              l.Pattern,
@@ -688,6 +694,7 @@ func (l xmlLayout) config() (layoutConfig, error) {
 		StacktraceAsString:   stacktraceAsString,
 		PropertiesAsList:     propertiesAsList,
 		IncludeNullDelimiter: includeNullDelimiter,
+		DisableANSI:          disableANSI,
 		Header:               l.Header,
 		Footer:               l.Footer,
 	}, nil

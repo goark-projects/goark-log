@@ -115,6 +115,8 @@ type layoutConfig struct {
 	PropertiesAsListKebab     bool   `yaml:"properties-as-list"`
 	IncludeNullDelimiter      bool   `yaml:"includeNullDelimiter"`
 	IncludeNullDelimiterKebab bool   `yaml:"include-null-delimiter"`
+	DisableANSI               bool   `yaml:"disableAnsi"`
+	DisableANSIKebab          bool   `yaml:"disable-ansi"`
 	Header                    string `yaml:"header"`
 	Footer                    string `yaml:"footer"`
 }
@@ -1869,6 +1871,7 @@ func (c layoutConfig) options() LayoutOptions {
 		StacktraceAsString:   c.StacktraceAsString || c.StacktraceAsStringKebab,
 		PropertiesAsList:     c.PropertiesAsList || c.PropertiesAsListKebab,
 		IncludeNullDelimiter: c.IncludeNullDelimiter || c.IncludeNullDelimiterKebab,
+		DisableANSI:          c.DisableANSI || c.DisableANSIKebab,
 		Header:               c.Header,
 		Footer:               c.Footer,
 	}

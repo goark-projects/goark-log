@@ -22,6 +22,8 @@ type LayoutOptions struct {
 	PropertiesAsList bool
 	// IncludeNullDelimiter 在事件结束后追加 NUL 字节，用于 GELF 等协议分隔。
 	IncludeNullDelimiter bool
+	// DisableANSI 禁用 PatternLayout 中 highlight/style 转换器的 ANSI SGR 输出。
+	DisableANSI bool
 	// Header 是 Complete 模式下流打开时写入的页眉。
 	Header string
 	// Footer 是 Complete 模式下流关闭时写入的页脚。

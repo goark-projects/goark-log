@@ -138,6 +138,73 @@ func TestPatternLayout_whenExpressionConvertersUsed_shouldRenderLog4jStyleOutput
 	}
 }
 
+func TestPatternLayout_whenRuntimeConvertersUsed_shouldRenderRelativeAndHost(t *testing.T) {
+	layout, err := NewPatternLayout("%r|%relative|%host|%hostname%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, testEvent("runtime", fixedTestTime())); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	fields := strings.Split(strings.TrimSpace(buf.String()), "|")
+	if len(fields) != 4 {
+		t.Fatalf("fields = %v, want 4 from %q", fields, buf.String())
+	}
+	for _, value := range fields[:2] {
+		relative, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || relative < 0 {
+			t.Fatalf("relative value = %q, want non-negative milliseconds", value)
+		}
+	}
+	if fields[2] == "" || fields[3] == "" || fields[2] != fields[3] {
+		t.Fatalf("host fields = %q and %q, want same non-empty host", fields[2], fields[3])
+	}
+}
+
+func TestPatternLayout_whenThrowableOptionsUsed_shouldHonorNoneShortAndFull(t *testing.T) {
+	layout, err := NewPatternLayout("%throwable{none}|%throwable{short}|%throwable{full}%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	event := testEvent("throwable", fixedTestTime())
+	event.Throwable = NewThrowableWithStack(errors.New("boom"))
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	fields := strings.SplitN(strings.TrimSpace(buf.String()), "|", 3)
+	if len(fields) != 3 {
+		t.Fatalf("fields = %v, want 3 from %q", fields, buf.String())
+	}
+	if fields[0] != "" || fields[1] != "boom" {
+		t.Fatalf("throwable none/short = %#v, want empty and boom", fields[:2])
+	}
+	if !strings.Contains(fields[2], "boom") ||
+		!strings.Contains(fields[2], "errors.errorString") ||
+		!strings.Contains(fields[2], ".go:") {
+		t.Fatalf("throwable full = %q, want type, message and stack frame", fields[2])
+	}
+}
+
+func TestPatternLayout_whenAnsiDisabled_shouldRenderPlainNestedPattern(t *testing.T) {
+	layout, err := NewPatternLayoutWithOptions("%style{%m}{red,bold}|%highlight{%p}%n", LayoutOptions{DisableANSI: true})
+	if err != nil {
+		t.Fatalf("NewPatternLayoutWithOptions() error = %v", err)
+	}
+	event := testEvent("styled", fixedTestTime())
+	event.Level = slog.LevelWarn
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	if buf.String() != "styled|WARN\n" {
+		t.Fatalf("plain ANSI-disabled output = %q", buf.String())
+	}
+}
+
 func TestPatternLayout_whenAnsiStyleConvertersUsed_shouldRenderEscapeSequences(t *testing.T) {
 	styleLayout, err := NewPatternLayout("%style{%m}{red,bold}%n")
 	if err != nil {
