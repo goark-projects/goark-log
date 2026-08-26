@@ -296,6 +296,40 @@ rootLogger.appenderRefs = file
 	}
 }
 
+func TestNewConfigured_whenJsonTemplateLayoutConfigured_shouldWriteTemplateJson(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "template.log")
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+appenders:
+  file:
+    type: file
+    fileName: %q
+    flushOnWrite: true
+    layout:
+      type: jsonTemplate
+      eventTemplate: '{"message":{"$resolver":"message"},"trace":{"$resolver":"attr","key":"trace_id"}}'
+root:
+  level: info
+  appenderRefs: [file]
+`, filepath.ToSlash(logPath)))
+
+	logger, handler, _, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	logger.Info("json template config", slog.String("trace_id", "trace-config"))
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	content := readTextFile(t, logPath)
+	if !strings.Contains(content, `"message":"json template config"`) ||
+		!strings.Contains(content, `"trace":"trace-config"`) {
+		t.Fatalf("json template layout output is wrong: %q", content)
+	}
+}
+
 func TestNewConfigured_whenRollingPoliciesAndStrategyUsed_shouldBuildLog4jStyleYaml(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

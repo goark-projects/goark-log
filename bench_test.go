@@ -19,6 +19,7 @@ func BenchmarkLayout(b *testing.B) {
 		{name: "pattern", layout: NewDefaultLayout()},
 		{name: "text", layout: TextLayout{}},
 		{name: "json", layout: JSONLayout{}},
+		{name: "json-template", layout: mustBenchmarkJSONTemplateLayout(b)},
 	}
 	for _, benchmark := range benchmarks {
 		b.Run(benchmark.name, func(b *testing.B) {
@@ -33,6 +34,15 @@ func BenchmarkLayout(b *testing.B) {
 			}
 		})
 	}
+}
+
+func mustBenchmarkJSONTemplateLayout(b *testing.B) Layout {
+	b.Helper()
+	layout, err := NewJSONTemplateLayout("")
+	if err != nil {
+		b.Fatalf("NewJSONTemplateLayout() error = %v", err)
+	}
+	return layout
 }
 
 func BenchmarkAppender(b *testing.B) {

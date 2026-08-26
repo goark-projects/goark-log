@@ -60,8 +60,10 @@ type appenderConfig struct {
 }
 
 type layoutConfig struct {
-	Type    string `yaml:"type"`
-	Pattern string `yaml:"pattern"`
+	Type               string `yaml:"type"`
+	Pattern            string `yaml:"pattern"`
+	EventTemplate      string `yaml:"eventTemplate"`
+	EventTemplateKebab string `yaml:"event-template"`
 }
 
 type rollingConfig struct {
@@ -692,6 +694,12 @@ func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.Pattern, err = resolveStringLookup(lookups, c.Pattern); err != nil {
 		return fmt.Errorf("pattern: %w", err)
 	}
+	if c.EventTemplate, err = resolveStringLookup(lookups, c.EventTemplate); err != nil {
+		return fmt.Errorf("eventTemplate: %w", err)
+	}
+	if c.EventTemplateKebab, err = resolveStringLookup(lookups, c.EventTemplateKebab); err != nil {
+		return fmt.Errorf("event-template: %w", err)
+	}
 	return nil
 }
 
@@ -1188,9 +1196,14 @@ func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) 
 		return nil, fmt.Errorf("unsupported layout type %q", config.Type)
 	}
 	return factory(LayoutBuildConfig{
-		Type:    config.Type,
-		Pattern: config.Pattern,
+		Type:          config.Type,
+		Pattern:       config.Pattern,
+		EventTemplate: config.eventTemplate(),
 	})
+}
+
+func (c layoutConfig) eventTemplate() string {
+	return firstNonBlank(c.EventTemplate, c.EventTemplateKebab)
 }
 
 func configFormat(path string) (string, error) {

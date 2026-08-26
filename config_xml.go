@@ -48,6 +48,7 @@ type xmlAppender struct {
 	TextLayout       xmlLayout          `xml:"TextLayout"`
 	JsonLayout       xmlLayout          `xml:"JsonLayout"`
 	JSONLayout       xmlLayout          `xml:"JSONLayout"`
+	JsonTemplate     xmlLayout          `xml:"JsonTemplateLayout"`
 	Layout           xmlLayout          `xml:"Layout"`
 	AppenderRefs     []xmlAppenderRef   `xml:"AppenderRef"`
 	FilterRefs       []xmlFilterRef     `xml:"FilterRef"`
@@ -56,9 +57,10 @@ type xmlAppender struct {
 }
 
 type xmlLayout struct {
-	XMLName xml.Name
-	Type    string `xml:"type,attr"`
-	Pattern string `xml:"pattern,attr"`
+	XMLName  xml.Name
+	Type     string `xml:"type,attr"`
+	Pattern  string `xml:"pattern,attr"`
+	Template string `xml:"eventTemplate,attr"`
 }
 
 type xmlAppenderRef struct {
@@ -299,8 +301,11 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 }
 
 func (a xmlAppender) layout() layoutConfig {
-	for _, layout := range []xmlLayout{a.PatternLayout, a.TextLayout, a.JsonLayout, a.JSONLayout, a.Layout} {
-		if layout.XMLName.Local == "" && strings.TrimSpace(layout.Type) == "" && strings.TrimSpace(layout.Pattern) == "" {
+	for _, layout := range []xmlLayout{a.PatternLayout, a.TextLayout, a.JsonLayout, a.JSONLayout, a.JsonTemplate, a.Layout} {
+		if layout.XMLName.Local == "" &&
+			strings.TrimSpace(layout.Type) == "" &&
+			strings.TrimSpace(layout.Pattern) == "" &&
+			strings.TrimSpace(layout.Template) == "" {
 			continue
 		}
 		return layout.config()
@@ -317,10 +322,12 @@ func (l xmlLayout) config() layoutConfig {
 		kind = "text"
 	case "jsonlayout", "json":
 		kind = "json"
+	case "jsontemplatelayout", "jsontemplate":
+		kind = "jsonTemplate"
 	default:
 		kind = l.Type
 	}
-	return layoutConfig{Type: kind, Pattern: l.Pattern}
+	return layoutConfig{Type: kind, Pattern: l.Pattern, EventTemplate: l.Template}
 }
 
 func (f xmlFilter) config(kind string) filterConfig {

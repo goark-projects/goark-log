@@ -153,6 +153,8 @@ logger.InfoContext(ctx, "request done")
 `PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`。调用位置来自 `slog.Record.PC`，
 只有 pattern 使用 caller token 时才解析 runtime frame。
 
+`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`marker`、`throwable`、`contextStack`、`mdc`、`attr`、`endOfBatch`。
+
 ## Examples
 
 示例位于 `examples/`：
@@ -178,6 +180,8 @@ go test -run '^$' -bench . -benchmem ./...
 variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayout` 对常见
 `slog` 基础类型保持低分配编码；文件类 appender 默认启用缓冲写入，延迟敏感场景再打开
 `flushOnWrite`。
+
+当前 JSON 热路径采用手写 `bytes.Buffer` 编码，常见 `slog` 基础类型保持 `0 alloc/op`。Sonic 评估只可能覆盖任意对象 fallback，本地临时依赖下载/编译超过两分钟未完成，且不会改善主路径，因此核心库暂不引入该依赖。
 
 和 zap、zerolog 的对标基准放在独立子模块，避免核心库引入额外依赖：
 

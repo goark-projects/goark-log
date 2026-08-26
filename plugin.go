@@ -59,8 +59,9 @@ type RollingDeleteBuildConfig struct {
 
 // LayoutBuildConfig 是 layout 插件的构建输入。
 type LayoutBuildConfig struct {
-	Type    string
-	Pattern string
+	Type          string
+	Pattern       string
+	EventTemplate string
 }
 
 // FilterBuildConfig 是 filter 插件的构建输入。
@@ -246,6 +247,9 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	})
 	_ = registry.RegisterLayout("json", func(_ LayoutBuildConfig) (Layout, error) {
 		return JSONLayout{}, nil
+	})
+	_ = registry.RegisterLayout("jsonTemplate", func(config LayoutBuildConfig) (Layout, error) {
+		return NewJSONTemplateLayout(config.EventTemplate)
 	})
 
 	_ = registry.RegisterFilter("threshold", buildThresholdFilterPlugin)
