@@ -72,6 +72,7 @@ type xmlAppender struct {
 	FilterRefs       []xmlFilterRef     `xml:"FilterRef"`
 	Policies         xmlRollingPolicies `xml:"Policies"`
 	Strategy         xmlRollingStrategy `xml:"DefaultRolloverStrategy"`
+	DirectStrategy   xmlRollingStrategy `xml:"DirectWriteRolloverStrategy"`
 }
 
 type xmlLayout struct {
@@ -117,8 +118,10 @@ type xmlRollingStartup struct {
 }
 
 type xmlRollingStrategy struct {
-	Max    string                 `xml:"max,attr"`
-	Delete xmlRollingDeleteAction `xml:"Delete"`
+	Type      string                 `xml:"type,attr"`
+	Max       string                 `xml:"max,attr"`
+	FileIndex string                 `xml:"fileIndex,attr"`
+	Delete    xmlRollingDeleteAction `xml:"Delete"`
 }
 
 type xmlRollingDeleteAction struct {
@@ -384,6 +387,7 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
+	strategy := a.effectiveStrategy()
 	config := appenderConfig{
 		Type:             xmlAppenderType(a.XMLName.Local, a.Type),
 		Target:           xmlConsoleTarget(a.Target),
@@ -425,12 +429,45 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 				},
 			},
 			Strategy: rollingStrategyConfig{
-				Max:    parseXMLIntPointer(a.Strategy.Max),
-				Delete: a.Strategy.Delete.config(),
+				Type:      strategy.Type,
+				Max:       parseXMLIntPointer(strategy.Max),
+				FileIndex: strategy.FileIndex,
+				Delete:    strategy.Delete.config(),
 			},
 		},
 	}
 	return name, config, nil
+}
+
+func (a xmlAppender) effectiveStrategy() xmlRollingStrategy {
+	if !a.DirectStrategy.empty() {
+		strategy := a.DirectStrategy
+		if strings.TrimSpace(strategy.Type) == "" {
+			strategy.Type = "directWrite"
+		}
+		return strategy
+	}
+	return a.Strategy
+}
+
+func (s xmlRollingStrategy) empty() bool {
+	return strings.TrimSpace(s.Type) == "" &&
+		strings.TrimSpace(s.Max) == "" &&
+		strings.TrimSpace(s.FileIndex) == "" &&
+		s.Delete.empty()
+}
+
+func (a xmlRollingDeleteAction) empty() bool {
+	return strings.TrimSpace(a.BasePath) == "" &&
+		strings.TrimSpace(a.MaxDepth) == "" &&
+		strings.TrimSpace(a.MaxCount) == "" &&
+		strings.TrimSpace(a.MaxSize) == "" &&
+		strings.TrimSpace(a.Glob) == "" &&
+		strings.TrimSpace(a.Age) == "" &&
+		strings.TrimSpace(a.IfFileName.Glob) == "" &&
+		strings.TrimSpace(a.IfLastModified.Age) == "" &&
+		strings.TrimSpace(a.IfAccumulatedFileCount.Exceeds) == "" &&
+		strings.TrimSpace(a.IfAccumulatedFileSize.Exceeds) == ""
 }
 
 func (a xmlAppender) layout() layoutConfig {

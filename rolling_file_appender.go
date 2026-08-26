@@ -28,11 +28,22 @@ const (
 	DefaultRollingActionQueueSize = 32
 )
 
+// RollingFileIndexMode 定义 filePattern 中 %i 的分配策略。
+type RollingFileIndexMode string
+
+const (
+	RollingFileIndexNoMax RollingFileIndexMode = "nomax"
+	RollingFileIndexMax   RollingFileIndexMode = "max"
+	RollingFileIndexMin   RollingFileIndexMode = "min"
+)
+
 // RollingFileAppender 支持按大小、按时间和启动时滚动的文件 appender。
 type RollingFileAppender struct {
 	name              string
 	path              string
 	filePattern       string
+	fileIndexMode     RollingFileIndexMode
+	directWrite       bool
 	layout            Layout
 	bufferSize        int
 	flushOnWrite      bool
@@ -142,6 +153,20 @@ func WithRollingFilePattern(pattern string) RollingFileOption {
 	}
 }
 
+// WithRollingFileIndexMode 设置滚动索引分配策略。
+func WithRollingFileIndexMode(mode RollingFileIndexMode) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.fileIndexMode = mode
+	}
+}
+
+// WithRollingDirectWrite 设置是否直接写入 filePattern 指向的滚动文件。
+func WithRollingDirectWrite(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.directWrite = enabled
+	}
+}
+
 // WithRolloverOnStartup 设置启动时滚动已有文件。
 func WithRolloverOnStartup(enabled bool) RollingFileOption {
 	return func(appender *RollingFileAppender) {
@@ -204,14 +229,15 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		return nil, err
 	}
 	appender := &RollingFileAppender{
-		name:       "rollingFile",
-		path:       cleanPath,
-		layout:     NewDefaultLayout(),
-		bufferSize: DefaultFileBufferSize,
-		maxSize:    DefaultRollingMaxSize,
-		maxBackups: DefaultRollingMaxBackups,
-		modulate:   true,
-		clock:      time.Now,
+		name:          "rollingFile",
+		path:          cleanPath,
+		layout:        NewDefaultLayout(),
+		bufferSize:    DefaultFileBufferSize,
+		maxSize:       DefaultRollingMaxSize,
+		maxBackups:    DefaultRollingMaxBackups,
+		fileIndexMode: RollingFileIndexNoMax,
+		modulate:      true,
+		clock:         time.Now,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -352,12 +378,22 @@ func (a *RollingFileAppender) validate() error {
 	if a.actionQueueSize == 0 {
 		a.actionQueueSize = DefaultRollingActionQueueSize
 	}
+	switch a.fileIndexMode {
+	case "", RollingFileIndexNoMax:
+		a.fileIndexMode = RollingFileIndexNoMax
+	case RollingFileIndexMax, RollingFileIndexMin:
+	default:
+		return fmt.Errorf("goark-log: rolling file index mode %q is invalid", a.fileIndexMode)
+	}
 	for index, action := range a.deleteActions {
 		normalized, err := normalizeRollingDeleteAction(action)
 		if err != nil {
 			return fmt.Errorf("goark-log: rolling delete action %d: %w", index, err)
 		}
 		a.deleteActions[index] = normalized
+	}
+	if a.directWrite && strings.TrimSpace(a.filePattern) == "" {
+		return fmt.Errorf("goark-log: direct write rollover requires filePattern")
 	}
 	if a.filePattern != "" {
 		if a.maxSize > 0 && !rollingPatternHasIndex(a.filePattern) {
@@ -366,11 +402,14 @@ func (a *RollingFileAppender) validate() error {
 		if strings.HasSuffix(strings.ToLower(a.filePattern), ".gz") {
 			a.compress = true
 		}
+		if a.directWrite && a.compress {
+			return fmt.Errorf("goark-log: direct write rollover does not support gzip compression")
+		}
 		candidate, _, err := a.archivePaths(a.now(), 0)
 		if err != nil {
 			return err
 		}
-		if filepath.Clean(candidate) == filepath.Clean(a.path) {
+		if !a.directWrite && filepath.Clean(candidate) == filepath.Clean(a.path) {
 			return fmt.Errorf("goark-log: rolling filePattern must not resolve to active log file %q", a.path)
 		}
 	}
@@ -384,6 +423,12 @@ func (a *RollingFileAppender) validate() error {
 }
 
 func (a *RollingFileAppender) open() error {
+	if a.directWrite {
+		if err := a.initArchiveIndex(); err != nil {
+			return err
+		}
+		return a.openDirect(a.now())
+	}
 	file, err := openLogFile(a.path)
 	if err != nil {
 		return err
@@ -405,6 +450,31 @@ func (a *RollingFileAppender) open() error {
 		a.file = nil
 		return err
 	}
+	return nil
+}
+
+func (a *RollingFileAppender) openDirect(now time.Time) error {
+	target, err := a.nextArchivePath(now)
+	if err != nil {
+		return err
+	}
+	file, err := openLogFile(target)
+	if err != nil {
+		return err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return fmt.Errorf("goark-log: stat log file %q: %w", target, err)
+	}
+	a.path = target
+	a.file = file
+	if a.bufferSize > 0 {
+		a.writer = bufio.NewWriterSize(file, a.bufferSize)
+	}
+	a.size = info.Size()
+	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = nextCronRolloverAfter(now, a.cron)
 	return nil
 }
 
@@ -432,6 +502,14 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		}
 		a.file = nil
 		a.writer = nil
+	}
+	if a.directWrite {
+		if err := a.openDirect(now); err != nil {
+			return err
+		}
+		a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
+		a.nextCron = nextCronRolloverAfter(now, a.cron)
+		return a.runDeleteActions(now)
 	}
 	target, err := a.nextArchivePath(now)
 	if err != nil {
@@ -465,6 +543,9 @@ func (a *RollingFileAppender) flushLocked() error {
 }
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
+	if a.fileIndexMode == RollingFileIndexMin && a.filePattern != "" && a.maxBackups > 0 {
+		return a.nextMinIndexArchivePath(now)
+	}
 	for attempt := 0; attempt < 1000; attempt++ {
 		index := a.archiveIndex
 		a.archiveIndex++
@@ -490,6 +571,85 @@ func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
 		return candidate, nil
 	}
 	return "", fmt.Errorf("goark-log: cannot allocate archive name for %q", a.path)
+}
+
+func (a *RollingFileAppender) nextMinIndexArchivePath(now time.Time) (string, error) {
+	for index := 1; index <= a.maxBackups; index++ {
+		candidate, compressedCandidate, err := a.archivePaths(now, index)
+		if err != nil {
+			return "", err
+		}
+		if archivePathAvailable(candidate, compressedCandidate, a.compress) {
+			a.archiveIndex = index + 1
+			if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+				return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+			}
+			return candidate, nil
+		}
+	}
+	if err := a.rotateMinIndexArchives(now); err != nil {
+		return "", err
+	}
+	candidate, _, err := a.archivePaths(now, 1)
+	if err != nil {
+		return "", err
+	}
+	a.archiveIndex = 2
+	if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+		return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+	}
+	return candidate, nil
+}
+
+func archivePathAvailable(candidate string, compressedCandidate string, compressed bool) bool {
+	if exists, err := pathExists(candidate); err != nil || exists {
+		return false
+	}
+	if compressed && compressedCandidate != candidate {
+		if exists, err := pathExists(compressedCandidate); err != nil || exists {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *RollingFileAppender) rotateMinIndexArchives(now time.Time) error {
+	for index := a.maxBackups; index >= 1; index-- {
+		_, currentCompressed, err := a.archivePaths(now, index)
+		if err != nil {
+			return err
+		}
+		current, _, err := a.archivePaths(now, index)
+		if err != nil {
+			return err
+		}
+		source := current
+		if a.compress {
+			source = currentCompressed
+		}
+		if index == a.maxBackups {
+			if err := os.Remove(source); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("goark-log: remove archive log file %q: %w", source, err)
+			}
+			continue
+		}
+		_, nextCompressed, err := a.archivePaths(now, index+1)
+		if err != nil {
+			return err
+		}
+		next, _, err := a.archivePaths(now, index+1)
+		if err != nil {
+			return err
+		}
+		target := next
+		if a.compress {
+			target = nextCompressed
+		}
+		if err := os.Rename(source, target); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("goark-log: rename archive log file %q to %q: %w", source, target, err)
+		}
+	}
+	return nil
 }
 
 func (a *RollingFileAppender) archivePaths(now time.Time, index int) (string, string, error) {

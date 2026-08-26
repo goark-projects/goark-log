@@ -2,6 +2,7 @@ package goarklog
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,79 @@ func TestRollingFileAppender_whenPatternRestarts_shouldContinuePatternIndex(t *t
 	}
 	if len(archives) != 2 || !strings.HasSuffix(filepath.Base(archives[1]), "-1.log") {
 		t.Fatalf("restart should continue pattern index, archives=%v", archives)
+	}
+}
+
+func TestRollingFileAppender_whenFileIndexMinConfigured_shouldReuseLowestIndex(t *testing.T) {
+	now := fixedTestTime()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "min.log")
+	pattern := filepath.Join(dir, "archive", "min-%d{yyyyMMdd}-%i.log")
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(TextLayout{}),
+		WithRollingMaxSize(90),
+		WithRollingMaxBackups(2),
+		WithRollingFilePattern(pattern),
+		WithRollingFileIndexMode(RollingFileIndexMin),
+		withRollingClock(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	for index := 0; index < 5; index++ {
+		if err := appender.Append(context.Background(), testEvent("min-"+strings.Repeat("x", 80), now)); err != nil {
+			t.Fatalf("Append(%d) error = %v", index, err)
+		}
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	archives, err := filepath.Glob(filepath.Join(dir, "archive", "min-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(archives) != 2 {
+		t.Fatalf("archive count = %d, want 2: %v", len(archives), archives)
+	}
+	names := []string{filepath.Base(archives[0]), filepath.Base(archives[1])}
+	if !strings.HasSuffix(names[0], "-1.log") || !strings.HasSuffix(names[1], "-2.log") {
+		t.Fatalf("fileIndex=min archive names = %v", names)
+	}
+}
+
+func TestRollingFileAppender_whenDirectWriteConfigured_shouldWritePatternFilesDirectly(t *testing.T) {
+	now := fixedTestTime()
+	dir := t.TempDir()
+	active := filepath.Join(dir, "active.log")
+	pattern := filepath.Join(dir, "direct", "direct-%d{yyyyMMdd}-%i.log")
+	appender, err := NewRollingFileAppender(active,
+		WithRollingFileLayout(TextLayout{}),
+		WithRollingMaxSize(90),
+		WithRollingMaxBackups(10),
+		WithRollingFilePattern(pattern),
+		WithRollingDirectWrite(true),
+		withRollingClock(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	for index := 0; index < 3; index++ {
+		if err := appender.Append(context.Background(), testEvent("direct-"+strings.Repeat("x", 80), now)); err != nil {
+			t.Fatalf("Append(%d) error = %v", index, err)
+		}
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(active); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("directWrite active file stat error = %v, want not exist", err)
+	}
+	archives, err := filepath.Glob(filepath.Join(dir, "direct", "direct-*"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(archives) != 3 {
+		t.Fatalf("directWrite files = %d, want 3: %v", len(archives), archives)
 	}
 }
 

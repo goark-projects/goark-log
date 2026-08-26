@@ -71,6 +71,7 @@ type RollingBuildConfig struct {
 	MaxBackups      *int
 	MaxAge          string
 	FileIndex       string
+	DirectWrite     bool
 	Gzip            bool
 	AsyncActions    bool
 	DeleteActions   []RollingDeleteBuildConfig
@@ -503,10 +504,18 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	}
 	if value := strings.ToLower(strings.TrimSpace(config.Rolling.FileIndex)); value != "" {
 		switch value {
-		case "max", "nomax", "no-max", "none":
+		case "min":
+			options = append(options, WithRollingFileIndexMode(RollingFileIndexMin))
+		case "max":
+			options = append(options, WithRollingFileIndexMode(RollingFileIndexMax))
+		case "nomax", "no-max", "none":
+			options = append(options, WithRollingFileIndexMode(RollingFileIndexNoMax))
 		default:
 			return nil, fmt.Errorf("goark-log: appender %q rolling fileIndex %q is unsupported", config.Name, config.Rolling.FileIndex)
 		}
+	}
+	if config.Rolling.DirectWrite {
+		options = append(options, WithRollingDirectWrite(true))
 	}
 	if value := config.Rolling.MaxSize; value != "" {
 		size, err := ParseByteSize(value)

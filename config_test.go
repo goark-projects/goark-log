@@ -645,7 +645,7 @@ appenders:
     rolling:
       maxSize: 1MiB
       strategy:
-        fileIndex: min
+        fileIndex: middle
 root:
   level: info
   appenderRefs: [rolling]

@@ -104,6 +104,8 @@ type rollingConfig struct {
 	MaxAgeKebab          string                `yaml:"max-age"`
 	Gzip                 bool                  `yaml:"gzip"`
 	Compress             bool                  `yaml:"compress"`
+	DirectWrite          bool                  `yaml:"directWrite"`
+	DirectWriteKebab     bool                  `yaml:"direct-write"`
 	AsyncActions         bool                  `yaml:"asyncActions"`
 	AsyncActionsKebab    bool                  `yaml:"async-actions"`
 	ActionQueueSize      int                   `yaml:"actionQueueSize"`
@@ -157,6 +159,7 @@ type rollingStartupPolicyConfig struct {
 }
 
 type rollingStrategyConfig struct {
+	Type                 string                      `yaml:"type"`
 	Max                  *int                        `yaml:"max"`
 	MaxBackups           *int                        `yaml:"maxBackups"`
 	MaxBackupsKebab      *int                        `yaml:"max-backups"`
@@ -164,6 +167,8 @@ type rollingStrategyConfig struct {
 	MaxAgeKebab          string                      `yaml:"max-age"`
 	FileIndex            string                      `yaml:"fileIndex"`
 	FileIndexKebab       string                      `yaml:"file-index"`
+	DirectWrite          bool                        `yaml:"directWrite"`
+	DirectWriteKebab     bool                        `yaml:"direct-write"`
 	AsyncActions         bool                        `yaml:"asyncActions"`
 	AsyncActionsKebab    bool                        `yaml:"async-actions"`
 	ActionQueueSize      int                         `yaml:"actionQueueSize"`
@@ -1661,6 +1666,7 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 			MaxBackups:      c.Rolling.maxBackupsPointer(),
 			MaxAge:          c.Rolling.maxAge(),
 			FileIndex:       c.Rolling.fileIndex(),
+			DirectWrite:     c.Rolling.directWrite(),
 			Gzip:            c.Rolling.gzipEnabled(),
 			AsyncActions:    c.Rolling.asyncActions(),
 			DeleteActions:   c.Rolling.deleteActions(c.fileName()),
@@ -1707,6 +1713,17 @@ func (c rollingConfig) maxAge() string {
 
 func (c rollingConfig) fileIndex() string {
 	return firstNonBlank(c.Strategy.FileIndex, c.Strategy.FileIndexKebab)
+}
+
+func (c rollingConfig) directWrite() bool {
+	strategyType := strings.ToLower(strings.TrimSpace(c.Strategy.Type))
+	return c.DirectWrite ||
+		c.DirectWriteKebab ||
+		c.Strategy.DirectWrite ||
+		c.Strategy.DirectWriteKebab ||
+		strategyType == "directwrite" ||
+		strategyType == "direct-write" ||
+		strategyType == "directwriterolloverstrategy"
 }
 
 func (c rollingConfig) onStartup() bool {

@@ -292,6 +292,16 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Rolling.Strategy.Delete.IfAccumulatedFileCount.Exceeds = parsed
 	case "rolling.strategy.delete.ifAccumulatedFileSize.exceeds", "rolling.strategy.delete.if-accumulated-file-size.exceeds":
 		appender.Rolling.Strategy.Delete.IfAccumulatedFileSize.Exceeds = value
+	case "rolling.strategy.type":
+		appender.Rolling.Strategy.Type = value
+	case "rolling.strategy.fileIndex", "rolling.strategy.file-index":
+		appender.Rolling.Strategy.FileIndex = value
+	case "rolling.directWrite", "rolling.direct-write", "rolling.strategy.directWrite", "rolling.strategy.direct-write":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		appender.Rolling.DirectWrite = parsed
 	}
 	config.Appenders[id] = appender
 	return nil
