@@ -347,7 +347,10 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 		return NewJSONLayout(config.Options), nil
 	})
 	_ = registry.RegisterLayout("jsonTemplate", func(config LayoutBuildConfig) (Layout, error) {
-		options := []JSONTemplateLayoutOption{WithJSONTemplateResolverRegistry(config.Registry)}
+		options := []JSONTemplateLayoutOption{
+			WithJSONTemplateResolverRegistry(config.Registry),
+			WithJSONTemplateLayoutOptions(config.Options),
+		}
 		if strings.TrimSpace(config.EventTemplateURI) != "" {
 			return NewJSONTemplateLayoutFromFile(config.EventTemplateURI, options...)
 		}

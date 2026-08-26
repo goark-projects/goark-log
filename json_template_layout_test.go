@@ -2,6 +2,7 @@ package goarklog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -203,6 +204,90 @@ func TestJSONTemplateLayout_whenMDCFlattenEnabled_shouldFlattenGroups(t *testing
 	}
 	if decoded["mdc"]["request.id"] != "req-1" {
 		t.Fatalf("mdc = %#v, want flattened request.id", decoded["mdc"])
+	}
+}
+
+func TestJSONTemplateLayout_whenLayoutOptionsUsed_shouldApplyResolverDefaults(t *testing.T) {
+	layout, err := NewJSONTemplateLayout(`{
+  "level": {"$resolver": "level", "field": "severity"},
+  "logger": {"$resolver": "logger", "precision": 2},
+  "mdc": {"$resolver": "mdc"},
+  "thrown": {"$resolver": "throwable"}
+}`, WithJSONTemplateLayoutOptions(LayoutOptions{
+		Compact:              true,
+		PropertiesAsList:     true,
+		StacktraceAsString:   true,
+		IncludeNullDelimiter: true,
+	}))
+	if err != nil {
+		t.Fatalf("NewJSONTemplateLayout() error = %v", err)
+	}
+	event := testEvent("options", fixedTestTime())
+	event.Logger = "goark.orm.mapper"
+	event.Attrs = []slog.Attr{slog.String("trace_id", "trace-1")}
+	event.Throwable = &Throwable{
+		Type:    "errors.errorString",
+		Message: "query failed",
+		Stack:   []string{"goark.orm.query(query.go:10)"},
+	}
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	output := buf.Bytes()
+	if !bytes.HasSuffix(output, []byte{0}) {
+		t.Fatalf("JSON template output = %q, want NUL delimiter", string(output))
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
+		t.Fatalf("Unmarshal() error = %v, json=%s", err, string(output))
+	}
+	if decoded["level"] != float64(6) {
+		t.Fatalf("level = %#v, want syslog severity 6", decoded["level"])
+	}
+	if decoded["logger"] != "orm.mapper" {
+		t.Fatalf("logger = %#v, want precision-trimmed name", decoded["logger"])
+	}
+	contextMap, ok := decoded["mdc"].([]any)
+	if !ok || len(contextMap) != 1 {
+		t.Fatalf("mdc = %#v, want list form", decoded["mdc"])
+	}
+	thrown, ok := decoded["thrown"].(string)
+	if !ok || !strings.Contains(thrown, "query.go:10") {
+		t.Fatalf("thrown = %#v, want stack string", decoded["thrown"])
+	}
+}
+
+func TestJSONTemplateLayout_whenCompleteOptionUsed_shouldWriteValidArray(t *testing.T) {
+	layout, err := NewJSONTemplateLayout(`{"msg":{"$resolver":"message"}}`, WithJSONTemplateLayoutOptions(LayoutOptions{
+		Compact:  true,
+		Complete: true,
+	}))
+	if err != nil {
+		t.Fatalf("NewJSONTemplateLayout() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "template-complete.json")
+	appender, err := NewFileAppender(path, WithFileLayout(layout), WithFileBufferSize(0))
+	if err != nil {
+		t.Fatalf("NewFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("first", fixedTestTime())); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("second", fixedTestTime())); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	var decoded []map[string]any
+	content := readTextFile(t, path)
+	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+		t.Fatalf("complete JSON template output is invalid: %v\n%s", err, content)
+	}
+	if len(decoded) != 2 || decoded[0]["msg"] != "first" || decoded[1]["msg"] != "second" {
+		t.Fatalf("decoded complete template = %#v, want two messages", decoded)
 	}
 }
 

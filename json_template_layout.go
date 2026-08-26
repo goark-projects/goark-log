@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/jsoncodec"
 )
 
 const defaultJSONEventTemplate = `{
@@ -31,13 +33,16 @@ const defaultJSONEventTemplate = `{
 type JSONTemplateLayout struct {
 	fields   []jsonTemplateField
 	registry *PluginRegistry
+	options  LayoutOptions
+	state    *jsonLayoutState
 }
 
 // JSONTemplateLayoutOption 调整 JSONTemplateLayout 编译行为。
 type JSONTemplateLayoutOption func(*jsonTemplateLayoutOptions)
 
 type jsonTemplateLayoutOptions struct {
-	registry *PluginRegistry
+	registry      *PluginRegistry
+	layoutOptions LayoutOptions
 }
 
 // JSONTemplateResolver 是 JSON Template 字段值编码器。
@@ -58,6 +63,13 @@ type JSONTemplateResolverBuildConfig struct {
 func WithJSONTemplateResolverRegistry(registry *PluginRegistry) JSONTemplateLayoutOption {
 	return func(options *jsonTemplateLayoutOptions) {
 		options.registry = registry
+	}
+}
+
+// WithJSONTemplateLayoutOptions 设置 JSON Template 布局的通用输出参数。
+func WithJSONTemplateLayoutOptions(layoutOptions LayoutOptions) JSONTemplateLayoutOption {
+	return func(options *jsonTemplateLayoutOptions) {
+		options.layoutOptions = layoutOptions
 	}
 }
 
@@ -86,13 +98,17 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 	}
 	fields := make([]jsonTemplateField, 0, len(rawFields))
 	for _, rawField := range rawFields {
-		resolver, err := compileJSONTemplateResolver(rawField.raw, settings.registry)
+		resolver, err := compileJSONTemplateResolver(rawField.raw, settings.registry, settings.layoutOptions)
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: JSON template field %q: %w", rawField.key, err)
 		}
 		fields = append(fields, jsonTemplateField{key: rawField.key, resolver: resolver})
 	}
-	return &JSONTemplateLayout{fields: fields, registry: settings.registry}, nil
+	layout := &JSONTemplateLayout{fields: fields, registry: settings.registry, options: settings.layoutOptions}
+	if settings.layoutOptions.Complete {
+		layout.state = &jsonLayoutState{}
+	}
+	return layout, nil
 }
 
 // NewJSONTemplateLayoutFromFile 从本地文件编译 JSON 事件模板。
@@ -162,39 +178,57 @@ func (l *JSONTemplateLayout) Format(buf *bytes.Buffer, event Event) error {
 	if l == nil {
 		return JSONLayout{}.Format(buf, event)
 	}
+	appendJSONCompleteSeparator(buf, l.options, l.state)
 	buf.WriteByte('{')
 	for index, field := range l.fields {
 		appendJSONKey(buf, field.key, index > 0)
 		field.resolver.AppendJSON(buf, event)
 	}
-	buf.WriteString("}\n")
+	buf.WriteByte('}')
+	appendLayoutTerminator(buf, l.options)
 	return nil
 }
 
-func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry) (JSONTemplateResolver, error) {
+func (l *JSONTemplateLayout) AppendHeader(buf *bytes.Buffer) error {
+	if l == nil {
+		return nil
+	}
+	appendJSONCompleteHeader(buf, l.options, l.state)
+	return nil
+}
+
+func (l *JSONTemplateLayout) AppendFooter(buf *bytes.Buffer) error {
+	if l == nil {
+		return nil
+	}
+	appendJSONCompleteFooter(buf, l.options)
+	return nil
+}
+
+func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &object); err == nil {
+	if err := jsoncodec.Unmarshal(raw, &object); err == nil {
 		if resolverRaw, ok := object["$resolver"]; ok {
 			var name string
-			if err := json.Unmarshal(resolverRaw, &name); err != nil {
+			if err := jsoncodec.Unmarshal(resolverRaw, &name); err != nil {
 				return nil, fmt.Errorf("$resolver must be a string")
 			}
-			return newJSONTemplateResolver(name, object, registry)
+			return newJSONTemplateResolver(name, object, registry, layoutOptions)
 		}
 	}
 	return rawJSONResolver{raw: append([]byte(nil), raw...)}, nil
 }
 
-func newJSONTemplateResolver(name string, options map[string]json.RawMessage, registry *PluginRegistry) (JSONTemplateResolver, error) {
+func newJSONTemplateResolver(name string, options map[string]json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
 	switch normalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
 		layout, unix := normalizeTimePattern(format)
 		return timestampJSONResolver{layout: layout, unix: unix}, nil
 	case "level":
-		return levelJSONResolver{}, nil
+		return levelJSONResolver{field: jsonTemplateStringOption(options, "field")}, nil
 	case "logger", "loggername":
-		return loggerJSONResolver{}, nil
+		return loggerJSONResolver{precision: jsonTemplateIntOption(options, "precision")}, nil
 	case "message", "msg":
 		return messageJSONResolver{}, nil
 	case "thread":
@@ -204,11 +238,18 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage, re
 	case "marker":
 		return markerJSONResolver{}, nil
 	case "throwable", "exception", "thrown":
-		return throwableJSONResolver{field: jsonTemplateStringOption(options, "field")}, nil
+		return throwableJSONResolver{
+			field:              jsonTemplateStringOption(options, "field"),
+			stacktraceAsString: layoutOptions.StacktraceAsString,
+		}, nil
 	case "rootcause":
 		return throwableJSONResolver{field: "rootCause"}, nil
 	case "stacktrace":
-		return throwableJSONResolver{field: "stackTrace"}, nil
+		field := "stackTrace"
+		if layoutOptions.StacktraceAsString {
+			field = "stackTraceAsString"
+		}
+		return throwableJSONResolver{field: field}, nil
 	case "source", "location":
 		return sourceJSONResolver{}, nil
 	case "process":
@@ -216,7 +257,10 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage, re
 	case "contextstack", "ndc":
 		return contextStackJSONResolver{}, nil
 	case "mdc", "contextmap", "attrs":
-		return attrsJSONResolver{flatten: jsonTemplateBoolOption(options, "flatten")}, nil
+		return attrsJSONResolver{
+			flatten:          jsonTemplateBoolOption(options, "flatten"),
+			propertiesAsList: layoutOptions.PropertiesAsList || jsonTemplateBoolOption(options, "propertiesAsList"),
+		}, nil
 	case "attr":
 		key := jsonTemplateStringOption(options, "key")
 		if strings.TrimSpace(key) == "" {
@@ -239,7 +283,7 @@ func jsonTemplateStringOption(options map[string]json.RawMessage, key string) st
 		return ""
 	}
 	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := jsoncodec.Unmarshal(raw, &value); err != nil {
 		return ""
 	}
 	return strings.TrimSpace(value)
@@ -251,7 +295,27 @@ func jsonTemplateBoolOption(options map[string]json.RawMessage, key string) bool
 		return false
 	}
 	var value bool
-	return json.Unmarshal(raw, &value) == nil && value
+	return jsoncodec.Unmarshal(raw, &value) == nil && value
+}
+
+func jsonTemplateIntOption(options map[string]json.RawMessage, key string) int {
+	raw, ok := options[key]
+	if !ok {
+		return 0
+	}
+	var value int
+	if err := jsoncodec.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	var text string
+	if err := jsoncodec.Unmarshal(raw, &text); err != nil {
+		return 0
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(text))
+	if err != nil || parsed < 0 {
+		return 0
+	}
+	return parsed
 }
 
 func copyJSONRawOptions(options map[string]json.RawMessage) map[string]json.RawMessage {
@@ -300,16 +364,27 @@ func (r timestampJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 	}
 }
 
-type levelJSONResolver struct{}
-
-func (levelJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	appendJSONString(buf, levelName(event.Level))
+type levelJSONResolver struct {
+	field string
 }
 
-type loggerJSONResolver struct{}
+func (r levelJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
+	switch normalizeKind(r.field) {
+	case "int", "integer", "value":
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(event.Level), 10))
+	case "severity", "syslogseverity":
+		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(syslogSeverity(event.Level)), 10))
+	default:
+		appendJSONString(buf, levelName(event.Level))
+	}
+}
 
-func (loggerJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	appendJSONString(buf, event.Logger)
+type loggerJSONResolver struct {
+	precision int
+}
+
+func (r loggerJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
+	appendJSONString(buf, loggerNameWithPrecision(event.Logger, r.precision))
 }
 
 type messageJSONResolver struct{}
@@ -335,7 +410,8 @@ func (markerJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 }
 
 type throwableJSONResolver struct {
-	field string
+	field              string
+	stacktraceAsString bool
 }
 
 func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
@@ -346,12 +422,20 @@ func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 	}
 	switch normalizeKind(r.field) {
 	case "", "object":
+		if r.stacktraceAsString {
+			appendJSONString(buf, throwableStackString(throwable))
+			return
+		}
 		appendThrowableJSON(buf, throwable)
 	case "type":
 		appendJSONString(buf, throwable.Type)
 	case "message":
 		appendJSONString(buf, throwable.Message)
 	case "string", "formatted":
+		if r.stacktraceAsString {
+			appendJSONString(buf, throwableStackString(throwable))
+			return
+		}
 		appendJSONString(buf, throwable.String())
 	case "rootcause":
 		appendThrowableJSON(buf, rootThrowable(throwable))
@@ -359,6 +443,8 @@ func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		appendJSONString(buf, rootThrowable(throwable).Message)
 	case "stacktrace":
 		appendThrowableStackJSON(buf, throwable)
+	case "stacktraceasstring", "stacktracestring":
+		appendJSONString(buf, throwableStackString(throwable))
 	default:
 		appendThrowableJSON(buf, throwable)
 	}
@@ -405,17 +491,21 @@ func (contextStackJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 }
 
 type attrsJSONResolver struct {
-	flatten bool
+	flatten          bool
+	propertiesAsList bool
 }
 
 func (r attrsJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	if !r.flatten {
-		appendJSONAttrsObject(buf, event.Attrs)
-		return
+	attrs := event.Attrs
+	if r.flatten {
+		attrs = make([]slog.Attr, 0, len(event.Attrs))
+		for _, attr := range event.Attrs {
+			appendFlattenedJSONAttr(&attrs, "", attr)
+		}
 	}
-	attrs := make([]slog.Attr, 0, len(event.Attrs))
-	for _, attr := range event.Attrs {
-		appendFlattenedJSONAttr(&attrs, "", attr)
+	if r.propertiesAsList {
+		appendJSONAttrsList(buf, attrs)
+		return
 	}
 	appendJSONAttrsObject(buf, attrs)
 }
