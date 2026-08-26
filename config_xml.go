@@ -30,6 +30,9 @@ type xmlAppenders struct {
 	File        []xmlAppender `xml:"File"`
 	RollingFile []xmlAppender `xml:"RollingFile"`
 	Async       []xmlAppender `xml:"Async"`
+	HTTP        []xmlAppender `xml:"Http"`
+	Socket      []xmlAppender `xml:"Socket"`
+	Syslog      []xmlAppender `xml:"Syslog"`
 }
 
 type xmlAppender struct {
@@ -37,6 +40,14 @@ type xmlAppender struct {
 	Name             string             `xml:"name,attr"`
 	Type             string             `xml:"type,attr"`
 	Target           string             `xml:"target,attr"`
+	URL              string             `xml:"url,attr"`
+	Method           string             `xml:"method,attr"`
+	Address          string             `xml:"address,attr"`
+	Network          string             `xml:"network,attr"`
+	Facility         string             `xml:"facility,attr"`
+	AppName          string             `xml:"appName,attr"`
+	ConnectTimeout   string             `xml:"connectTimeout,attr"`
+	WriteTimeout     string             `xml:"writeTimeout,attr"`
 	FileName         string             `xml:"fileName,attr"`
 	FilePattern      string             `xml:"filePattern,attr"`
 	QueueSize        string             `xml:"queueSize,attr"`
@@ -198,7 +209,15 @@ func (c xmlConfig) properties() map[string]string {
 }
 
 func (c xmlConfig) appenders(file *fileConfig) error {
-	groups := [][]xmlAppender{c.Appenders.Console, c.Appenders.File, c.Appenders.RollingFile, c.Appenders.Async}
+	groups := [][]xmlAppender{
+		c.Appenders.Console,
+		c.Appenders.File,
+		c.Appenders.RollingFile,
+		c.Appenders.Async,
+		c.Appenders.HTTP,
+		c.Appenders.Socket,
+		c.Appenders.Syslog,
+	}
 	for _, group := range groups {
 		for _, item := range group {
 			name, appender, err := item.config()
@@ -269,6 +288,14 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	config := appenderConfig{
 		Type:             xmlAppenderType(a.XMLName.Local, a.Type),
 		Target:           xmlConsoleTarget(a.Target),
+		URL:              a.URL,
+		Method:           a.Method,
+		Address:          a.Address,
+		Network:          a.Network,
+		Facility:         a.Facility,
+		AppName:          a.AppName,
+		ConnectTimeout:   a.ConnectTimeout,
+		WriteTimeout:     a.WriteTimeout,
 		FileName:         a.FileName,
 		Layout:           a.layout(),
 		AppenderRefs:     xmlAppenderRefs(a.AppenderRefs),

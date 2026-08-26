@@ -36,6 +36,17 @@ type fileConfig struct {
 type appenderConfig struct {
 	Type                  string        `yaml:"type"`
 	Target                string        `yaml:"target"`
+	URL                   string        `yaml:"url"`
+	Method                string        `yaml:"method"`
+	Address               string        `yaml:"address"`
+	Network               string        `yaml:"network"`
+	Facility              string        `yaml:"facility"`
+	AppName               string        `yaml:"appName"`
+	AppNameKebab          string        `yaml:"app-name"`
+	ConnectTimeout        string        `yaml:"connectTimeout"`
+	ConnectTimeoutKebab   string        `yaml:"connect-timeout"`
+	WriteTimeout          string        `yaml:"writeTimeout"`
+	WriteTimeoutKebab     string        `yaml:"write-timeout"`
 	FileName              string        `yaml:"fileName"`
 	FileNameKebab         string        `yaml:"file-name"`
 	Path                  string        `yaml:"path"`
@@ -637,6 +648,39 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.Target, err = resolveStringLookup(lookups, c.Target); err != nil {
 		return fmt.Errorf("target: %w", err)
+	}
+	if c.URL, err = resolveStringLookup(lookups, c.URL); err != nil {
+		return fmt.Errorf("url: %w", err)
+	}
+	if c.Method, err = resolveStringLookup(lookups, c.Method); err != nil {
+		return fmt.Errorf("method: %w", err)
+	}
+	if c.Address, err = resolveStringLookup(lookups, c.Address); err != nil {
+		return fmt.Errorf("address: %w", err)
+	}
+	if c.Network, err = resolveStringLookup(lookups, c.Network); err != nil {
+		return fmt.Errorf("network: %w", err)
+	}
+	if c.Facility, err = resolveStringLookup(lookups, c.Facility); err != nil {
+		return fmt.Errorf("facility: %w", err)
+	}
+	if c.AppName, err = resolveStringLookup(lookups, c.AppName); err != nil {
+		return fmt.Errorf("appName: %w", err)
+	}
+	if c.AppNameKebab, err = resolveStringLookup(lookups, c.AppNameKebab); err != nil {
+		return fmt.Errorf("app-name: %w", err)
+	}
+	if c.ConnectTimeout, err = resolveStringLookup(lookups, c.ConnectTimeout); err != nil {
+		return fmt.Errorf("connectTimeout: %w", err)
+	}
+	if c.ConnectTimeoutKebab, err = resolveStringLookup(lookups, c.ConnectTimeoutKebab); err != nil {
+		return fmt.Errorf("connect-timeout: %w", err)
+	}
+	if c.WriteTimeout, err = resolveStringLookup(lookups, c.WriteTimeout); err != nil {
+		return fmt.Errorf("writeTimeout: %w", err)
+	}
+	if c.WriteTimeoutKebab, err = resolveStringLookup(lookups, c.WriteTimeoutKebab); err != nil {
+		return fmt.Errorf("write-timeout: %w", err)
 	}
 	if c.FileName, err = resolveStringLookup(lookups, c.FileName); err != nil {
 		return fmt.Errorf("fileName: %w", err)
@@ -1287,6 +1331,14 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		Name:             name,
 		Type:             c.Type,
 		Target:           c.Target,
+		URL:              c.URL,
+		Method:           c.Method,
+		Address:          c.Address,
+		Network:          c.Network,
+		Facility:         c.Facility,
+		AppName:          firstNonBlank(c.AppName, c.AppNameKebab),
+		ConnectTimeout:   firstNonBlank(c.ConnectTimeout, c.ConnectTimeoutKebab),
+		WriteTimeout:     firstNonBlank(c.WriteTimeout, c.WriteTimeoutKebab),
 		FileName:         c.fileName(),
 		Layout:           layout,
 		AppenderRefs:     c.refs(),

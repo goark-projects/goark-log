@@ -21,6 +21,14 @@ type AppenderBuildConfig struct {
 	Name             string
 	Type             string
 	Target           string
+	URL              string
+	Method           string
+	Address          string
+	Network          string
+	Facility         string
+	AppName          string
+	ConnectTimeout   string
+	WriteTimeout     string
 	FileName         string
 	Layout           Layout
 	AppenderRefs     []string

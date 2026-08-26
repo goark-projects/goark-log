@@ -156,6 +156,22 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Type = value
 	case "target":
 		appender.Target = value
+	case "url":
+		appender.URL = value
+	case "method":
+		appender.Method = value
+	case "address":
+		appender.Address = value
+	case "network":
+		appender.Network = value
+	case "facility":
+		appender.Facility = value
+	case "appName", "app-name":
+		appender.AppName = value
+	case "connectTimeout", "connect-timeout":
+		appender.ConnectTimeout = value
+	case "writeTimeout", "write-timeout":
+		appender.WriteTimeout = value
 	case "fileName", "file-name", "path":
 		appender.FileName = value
 	case "appenderRefs", "appender-refs", "refs":

@@ -155,6 +155,21 @@ logger.InfoContext(ctx, "request done")
 
 `JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`marker`、`throwable`、`contextStack`、`mdc`、`attr`、`endOfBatch`。
 
+## 外部 Appender 包
+
+外部系统连接保持独立包，不默认进入核心库依赖。需要时显式导入并注册：
+
+```go
+registry := goarklog.NewPluginRegistry()
+_ = httpappender.Register(registry)
+handler, _, err := goarklog.NewConfiguredHandler(ctx,
+	goarklog.WithConfigPath("conf/goark-log.yml"),
+	goarklog.WithPluginRegistry(registry),
+)
+```
+
+当前提供 `goark.dev/goark-log/appenders/http`、`goark.dev/goark-log/appenders/socket`、`goark.dev/goark-log/appenders/syslog`。核心包同时提供 `FailoverAppender`、`RoutingAppender`、`RewriteAppender` 作为组合型 appender。
+
 ## Examples
 
 示例位于 `examples/`：
