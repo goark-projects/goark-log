@@ -81,6 +81,54 @@ func TestHandler_whenNamedLoggerLevelIsLower_shouldUseMostSpecificRule(t *testin
 	}
 }
 
+func TestHandler_whenAppenderRefControlConfigured_shouldApplyLevelAndFiltersPerAppender(t *testing.T) {
+	allAppender := newRecordingAppender("all")
+	errorAppender := newRecordingAppender("errors")
+	auditAppender := newRecordingAppender("audit")
+	auditOnly, err := NewAttrFilter("kind", "audit",
+		WithFilterOnMatch(FilterAccept),
+		WithFilterOnMismatch(FilterDeny),
+	)
+	if err != nil {
+		t.Fatalf("NewAttrFilter() error = %v", err)
+	}
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{allAppender, errorAppender, auditAppender},
+		Root: RootLogger{
+			Level:        slog.LevelDebug,
+			AppenderRefs: []string{"all"},
+			AppenderRefControls: []AppenderRef{
+				NewAppenderRef("errors", WithAppenderRefLevel(slog.LevelError)),
+				NewAppenderRef("audit", WithAppenderRefFilters(auditOnly)),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+
+	logger := NewLogger(handler, "goark.audit")
+	logger.Info("business event", slog.String("kind", "biz"))
+	logger.Info("audit event", slog.String("kind", "audit"))
+	logger.Error("error event")
+
+	if !allAppender.Contains("business event") ||
+		!allAppender.Contains("audit event") ||
+		!allAppender.Contains("error event") {
+		t.Fatalf("all appender events = %+v, want every event", allAppender.Events())
+	}
+	if errorAppender.Contains("business event") ||
+		errorAppender.Contains("audit event") ||
+		!errorAppender.Contains("error event") {
+		t.Fatalf("error appender events = %+v, want only error event", errorAppender.Events())
+	}
+	if auditAppender.Contains("business event") ||
+		!auditAppender.Contains("audit event") ||
+		auditAppender.Contains("error event") {
+		t.Fatalf("audit appender events = %+v, want only audit event", auditAppender.Events())
+	}
+}
+
 func TestHandler_whenUsedConcurrently_shouldKeepLinesComplete(t *testing.T) {
 	var out bytes.Buffer
 	handler, err := NewHandler(Options{

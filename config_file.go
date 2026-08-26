@@ -39,9 +39,9 @@ type appenderConfig struct {
 	Path                  string        `yaml:"path"`
 	Layout                layoutConfig  `yaml:"layout"`
 	Rolling               rollingConfig `yaml:"rolling"`
-	AppenderRefs          []string      `yaml:"appenderRefs"`
-	AppenderRefsKebab     []string      `yaml:"appender-refs"`
-	Refs                  []string      `yaml:"refs"`
+	AppenderRefs          appenderRefs  `yaml:"appenderRefs"`
+	AppenderRefsKebab     appenderRefs  `yaml:"appender-refs"`
+	Refs                  appenderRefs  `yaml:"refs"`
 	QueueSize             int           `yaml:"queueSize"`
 	QueueSizeKebab        int           `yaml:"queue-size"`
 	OverflowStrategy      string        `yaml:"overflowStrategy"`
@@ -171,14 +171,149 @@ type asyncLoggerConfig struct {
 }
 
 type loggerConfig struct {
-	Level             string   `yaml:"level"`
-	AppenderRefs      []string `yaml:"appenderRefs"`
-	AppenderRefsKebab []string `yaml:"appender-refs"`
-	Refs              []string `yaml:"refs"`
-	Filters           []string `yaml:"filters"`
-	FilterRefs        []string `yaml:"filterRefs"`
-	FilterRefsKebab   []string `yaml:"filter-refs"`
-	Additivity        *bool    `yaml:"additivity"`
+	Level             string       `yaml:"level"`
+	AppenderRefs      appenderRefs `yaml:"appenderRefs"`
+	AppenderRefsKebab appenderRefs `yaml:"appender-refs"`
+	Refs              appenderRefs `yaml:"refs"`
+	Filters           []string     `yaml:"filters"`
+	FilterRefs        []string     `yaml:"filterRefs"`
+	FilterRefsKebab   []string     `yaml:"filter-refs"`
+	Additivity        *bool        `yaml:"additivity"`
+}
+
+type appenderRefs []appenderRefConfig
+
+type appenderRefConfig struct {
+	Ref             string   `yaml:"ref"`
+	Level           string   `yaml:"level"`
+	Filters         []string `yaml:"filters"`
+	FilterRefs      []string `yaml:"filterRefs"`
+	FilterRefsKebab []string `yaml:"filter-refs"`
+}
+
+func (r *appenderRefs) UnmarshalYAML(node *yaml.Node) error {
+	if node == nil || node.Kind == 0 {
+		return nil
+	}
+	if node.Kind != yaml.SequenceNode {
+		return fmt.Errorf("goark-log: appenderRefs must be a sequence")
+	}
+	refs := make([]appenderRefConfig, 0, len(node.Content))
+	for index, item := range node.Content {
+		switch item.Kind {
+		case yaml.ScalarNode:
+			var ref string
+			if err := item.Decode(&ref); err != nil {
+				return fmt.Errorf("goark-log: appenderRefs[%d]: %w", index, err)
+			}
+			refs = append(refs, appenderRefConfig{Ref: ref})
+		case yaml.MappingNode:
+			var ref appenderRefConfig
+			if err := item.Decode(&ref); err != nil {
+				return fmt.Errorf("goark-log: appenderRefs[%d]: %w", index, err)
+			}
+			refs = append(refs, ref)
+		default:
+			return fmt.Errorf("goark-log: appenderRefs[%d] must be a string or object", index)
+		}
+	}
+	*r = refs
+	return nil
+}
+
+func (r appenderRefs) strings() []string {
+	if len(r) == 0 {
+		return nil
+	}
+	refs := make([]string, 0, len(r))
+	for _, ref := range r {
+		if ref.hasControls() {
+			continue
+		}
+		refs = append(refs, strings.TrimSpace(ref.Ref))
+	}
+	return refs
+}
+
+func (r appenderRefs) controls(filters map[string]Filter) ([]AppenderRef, error) {
+	if len(r) == 0 {
+		return nil, nil
+	}
+	controls := make([]AppenderRef, 0, len(r))
+	for _, ref := range r {
+		if !ref.hasControls() {
+			continue
+		}
+		control, err := ref.build(filters)
+		if err != nil {
+			return nil, err
+		}
+		controls = append(controls, control)
+	}
+	return controls, nil
+}
+
+func (r appenderRefs) resolveLookups(lookups *LookupResolver) (appenderRefs, error) {
+	if len(r) == 0 {
+		return r, nil
+	}
+	out := make(appenderRefs, 0, len(r))
+	for index, ref := range r {
+		resolved, err := ref.resolveLookups(lookups)
+		if err != nil {
+			return nil, fmt.Errorf("appenderRefs[%d]: %w", index, err)
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
+}
+
+func (c appenderRefConfig) hasControls() bool {
+	return strings.TrimSpace(c.Level) != "" ||
+		len(c.Filters) > 0 ||
+		len(c.FilterRefs) > 0 ||
+		len(c.FilterRefsKebab) > 0
+}
+
+func (c appenderRefConfig) filterRefs() []string {
+	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+}
+
+func (c appenderRefConfig) build(filters map[string]Filter) (AppenderRef, error) {
+	ref := AppenderRef{Ref: strings.TrimSpace(c.Ref)}
+	if strings.TrimSpace(c.Level) != "" {
+		level, err := ParseLevel(c.Level)
+		if err != nil {
+			return AppenderRef{}, err
+		}
+		ref.Level = &level
+	}
+	resolved, err := resolveFilters(filters, c.filterRefs())
+	if err != nil {
+		return AppenderRef{}, err
+	}
+	ref.Filters = resolved
+	return ref, nil
+}
+
+func (c appenderRefConfig) resolveLookups(lookups *LookupResolver) (appenderRefConfig, error) {
+	var err error
+	if c.Ref, err = resolveStringLookup(lookups, c.Ref); err != nil {
+		return appenderRefConfig{}, fmt.Errorf("ref: %w", err)
+	}
+	if c.Level, err = resolveStringLookup(lookups, c.Level); err != nil {
+		return appenderRefConfig{}, fmt.Errorf("level: %w", err)
+	}
+	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
+		return appenderRefConfig{}, fmt.Errorf("filters: %w", err)
+	}
+	if c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs); err != nil {
+		return appenderRefConfig{}, fmt.Errorf("filterRefs: %w", err)
+	}
+	if c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab); err != nil {
+		return appenderRefConfig{}, fmt.Errorf("filter-refs: %w", err)
+	}
+	return c, nil
 }
 
 type filterConfig struct {
@@ -287,6 +422,11 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 			Filters:      rootFilters,
 		},
 	}
+	options.Root.AppenderRefControls, err = c.Root.appenderRefControls(filters)
+	if err != nil {
+		_ = closeAppenderList(appenders)
+		return Options{}, fmt.Errorf("goark-log: root: %w", err)
+	}
 	loggerNames := sortedLoggerNames(c.Loggers)
 	for _, name := range loggerNames {
 		loggerConfig := c.Loggers[name]
@@ -303,6 +443,11 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 			Name:         name,
 			Level:        level,
 			AppenderRefs: loggerConfig.refs(),
+		}
+		rule.AppenderRefControls, err = loggerConfig.appenderRefControls(filters)
+		if err != nil {
+			_ = closeAppenderList(appenders)
+			return Options{}, fmt.Errorf("goark-log: logger %q: %w", name, err)
 		}
 		rule.Filters, err = resolveFilters(filters, loggerConfig.filterRefs())
 		if err != nil {
@@ -480,13 +625,13 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.BufferSizeKebab, err = resolveStringLookup(lookups, c.BufferSizeKebab); err != nil {
 		return fmt.Errorf("buffer-size: %w", err)
 	}
-	if c.AppenderRefs, err = resolveStringListLookups(lookups, c.AppenderRefs); err != nil {
+	if c.AppenderRefs, err = c.AppenderRefs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appenderRefs: %w", err)
 	}
-	if c.AppenderRefsKebab, err = resolveStringListLookups(lookups, c.AppenderRefsKebab); err != nil {
+	if c.AppenderRefsKebab, err = c.AppenderRefsKebab.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appender-refs: %w", err)
 	}
-	if c.Refs, err = resolveStringListLookups(lookups, c.Refs); err != nil {
+	if c.Refs, err = c.Refs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("refs: %w", err)
 	}
 	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
@@ -678,13 +823,13 @@ func (c *loggerConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.Level, err = resolveStringLookup(lookups, c.Level); err != nil {
 		return fmt.Errorf("level: %w", err)
 	}
-	if c.AppenderRefs, err = resolveStringListLookups(lookups, c.AppenderRefs); err != nil {
+	if c.AppenderRefs, err = c.AppenderRefs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appenderRefs: %w", err)
 	}
-	if c.AppenderRefsKebab, err = resolveStringListLookups(lookups, c.AppenderRefsKebab); err != nil {
+	if c.AppenderRefsKebab, err = c.AppenderRefsKebab.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appender-refs: %w", err)
 	}
-	if c.Refs, err = resolveStringListLookups(lookups, c.Refs); err != nil {
+	if c.Refs, err = c.Refs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("refs: %w", err)
 	}
 	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
@@ -940,10 +1085,14 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 
 func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
 	refs := spec.refs()
-	if len(refs) == 0 {
+	controls, err := spec.appenderRefControls(filters)
+	if err != nil {
+		return nil, fmt.Errorf("goark-log: async appender %q: %w", name, err)
+	}
+	if len(refs) == 0 && len(controls) == 0 {
 		return nil, fmt.Errorf("goark-log: async appender %q requires appenderRefs", name)
 	}
-	delegates := make([]Appender, 0, len(refs))
+	delegates := make([]Appender, 0, len(refs)+len(controls))
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
@@ -954,6 +1103,13 @@ func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appen
 			return nil, fmt.Errorf("goark-log: async appender %q references unknown or async appender %q", name, ref)
 		}
 		delegates = append(delegates, appender)
+	}
+	for _, ref := range controls {
+		control, err := newAppenderControl(built, ref)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: async appender %q: %w", name, err)
+		}
+		delegates = append(delegates, controlledAppender{control: control})
 	}
 	factory, ok := registry.appenderFactory(spec.Type)
 	if !ok {
@@ -1013,11 +1169,19 @@ func (c appenderConfig) fileName() string {
 }
 
 func (c appenderConfig) refs() []string {
-	return firstRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+	return c.appenderRefs().strings()
+}
+
+func (c appenderConfig) appenderRefs() appenderRefs {
+	return firstAppenderRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+}
+
+func (c appenderConfig) appenderRefControls(filters map[string]Filter) ([]AppenderRef, error) {
+	return c.appenderRefs().controls(filters)
 }
 
 func (c appenderConfig) filterRefs() []string {
-	return firstRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c appenderConfig) queueSize() int {
@@ -1308,18 +1472,26 @@ func filepathDir(path string) string {
 }
 
 func (c loggerConfig) refs() []string {
-	return firstRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+	return c.appenderRefs().strings()
+}
+
+func (c loggerConfig) appenderRefs() appenderRefs {
+	return firstAppenderRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+}
+
+func (c loggerConfig) appenderRefControls(filters map[string]Filter) ([]AppenderRef, error) {
+	return c.appenderRefs().controls(filters)
 }
 
 func (c loggerConfig) filterRefs() []string {
-	return firstRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c *fileConfig) filterRefs() []string {
 	if c == nil {
 		return nil
 	}
-	return firstRefs(c.FilterRefs, c.FilterRefsKebab)
+	return firstStringRefs(c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, error) {
@@ -1427,7 +1599,18 @@ func resolveFilters(filters map[string]Filter, refs []string) ([]Filter, error) 
 	return resolved, nil
 }
 
-func firstRefs(groups ...[]string) []string {
+func firstAppenderRefs(groups ...appenderRefs) appenderRefs {
+	for _, refs := range groups {
+		if len(refs) > 0 {
+			out := make(appenderRefs, len(refs))
+			copy(out, refs)
+			return out
+		}
+	}
+	return nil
+}
+
+func firstStringRefs(groups ...[]string) []string {
 	for _, refs := range groups {
 		if len(refs) > 0 {
 			out := make([]string, len(refs))

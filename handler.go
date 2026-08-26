@@ -21,19 +21,21 @@ type Options struct {
 
 // RootLogger 描述根 logger。
 type RootLogger struct {
-	Level        slog.Level
-	AppenderRefs []string
-	Filters      []Filter
+	Level               slog.Level
+	AppenderRefs        []string
+	AppenderRefControls []AppenderRef
+	Filters             []Filter
 }
 
 // LoggerRule 描述命名 logger 的级别和输出路由。
 type LoggerRule struct {
-	Name          string
-	Level         *slog.Level
-	AppenderRefs  []string
-	Filters       []Filter
-	Additivity    bool
-	AdditivitySet bool
+	Name                string
+	Level               *slog.Level
+	AppenderRefs        []string
+	AppenderRefControls []AppenderRef
+	Filters             []Filter
+	Additivity          bool
+	AdditivitySet       bool
 }
 
 // Handler 是 goark-log 的 slog.Handler 实现。
@@ -113,9 +115,6 @@ func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) e
 	}
 	var joined error
 	for _, appender := range route.Appenders {
-		if appender == nil {
-			continue
-		}
 		if err := appender.Append(ctx, event); err != nil {
 			joined = errors.Join(joined, err)
 		}
@@ -240,7 +239,7 @@ type loggerRuntime struct {
 // route 是一次 logger 匹配后的最终输出计划。
 type route struct {
 	Level     slog.Level
-	Appenders []Appender
+	Appenders []appenderControl
 	Filters   []Filter
 }
 
@@ -323,7 +322,7 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	if len(options.Appenders) == 0 {
 		defaults := DefaultOptions()
 		options.Appenders = defaults.Appenders
-		if len(options.Root.AppenderRefs) == 0 {
+		if len(options.Root.AppenderRefs) == 0 && len(options.Root.AppenderRefControls) == 0 {
 			options.Root.AppenderRefs = defaults.Root.AppenderRefs
 		}
 	}
@@ -347,11 +346,11 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		appenderByName[name] = appender
 		all = append(all, appender)
 	}
-	rootRefs := options.Root.AppenderRefs
+	rootRefs := mergeAppenderRefs(options.Root.AppenderRefs, options.Root.AppenderRefControls)
 	if len(rootRefs) == 0 {
-		rootRefs = []string{all[0].Name()}
+		rootRefs = []AppenderRef{{Ref: all[0].Name()}}
 	}
-	rootAppenders, err := resolveAppenders(appenderByName, rootRefs)
+	rootAppenders, err := resolveAppenderControls(appenderByName, rootRefs)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +376,7 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		if rule.AdditivitySet {
 			additivity = rule.Additivity
 		}
-		appenders, err := resolveAppenders(appenderByName, rule.AppenderRefs)
+		appenders, err := resolveAppenderControls(appenderByName, mergeAppenderRefs(rule.AppenderRefs, rule.AppenderRefControls))
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: logger %q: %w", name, err)
 		}
@@ -390,7 +389,7 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		}
 		effectiveFilters := appendFilters(append([]Filter(nil), globalFilters...), filters)
 		if additivity {
-			appenders = appendUniqueAppenders(appenders, config.root.Appenders)
+			appenders = appendUniqueAppenderControls(appenders, config.root.Appenders)
 			effectiveFilters = appendFilters(effectiveFilters, configRootFilters)
 		}
 		config.loggers = append(config.loggers, loggerRuntime{
@@ -408,56 +407,12 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	return config, nil
 }
 
-func resolveAppenders(appenderByName map[string]Appender, refs []string) ([]Appender, error) {
-	appenders := make([]Appender, 0, len(refs))
-	for _, ref := range refs {
-		ref = strings.TrimSpace(ref)
-		if ref == "" {
-			return nil, fmt.Errorf("appender ref is empty")
-		}
-		appender, ok := appenderByName[ref]
-		if !ok {
-			return nil, fmt.Errorf("appender %q is not configured", ref)
-		}
-		appenders = append(appenders, appender)
-	}
-	return appenders, nil
-}
-
 func loggerMatches(name string, rule string) bool {
 	return name == rule || strings.HasPrefix(name, rule+".")
 }
 
 func loggerSpecificity(name string) int {
 	return strings.Count(name, ".")*1024 + len(name)
-}
-
-func appendUniqueAppenders(dst []Appender, src []Appender) []Appender {
-	seen := make(map[string]struct{}, len(dst)+len(src))
-	out := dst[:0]
-	for _, appender := range dst {
-		if appender == nil {
-			continue
-		}
-		name := appender.Name()
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		out = append(out, appender)
-	}
-	for _, appender := range src {
-		if appender == nil {
-			continue
-		}
-		name := appender.Name()
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		out = append(out, appender)
-	}
-	return out
 }
 
 func loggerLevel(root slog.Level, level *slog.Level) slog.Level {

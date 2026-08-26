@@ -299,6 +299,78 @@ func TestConfigReloader_whenConfigChanges_shouldSwapHandlerOptions(t *testing.T)
 	}
 }
 
+func TestNewConfigured_whenYamlAppenderRefControlsConfigured_shouldApplyPerAppender(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	allPath := filepath.Join(dir, "logs", "all.log")
+	errorPath := filepath.Join(dir, "logs", "errors.log")
+	auditPath := filepath.Join(dir, "logs", "audit.log")
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+filters:
+  audit-only:
+    type: attr
+    key: kind
+    value: audit
+    onMatch: accept
+    onMismatch: deny
+appenders:
+  all:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+  errors:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+  audit:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+root:
+  level: debug
+  appenderRefs:
+    - all
+    - ref: errors
+      level: error
+    - ref: audit
+      filters: [audit-only]
+`, filepath.ToSlash(allPath), filepath.ToSlash(errorPath), filepath.ToSlash(auditPath)))
+
+	logger, handler, _, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	logger.Info("business event", slog.String("kind", "biz"))
+	logger.Info("audit event", slog.String("kind", "audit"))
+	logger.Error("error event")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	allContent := readTextFile(t, allPath)
+	if !strings.Contains(allContent, "business event") ||
+		!strings.Contains(allContent, "audit event") ||
+		!strings.Contains(allContent, "error event") {
+		t.Fatalf("all appender content = %q, want every event", allContent)
+	}
+	errorContent := readTextFile(t, errorPath)
+	if strings.Contains(errorContent, "business event") ||
+		strings.Contains(errorContent, "audit event") ||
+		!strings.Contains(errorContent, "error event") {
+		t.Fatalf("error appender content = %q, want only error event", errorContent)
+	}
+	auditContent := readTextFile(t, auditPath)
+	if strings.Contains(auditContent, "business event") ||
+		!strings.Contains(auditContent, "audit event") ||
+		strings.Contains(auditContent, "error event") {
+		t.Fatalf("audit appender content = %q, want only audit event", auditContent)
+	}
+}
+
 func TestNewConfigured_whenAppenderRefMissing_shouldReject(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
 	writeConfig(t, configPath, `
@@ -312,6 +384,24 @@ root:
 	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
 	if err == nil {
 		t.Fatalf("NewConfiguredHandler() should reject missing appender ref")
+	}
+}
+
+func TestNewConfigured_whenAppenderRefFilterMissing_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  console:
+    type: console
+root:
+  level: info
+  appenderRefs:
+    - ref: console
+      filters: [missing]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "filter") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want appender ref filter rejection", err)
 	}
 }
 
@@ -509,6 +599,15 @@ func writeConfig(t *testing.T, path string, content string) {
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func readTextFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return string(content)
 }
 
 func assertConfigSource(t *testing.T, result *ConfigResult, source ConfigSource, path string) {
