@@ -46,7 +46,7 @@ _ = native.AtInfo().
 	Log("service started")
 ```
 
-`Logger.AtInfo()/AtDebug()/AtWarn()/AtError()/AtTrace()` 提供 Log4j2 风格 fluent builder；`SimpleMessage`、`ParameterizedMessage`、`MapMessage`、`StructuredDataMessage` 提供 Go-native 消息模型。需要自定义级别时使用 `RegisterLevel("NOTICE", slog.Level(2))`，布局输出会优先使用注册名称。
+`Logger.AtInfo()/AtDebug()/AtWarn()/AtError()/AtTrace()` 提供 Log4j2 风格 fluent builder；`SimpleMessage`、`ParameterizedMessage`、`MapMessage`、`StructuredDataMessage` 和 `MessageFactory` 提供 Go-native 消息模型。需要自定义级别时使用 `RegisterLevel("NOTICE", slog.Level(2))`，布局输出会优先使用注册名称。
 
 ## 配置优先级
 
@@ -71,6 +71,8 @@ configuration:
     queueSize: 8192
     batchSize: 128
     overflowStrategy: block
+    waitStrategy: yield
+    includeLocation: false
   filters:
     keep-info:
       type: threshold
@@ -166,8 +168,7 @@ ctx := goarklog.WithContextAttrs(context.Background(),
 logger.InfoContext(ctx, "request done")
 ```
 
-`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`。调用位置来自 `slog.Record.PC`，
-只有 pattern 使用 caller token 时才解析 runtime frame。
+`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%highlight{...}`、`%style{...}{...}`、`%notEmpty{...}`。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
 
 `JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`mdc` 支持 `flatten: true` 把 group 展平成点分 key，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
 
@@ -175,10 +176,11 @@ logger.InfoContext(ctx, "request done")
 
 ## 过滤器
 
-内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`ThreadContextStackFilter`、`StructuredDataFilter`、`ThrowableFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
+内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`CompositeFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`ThreadContextStackFilter`、`StructuredDataFilter`、`ThrowableFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
 
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。
+`CompositeFilter` 使用 `filters`/`filterRefs` 引用已命名过滤器，构建时会检测循环引用。
 
 `ScriptFilter` 只提供 `ScriptEvaluator` 契约和安全默认策略，核心库不内置脚本引擎。JavaScript、Lua、expr、Starlark 等执行器应放在独立模块中注册，避免核心库绑定脚本运行时和安全策略。
 
@@ -201,7 +203,7 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 
 核心包保留 `AppenderBuildConfig` 中的 URL、Address、Network、Timeout 等字段，用于独立外部模块读取配置；这些字段不是核心库自带外部 appender 的承诺。核心包自身只提供 `ConsoleAppender`、`FileAppender`、`RollingFileAppender`、`AsyncAppender`、`FailoverAppender`、`RoutingAppender`、`RewriteAppender` 等本地和组合型 appender。
 
-外部包如果只扩展默认注册表，可以直接使用包级 helper：`RegisterAppender`、`RegisterLayout`、`RegisterFilter`、`RegisterLookup`、`RegisterJSONTemplateResolver`。需要隔离测试或多套配置时，继续使用 `NewPluginRegistry()` 显式传入。
+外部包如果只扩展默认注册表，可以直接使用包级 helper：`RegisterAppender`、`RegisterLayout`、`RegisterFilter`、`RegisterLookup`、`RegisterJSONTemplateResolver`、`RegisterPlugins`。需要隔离测试或多套配置时，继续使用 `NewPluginRegistry()` 显式传入。独立外部模块推荐暴露 `PluginRegistrar`，核心库只负责调用 registrar，不负责发现或加载外部包。
 
 ## Examples
 
@@ -212,6 +214,7 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 - `examples/rolling`：大小滚动、启动滚动和 gzip
 - `examples/async`：async 包装 rolling appender
 - `examples/reload`：配置 reload
+- `examples/extensibility`：`PluginRegistrar`、自定义 JSON Template resolver、MessageFactory
 
 ```bash
 go test ./examples/...
@@ -239,3 +242,8 @@ variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayo
 cd benchmarks/compare
 go test -run '^$' -bench . -benchmem
 ```
+
+更多对标边界和性能预算见：
+
+- `docs/log4j2-parity.md`
+- `docs/performance.md`
