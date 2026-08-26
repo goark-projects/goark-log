@@ -1,6 +1,7 @@
 package goarklog
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"io"
@@ -225,6 +226,131 @@ func TestRollingFileAppender_whenPolicyInvalid_shouldReject(t *testing.T) {
 	}
 }
 
+func TestRollingFileAppender_whenAppendDisabled_shouldTruncateActiveFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "truncate.log")
+	if err := os.WriteFile(path, []byte("old content\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(TextLayout{}),
+		WithRollingFileAppend(false),
+		WithRollingMaxSize(1024),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("new content", fixedTestTime())); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	content := readTextFile(t, path)
+	if strings.Contains(content, "old content") || !strings.Contains(content, "new content") {
+		t.Fatalf("active file content = %q, want truncated old content and new event", content)
+	}
+}
+
+func TestRollingFileAppender_whenCreateOnDemandEnabled_shouldDelayActiveFileCreation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "lazy.log")
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(TextLayout{}),
+		WithRollingFileCreateOnDemand(true),
+		WithRollingMaxSize(1024),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("active file should not be created before first append, stat error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("lazy content", fixedTestTime())); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if content := readTextFile(t, path); !strings.Contains(content, "lazy content") {
+		t.Fatalf("lazy active file content = %q", content)
+	}
+}
+
+func TestRollingFileAppender_whenRolloverOccurs_shouldPreserveLayoutLifecycle(t *testing.T) {
+	now := fixedTestTime()
+	path := filepath.Join(t.TempDir(), "lifecycle.log")
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(testLifecycleLayout{}),
+		WithRollingMaxSize(12),
+		WithRollingMaxBackups(10),
+		withRollingClock(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("first", now)); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("second", now)); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	archives, err := filepath.Glob(path + ".*")
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(archives) != 1 {
+		t.Fatalf("expected one archive, got %d: %v", len(archives), archives)
+	}
+	if content := readTextFile(t, archives[0]); content != "[\nfirst\n]\n" {
+		t.Fatalf("archive lifecycle content = %q", content)
+	}
+	if content := readTextFile(t, path); content != "[\nsecond\n]\n" {
+		t.Fatalf("active lifecycle content = %q", content)
+	}
+}
+
+func TestNewConfigured_whenRollingFileCreateOnDemandAndAppendDisabledConfigured_shouldDelayAndTruncate(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "configured.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(logPath, []byte("old configured\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	configPath := filepath.Join(dir, "goark-log.properties")
+	writeConfig(t, configPath, `
+appender.rolling.type=rollingFile
+appender.rolling.fileName=`+filepath.ToSlash(logPath)+`
+appender.rolling.append=false
+appender.rolling.createOnDemand=true
+appender.rolling.filePermissions=rw-------
+appender.rolling.rolling.maxSize=1MB
+appender.rolling.layout.type=text
+rootLogger.level=info
+rootLogger.appenderRefs=rolling
+`)
+	logger, handler, _, err := NewConfigured(context.Background(), WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	if content := readTextFile(t, logPath); content != "old configured\n" {
+		t.Fatalf("createOnDemand should not touch existing file before append, got %q", content)
+	}
+	logger.Info("configured new")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	content := readTextFile(t, logPath)
+	if strings.Contains(content, "old configured") || !strings.Contains(content, "configured new") {
+		t.Fatalf("configured rolling content = %q, want truncated old content and new event", content)
+	}
+}
+
 func readGzipFile(t *testing.T, path string) string {
 	t.Helper()
 	file, err := os.Open(path)
@@ -242,4 +368,22 @@ func readGzipFile(t *testing.T, path string) string {
 		t.Fatalf("ReadAll(%s) error = %v", path, err)
 	}
 	return string(content)
+}
+
+type testLifecycleLayout struct{}
+
+func (testLifecycleLayout) Format(buf *bytes.Buffer, event Event) error {
+	buf.WriteString(event.Message)
+	buf.WriteByte('\n')
+	return nil
+}
+
+func (testLifecycleLayout) AppendHeader(buf *bytes.Buffer) error {
+	buf.WriteString("[\n")
+	return nil
+}
+
+func (testLifecycleLayout) AppendFooter(buf *bytes.Buffer) error {
+	buf.WriteString("]\n")
+	return nil
 }

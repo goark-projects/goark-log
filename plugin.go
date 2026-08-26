@@ -60,6 +60,9 @@ type AppenderBuildConfig struct {
 	WaitOptions      AsyncWaitOptions
 	BufferSize       string
 	FlushOnWrite     bool
+	Append           *bool
+	CreateOnDemand   bool
+	FilePermissions  string
 	Rolling          RollingBuildConfig
 	Rewrite          RewriteBuildConfig
 }
@@ -487,6 +490,19 @@ func buildFilePlugin(config AppenderBuildConfig) (Appender, error) {
 	if config.FlushOnWrite {
 		options = append(options, WithFileFlushOnWrite(true))
 	}
+	if config.Append != nil {
+		options = append(options, WithFileAppend(*config.Append))
+	}
+	if config.CreateOnDemand {
+		options = append(options, WithFileCreateOnDemand(true))
+	}
+	if strings.TrimSpace(config.FilePermissions) != "" {
+		permissions, err := parseLogFilePermissions(config.FilePermissions)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+		}
+		options = append(options, WithFilePermissions(permissions))
+	}
 	return NewFileAppender(config.FileName, options...)
 }
 
@@ -536,6 +552,19 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	}
 	if config.FlushOnWrite {
 		options = append(options, WithRollingFileFlushOnWrite(true))
+	}
+	if config.Append != nil {
+		options = append(options, WithRollingFileAppend(*config.Append))
+	}
+	if config.CreateOnDemand {
+		options = append(options, WithRollingFileCreateOnDemand(true))
+	}
+	if strings.TrimSpace(config.FilePermissions) != "" {
+		permissions, err := parseLogFilePermissions(config.FilePermissions)
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+		}
+		options = append(options, WithRollingFilePermissions(permissions))
 	}
 	if strings.TrimSpace(config.Rolling.FilePattern) != "" {
 		options = append(options, WithRollingFilePattern(config.Rolling.FilePattern))

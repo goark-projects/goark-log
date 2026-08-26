@@ -76,6 +76,9 @@ type xmlAppender struct {
 	Timeout          string             `xml:"timeout,attr"`
 	BufferSize       string             `xml:"bufferSize,attr"`
 	FlushOnWrite     string             `xml:"flushOnWrite,attr"`
+	Append           string             `xml:"append,attr"`
+	CreateOnDemand   string             `xml:"createOnDemand,attr"`
+	FilePermissions  string             `xml:"filePermissions,attr"`
 	PatternLayout    xmlLayout          `xml:"PatternLayout"`
 	TextLayout       xmlLayout          `xml:"TextLayout"`
 	JsonLayout       xmlLayout          `xml:"JsonLayout"`
@@ -455,6 +458,14 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
+	appendEnabled, err := parseXMLBoolPointerStrict(a.Append, "append")
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
+	}
+	createOnDemand, err := parseXMLBool(a.CreateOnDemand, "createOnDemand")
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
+	}
 	waitRetries, err := parseXMLInt(a.WaitRetries, "waitRetries")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
@@ -499,6 +510,9 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 		Timeout:          a.Timeout,
 		BufferSize:       a.BufferSize,
 		FlushOnWrite:     flushOnWrite,
+		Append:           appendEnabled,
+		CreateOnDemand:   createOnDemand,
+		FilePermissions:  a.FilePermissions,
 		Filters:          xmlFilterRefs(a.FilterRefs),
 		Rolling: rollingConfig{
 			FilePattern: a.FilePattern,

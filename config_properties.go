@@ -325,6 +325,20 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 			return err
 		}
 		appender.FlushOnWrite = parsed
+	case "append":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		appender.Append = &parsed
+	case "createOnDemand", "create-on-demand":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		appender.CreateOnDemand = parsed
+	case "filePermissions", "file-permissions":
+		appender.FilePermissions = value
 	case "filters", "filterRefs", "filter-refs":
 		appender.Filters = propertyList(value)
 	case "rolling.filePattern", "rolling.file-pattern":

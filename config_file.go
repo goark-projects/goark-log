@@ -84,6 +84,11 @@ type appenderConfig struct {
 	BufferSizeKebab       string             `yaml:"buffer-size"`
 	FlushOnWrite          bool               `yaml:"flushOnWrite"`
 	FlushOnWriteKebab     bool               `yaml:"flush-on-write"`
+	Append                *bool              `yaml:"append"`
+	CreateOnDemand        bool               `yaml:"createOnDemand"`
+	CreateOnDemandKebab   bool               `yaml:"create-on-demand"`
+	FilePermissions       string             `yaml:"filePermissions"`
+	FilePermissionsKebab  string             `yaml:"file-permissions"`
 	Filters               []string           `yaml:"filters"`
 	FilterRefs            []string           `yaml:"filterRefs"`
 	FilterRefsKebab       []string           `yaml:"filter-refs"`
@@ -840,6 +845,12 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.BufferSizeKebab, err = resolveStringLookup(lookups, c.BufferSizeKebab); err != nil {
 		return fmt.Errorf("buffer-size: %w", err)
+	}
+	if c.FilePermissions, err = resolveStringLookup(lookups, c.FilePermissions); err != nil {
+		return fmt.Errorf("filePermissions: %w", err)
+	}
+	if c.FilePermissionsKebab, err = resolveStringLookup(lookups, c.FilePermissionsKebab); err != nil {
+		return fmt.Errorf("file-permissions: %w", err)
 	}
 	if c.WaitStrategy, err = resolveStringLookup(lookups, c.WaitStrategy); err != nil {
 		return fmt.Errorf("waitStrategy: %w", err)
@@ -1959,6 +1970,14 @@ func (c appenderConfig) flushOnWrite() bool {
 	return c.FlushOnWrite || c.FlushOnWriteKebab
 }
 
+func (c appenderConfig) createOnDemand() bool {
+	return c.CreateOnDemand || c.CreateOnDemandKebab
+}
+
+func (c appenderConfig) filePermissions() string {
+	return firstNonBlank(c.FilePermissions, c.FilePermissionsKebab)
+}
+
 func (c appenderConfig) routeKey() string {
 	return firstNonBlank(c.RouteKey, c.RouteKeyKebab)
 }
@@ -2004,6 +2023,9 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		WaitOptions:      c.waitOptions(),
 		BufferSize:       c.bufferSize(),
 		FlushOnWrite:     c.flushOnWrite(),
+		Append:           c.Append,
+		CreateOnDemand:   c.createOnDemand(),
+		FilePermissions:  c.filePermissions(),
 		Rolling: RollingBuildConfig{
 			FilePattern:     c.Rolling.filePattern(),
 			MaxSize:         c.Rolling.maxSize(),

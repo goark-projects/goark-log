@@ -47,6 +47,10 @@ type RollingFileAppender struct {
 	layout            Layout
 	bufferSize        int
 	flushOnWrite      bool
+	append            bool
+	createOnDemand    bool
+	permissions       fs.FileMode
+	permissionsSet    bool
 	maxSize           int64
 	interval          time.Duration
 	cronExpression    string
@@ -115,6 +119,28 @@ func WithRollingFileBufferSize(size int) RollingFileOption {
 func WithRollingFileFlushOnWrite(enabled bool) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.flushOnWrite = enabled
+	}
+}
+
+// WithRollingFileAppend 设置打开活动文件时是否追加到已有内容。
+func WithRollingFileAppend(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.append = enabled
+	}
+}
+
+// WithRollingFileCreateOnDemand 设置是否延迟到首次写入时创建活动文件。
+func WithRollingFileCreateOnDemand(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.createOnDemand = enabled
+	}
+}
+
+// WithRollingFilePermissions 设置新建活动文件的权限。
+func WithRollingFilePermissions(permissions fs.FileMode) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.permissions = permissions.Perm()
+		appender.permissionsSet = true
 	}
 }
 
@@ -233,6 +259,8 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		path:          cleanPath,
 		layout:        NewDefaultLayout(),
 		bufferSize:    DefaultFileBufferSize,
+		append:        true,
+		permissions:   defaultLogFilePermissions,
 		maxSize:       DefaultRollingMaxSize,
 		maxBackups:    DefaultRollingMaxBackups,
 		fileIndexMode: RollingFileIndexNoMax,
@@ -247,15 +275,21 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 	if err := appender.validate(); err != nil {
 		return nil, err
 	}
-	appender.startActionWorker()
-	if err := appender.open(); err != nil {
-		_ = appender.closeActionWorker()
-		return nil, err
+	if !appender.permissionsSet && appender.permissions == 0 {
+		appender.permissions = defaultLogFilePermissions
 	}
-	if appender.rolloverOnStartup && appender.size > 0 {
-		if err := appender.rollover(appender.now()); err != nil {
-			_ = appender.Close()
+	appender.startActionWorker()
+	if !appender.createOnDemand {
+		existingSize, err := appender.openAt(appender.now())
+		if err != nil {
+			_ = appender.closeActionWorker()
 			return nil, err
+		}
+		if appender.rolloverOnStartup && existingSize > 0 {
+			if err := appender.rollover(appender.now()); err != nil {
+				_ = appender.Close()
+				return nil, err
+			}
 		}
 	}
 	return appender, nil
@@ -283,12 +317,23 @@ func (a *RollingFileAppender) Append(ctx context.Context, event Event) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.file == nil {
+	if a.closed {
 		return fmt.Errorf("goark-log: rolling file appender %q is closed", a.Name())
 	}
 	now := event.Time
 	if now.IsZero() {
 		now = a.now()
+	}
+	if a.file == nil {
+		existingSize, err := a.openAt(now)
+		if err != nil {
+			return err
+		}
+		if a.rolloverOnStartup && existingSize > 0 {
+			if err := a.rollover(now); err != nil {
+				return err
+			}
+		}
 	}
 	if a.shouldRollover(now, int64(buf.Len())) {
 		if err := a.rollover(now); err != nil {
@@ -421,67 +466,53 @@ func (a *RollingFileAppender) validate() error {
 }
 
 func (a *RollingFileAppender) open() error {
-	if a.directWrite {
-		if err := a.initArchiveIndex(); err != nil {
-			return err
-		}
-		return a.openDirect(a.now())
-	}
-	file, err := openLogFile(a.path)
-	if err != nil {
-		return err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		_ = file.Close()
-		return fmt.Errorf("goark-log: stat log file %q: %w", a.path, err)
-	}
-	a.file = file
-	if a.bufferSize > 0 {
-		a.writer = bufio.NewWriterSize(file, a.bufferSize)
-	}
-	a.size = info.Size()
-	if a.size == 0 {
-		n, err := a.writeHeaderLocked()
-		if err != nil {
-			_ = a.flushLocked()
-			_ = file.Close()
-			a.file = nil
-			a.writer = nil
-			return fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
-		}
-		a.size += int64(n)
-	}
-	a.nextRollover = nextRolloverAfter(a.now(), a.interval, a.modulate)
-	a.nextCron = nextCronRolloverAfter(a.now(), a.cron)
-	if err := a.initArchiveIndex(); err != nil {
-		_ = file.Close()
-		a.file = nil
-		return err
-	}
-	return nil
+	_, err := a.openAt(a.now())
+	return err
 }
 
-func (a *RollingFileAppender) openDirect(now time.Time) error {
+func (a *RollingFileAppender) openAt(now time.Time) (int64, error) {
+	if a.directWrite {
+		if err := a.initArchiveIndex(); err != nil {
+			return 0, err
+		}
+		return a.openDirect(now)
+	}
+	existingSize, err := a.openActiveLocked()
+	if err != nil {
+		return 0, err
+	}
+	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = nextCronRolloverAfter(now, a.cron)
+	if err := a.initArchiveIndex(); err != nil {
+		_ = a.file.Close()
+		a.file = nil
+		a.writer = nil
+		return 0, err
+	}
+	return existingSize, nil
+}
+
+func (a *RollingFileAppender) openDirect(now time.Time) (int64, error) {
 	target, err := a.nextArchivePath(now)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	file, err := openLogFile(target)
+	file, err := openLogFileWithOptions(target, a.openOptions())
 	if err != nil {
-		return err
+		return 0, err
 	}
 	info, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
-		return fmt.Errorf("goark-log: stat log file %q: %w", target, err)
+		return 0, fmt.Errorf("goark-log: stat log file %q: %w", target, err)
 	}
+	existingSize := info.Size()
 	a.path = target
 	a.file = file
 	if a.bufferSize > 0 {
 		a.writer = bufio.NewWriterSize(file, a.bufferSize)
 	}
-	a.size = info.Size()
+	a.size = existingSize
 	if a.size == 0 {
 		n, err := a.writeHeaderLocked()
 		if err != nil {
@@ -489,13 +520,51 @@ func (a *RollingFileAppender) openDirect(now time.Time) error {
 			_ = file.Close()
 			a.file = nil
 			a.writer = nil
-			return fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+			return 0, fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
 		}
 		a.size += int64(n)
 	}
 	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
 	a.nextCron = nextCronRolloverAfter(now, a.cron)
-	return nil
+	return existingSize, nil
+}
+
+func (a *RollingFileAppender) openActiveLocked() (int64, error) {
+	file, err := openLogFileWithOptions(a.path, a.openOptions())
+	if err != nil {
+		return 0, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return 0, fmt.Errorf("goark-log: stat log file %q: %w", a.path, err)
+	}
+	existingSize := info.Size()
+	a.file = file
+	if a.bufferSize > 0 {
+		a.writer = bufio.NewWriterSize(file, a.bufferSize)
+	}
+	a.size = existingSize
+	if a.size == 0 {
+		n, err := a.writeHeaderLocked()
+		if err != nil {
+			_ = a.flushLocked()
+			_ = file.Close()
+			a.file = nil
+			a.writer = nil
+			return 0, fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+		}
+		a.size += int64(n)
+	}
+	return existingSize, nil
+}
+
+func (a *RollingFileAppender) openOptions() logFileOpenOptions {
+	return logFileOpenOptions{
+		Append:         a.append,
+		Permissions:    a.permissions,
+		PermissionsSet: a.permissionsSet,
+	}
 }
 
 func (a *RollingFileAppender) now() time.Time {
@@ -524,7 +593,7 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		a.writer = nil
 	}
 	if a.directWrite {
-		if err := a.openDirect(now); err != nil {
+		if _, err := a.openDirect(now); err != nil {
 			return err
 		}
 		a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
@@ -541,15 +610,9 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 			return fmt.Errorf("goark-log: rename log file %q to %q: %w", a.path, target, err)
 		}
 	}
-	file, err := openLogFile(a.path)
-	if err != nil {
+	if _, err := a.openActiveLocked(); err != nil {
 		return err
 	}
-	a.file = file
-	if a.bufferSize > 0 {
-		a.writer = bufio.NewWriterSize(file, a.bufferSize)
-	}
-	a.size = 0
 	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
 	a.nextCron = nextCronRolloverAfter(now, a.cron)
 	return a.runRolloverActions(now, target, archiveIndex)
