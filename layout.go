@@ -2,7 +2,6 @@ package goarklog
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/jsoncodec"
 )
 
 const (
@@ -729,7 +730,7 @@ func appendJSONAny(buf *bytes.Buffer, value any) {
 	case fmt.Stringer:
 		appendJSONString(buf, typed.String())
 	default:
-		data, err := json.Marshal(typed)
+		data, err := jsoncodec.Marshal(typed)
 		if err != nil {
 			appendJSONString(buf, fmt.Sprint(typed))
 			return

@@ -36,6 +36,26 @@ func BenchmarkLayout(b *testing.B) {
 	}
 }
 
+func BenchmarkJSONLayoutAnyFallback(b *testing.B) {
+	event := benchmarkEvent()
+	event.Attrs = append(event.Attrs, slog.Any("payload", map[string]any{
+		"traceId": "abc-123",
+		"attempt": 3,
+		"tags":    []string{"core", "json", "sonic"},
+	}))
+	layout := JSONLayout{}
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer releaseBuffer(buf)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		if err := layout.Format(buf, event); err != nil {
+			b.Fatalf("Format() error = %v", err)
+		}
+	}
+}
+
 func mustBenchmarkJSONTemplateLayout(b *testing.B) Layout {
 	b.Helper()
 	layout, err := NewJSONTemplateLayout("")
