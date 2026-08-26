@@ -64,10 +64,11 @@ func TestFileAppender_whenBuffered_shouldFlushBeforeClose(t *testing.T) {
 
 func testEvent(message string, when time.Time) Event {
 	return Event{
-		Time:    when,
-		Level:   0,
-		Message: message,
-		Logger:  "goark.test",
+		Time:       when,
+		Level:      0,
+		Message:    message,
+		Logger:     "goark.test",
+		ThreadName: defaultThreadName,
 	}
 }
 

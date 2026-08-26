@@ -12,12 +12,17 @@ const defaultLoggerName = "goark"
 
 // Event 是一次已经快照化的日志事件。
 type Event struct {
-	Time    time.Time
-	Level   slog.Level
-	Message string
-	Logger  string
-	PC      uintptr
-	Attrs   []slog.Attr
+	Time         time.Time
+	Level        slog.Level
+	Message      string
+	Logger       string
+	PC           uintptr
+	Attrs        []slog.Attr
+	Marker       *Marker
+	Throwable    *Throwable
+	ThreadName   string
+	ContextStack []string
+	EndOfBatch   bool
 }
 
 // Attr 按键查找事件属性。
@@ -43,13 +48,32 @@ func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, grou
 		attrs = appendAttr(attrs, groups, attr)
 		return true
 	})
+	marker := markerFromAttrs(attrs)
+	if marker == nil {
+		if contextMarker, ok := ContextMarker(ctx); ok {
+			marker = markerPointer(contextMarker)
+		}
+	}
+	threadName := threadNameFromAttrs(attrs)
+	if threadName == "" {
+		threadName = ContextThreadName(ctx)
+	}
+	if threadName == "" {
+		threadName = defaultThreadName
+	}
+	contextStack := ContextStack(ctx)
+	contextStack = appendContextStackValues(contextStack, contextStackFromAttrs(attrs)...)
 	return Event{
-		Time:    record.Time,
-		Level:   record.Level,
-		Message: record.Message,
-		Logger:  logger,
-		PC:      record.PC,
-		Attrs:   attrs,
+		Time:         record.Time,
+		Level:        record.Level,
+		Message:      record.Message,
+		Logger:       logger,
+		PC:           record.PC,
+		Attrs:        attrs,
+		Marker:       marker,
+		Throwable:    throwableFromAttrs(attrs),
+		ThreadName:   threadName,
+		ContextStack: contextStack,
 	}
 }
 

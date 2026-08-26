@@ -71,7 +71,7 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 }
 
 func TestPatternLayout_whenCallerTokensUsed_shouldRenderGoLocation(t *testing.T) {
-	pc := callerProgramCounter()
+	pc := callerProgramCounter(t, "TestPatternLayout_whenCallerTokensUsed")
 	layout, err := NewPatternLayout("%class|%method|%file|%line|%location|%marker%n")
 	if err != nil {
 		t.Fatalf("NewPatternLayout() error = %v", err)
@@ -163,10 +163,22 @@ func TestLayout_whenPrimitiveAttrsUsed_shouldRenderWithoutSemanticDrift(t *testi
 	}
 }
 
-func callerProgramCounter() uintptr {
-	var pcs [1]uintptr
-	runtime.Callers(2, pcs[:])
-	return pcs[0]
+func callerProgramCounter(t *testing.T, name string) uintptr {
+	t.Helper()
+	var pcs [32]uintptr
+	count := runtime.Callers(0, pcs[:])
+	frames := runtime.CallersFrames(pcs[:count])
+	for {
+		frame, more := frames.Next()
+		if strings.Contains(frame.Function, name) {
+			return frame.PC
+		}
+		if !more {
+			break
+		}
+	}
+	t.Fatalf("caller frame %q not found", name)
+	return 0
 }
 
 func TestPatternLayout_whenAttrsHaveExplicitSeparator_shouldNotDuplicateSpace(t *testing.T) {

@@ -94,6 +94,7 @@ const (
 	tokenError
 	tokenNewline
 	tokenMarker
+	tokenContextStack
 	tokenCallerClass
 	tokenCallerMethod
 	tokenCallerFile
@@ -251,6 +252,8 @@ func configurePatternToken(token *patternToken, converter string, option string)
 		token.kind = tokenError
 	case normalized == "marker":
 		token.kind = tokenMarker
+	case normalized == "ndc" || normalized == "x":
+		token.kind = tokenContextStack
 	case normalized == "n":
 		token.kind = tokenNewline
 	default:
@@ -348,6 +351,8 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 		return "\n"
 	case tokenMarker:
 		return eventMarkerString(event)
+	case tokenContextStack:
+		return contextStackString(event.ContextStack)
 	case tokenCallerClass:
 		return caller.resolve(event).class
 	case tokenCallerMethod:
@@ -482,6 +487,9 @@ func javaDatePatternToGo(format string) string {
 }
 
 func eventErrorString(event Event) string {
+	if event.Throwable != nil {
+		return event.Throwable.String()
+	}
 	for _, key := range []string{"error", "err"} {
 		value, ok := event.Attr(key)
 		if ok {
@@ -492,6 +500,9 @@ func eventErrorString(event Event) string {
 }
 
 func eventMarkerString(event Event) string {
+	if event.Marker != nil {
+		return event.Marker.String()
+	}
 	for _, key := range []string{"marker", "goark.marker"} {
 		value, ok := event.Attr(key)
 		if ok {
@@ -502,6 +513,9 @@ func eventMarkerString(event Event) string {
 }
 
 func eventThreadName(event Event) string {
+	if strings.TrimSpace(event.ThreadName) != "" {
+		return strings.TrimSpace(event.ThreadName)
+	}
 	for _, key := range []string{"goark.thread", "thread", "goroutine"} {
 		value, ok := event.Attr(key)
 		if ok {
@@ -511,7 +525,7 @@ func eventThreadName(event Event) string {
 			}
 		}
 	}
-	return "main"
+	return defaultThreadName
 }
 
 func appendPadded(buf *bytes.Buffer, value string, minWidth int, maxWidth int, leftAlign bool) {
