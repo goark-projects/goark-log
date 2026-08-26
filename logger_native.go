@@ -11,11 +11,12 @@ import (
 
 // Logger 是 goark-log 的低分配原生日志入口。
 type Logger struct {
-	handler       *Handler
-	name          string
-	attrs         []slog.Attr
-	groups        []string
-	includeCaller bool
+	handler        *Handler
+	name           string
+	attrs          []slog.Attr
+	groups         []string
+	includeCaller  bool
+	messageFactory MessageFactory
 }
 
 // LoggerOption 调整原生 Logger。
@@ -28,14 +29,24 @@ func WithLoggerCaller(enabled bool) LoggerOption {
 	}
 }
 
+// WithLoggerMessageFactory 设置参数化消息工厂。
+func WithLoggerMessageFactory(factory MessageFactory) LoggerOption {
+	return func(logger *Logger) {
+		if factory != nil {
+			logger.messageFactory = factory
+		}
+	}
+}
+
 // NewNativeLogger 基于 Handler 创建低分配命名 logger。
 func NewNativeLogger(handler *Handler, name string, options ...LoggerOption) (*Logger, error) {
 	if handler == nil {
 		return nil, fmt.Errorf("goark-log: native logger handler is nil")
 	}
 	logger := &Logger{
-		handler: handler,
-		name:    strings.TrimSpace(name),
+		handler:        handler,
+		name:           strings.TrimSpace(name),
+		messageFactory: ParameterizedMessageFactory{},
 	}
 	if logger.name == "" {
 		logger.name = defaultLoggerName

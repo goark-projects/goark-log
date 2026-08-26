@@ -144,3 +144,33 @@ func TestLogBuilder_whenLogfCalled_shouldUseParameterizedMessage(t *testing.T) {
 		t.Fatalf("message = %q, want parameterized message", got)
 	}
 }
+
+func TestLogBuilder_whenMessageFactoryConfigured_shouldUseFactory(t *testing.T) {
+	appender := newRecordingAppender("memory")
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{appender},
+		Root: RootLogger{
+			Level:        slog.LevelInfo,
+			AppenderRefs: []string{"memory"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	defer handler.Close()
+
+	logger, err := NewNativeLogger(handler, "goark.builder",
+		WithLoggerMessageFactory(MessageFactoryFunc(func(pattern string, args ...any) Message {
+			return NewSimpleMessage(pattern + ":" + attrValueString(slog.AnyValue(args[0])))
+		})),
+	)
+	if err != nil {
+		t.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	if err := logger.AtInfo().Logf("factory", "value"); err != nil {
+		t.Fatalf("Logf() error = %v", err)
+	}
+	if got := appender.Events()[0].Message; got != "factory:value" {
+		t.Fatalf("message = %q, want factory:value", got)
+	}
+}

@@ -18,6 +18,22 @@ type LayoutFactory func(config LayoutBuildConfig) (Layout, error)
 // FilterFactory 从配置构建 Filter。
 type FilterFactory func(config FilterBuildConfig) (Filter, error)
 
+// PluginRegistrar 把一个外部模块的插件注册到指定注册表。
+type PluginRegistrar interface {
+	RegisterLogPlugins(registry *PluginRegistry) error
+}
+
+// PluginRegistrarFunc 把函数适配为 PluginRegistrar。
+type PluginRegistrarFunc func(registry *PluginRegistry) error
+
+// RegisterLogPlugins 执行插件注册函数。
+func (f PluginRegistrarFunc) RegisterLogPlugins(registry *PluginRegistry) error {
+	if f == nil {
+		return nil
+	}
+	return f(registry)
+}
+
 // AppenderBuildConfig 是 appender 插件的构建输入。
 type AppenderBuildConfig struct {
 	Name             string
@@ -99,6 +115,7 @@ type FilterBuildConfig struct {
 	Value            string
 	Values           map[string]string
 	Thresholds       map[string]string
+	Filters          []Filter
 	DefaultThreshold string
 	Pattern          string
 	OnMatch          string
@@ -139,6 +156,22 @@ func DefaultPluginRegistry() *PluginRegistry {
 		defaultRegistry = NewPluginRegistry()
 	})
 	return defaultRegistry
+}
+
+// RegisterPlugins 把一组外部插件注册到当前注册表。
+func (r *PluginRegistry) RegisterPlugins(registrars ...PluginRegistrar) error {
+	if r == nil {
+		return fmt.Errorf("goark-log: plugin registry is nil")
+	}
+	for index, registrar := range registrars {
+		if registrar == nil {
+			continue
+		}
+		if err := registrar.RegisterLogPlugins(r); err != nil {
+			return fmt.Errorf("goark-log: plugin registrar %d: %w", index, err)
+		}
+	}
+	return nil
 }
 
 // RegisterAppender 注册 appender 插件。
@@ -373,6 +406,8 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterFilter("denyAll", buildDenyFilterPlugin)
 	_ = registry.RegisterFilter("denyFilter", buildDenyFilterPlugin)
 	_ = registry.RegisterFilter("denyAllFilter", buildDenyFilterPlugin)
+	_ = registry.RegisterFilter("composite", buildCompositeFilterPlugin)
+	_ = registry.RegisterFilter("compositeFilter", buildCompositeFilterPlugin)
 	_ = registry.RegisterFilter("marker", buildMarkerFilterPlugin)
 	_ = registry.RegisterFilter("markerFilter", buildMarkerFilterPlugin)
 	_ = registry.RegisterFilter("noMarker", buildNoMarkerFilterPlugin)
@@ -635,6 +670,13 @@ func buildAttrFilterPlugin(config FilterBuildConfig) (Filter, error) {
 
 func buildDenyFilterPlugin(FilterBuildConfig) (Filter, error) {
 	return NewDenyFilter(), nil
+}
+
+func buildCompositeFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	if len(config.Filters) == 0 {
+		return nil, fmt.Errorf("goark-log: filter %q composite requires filterRefs", config.Name)
+	}
+	return NewCompositeFilter(config.Filters...)
 }
 
 func buildMarkerFilterPlugin(config FilterBuildConfig) (Filter, error) {

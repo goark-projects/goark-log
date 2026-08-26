@@ -70,6 +70,38 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 	}
 }
 
+func TestPatternLayout_whenExtendedConvertersUsed_shouldRenderLog4jStyleOutput(t *testing.T) {
+	layout, err := NewPatternLayout("%logger{2} %map %highlight{%p} %style{%m}{red} %notEmpty{%X{trace_id}} %uuid%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	event := testEvent("request done", fixedTestTime())
+	event.Logger = "dev.goark.web.audit"
+	event.Attrs = []slog.Attr{slog.String("trace_id", "trace-1"), slog.Int("status", 200)}
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	parts := strings.Fields(buf.String())
+	if len(parts) < 7 {
+		t.Fatalf("formatted line = %q, want fields", buf.String())
+	}
+	if parts[0] != "web.audit" {
+		t.Fatalf("logger precision = %q, want web.audit", parts[0])
+	}
+	if !strings.Contains(buf.String(), "trace_id=trace-1") || !strings.Contains(buf.String(), "status=200") {
+		t.Fatalf("map converter output = %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "INFO") || !strings.Contains(buf.String(), "request done") || !strings.Contains(buf.String(), "trace-1") {
+		t.Fatalf("sub pattern converter output = %q", buf.String())
+	}
+	uuid := strings.TrimSpace(parts[len(parts)-1])
+	if len(uuid) != 36 || uuid[8] != '-' || uuid[13] != '-' || uuid[18] != '-' || uuid[23] != '-' {
+		t.Fatalf("uuid = %q, want RFC4122 text form", uuid)
+	}
+}
+
 func TestPatternLayout_whenCallerTokensUsed_shouldRenderGoLocation(t *testing.T) {
 	pc := callerProgramCounter(t, "TestPatternLayout_whenCallerTokensUsed")
 	layout, err := NewPatternLayout("%class|%method|%file|%line|%location|%marker%n")

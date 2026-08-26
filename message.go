@@ -25,6 +25,38 @@ type AttributedMessage interface {
 	Attrs() []slog.Attr
 }
 
+// MessageFactory 创建日志消息对象。
+type MessageFactory interface {
+	NewMessage(pattern string, args ...any) Message
+}
+
+// MessageFactoryFunc 把函数适配为 MessageFactory。
+type MessageFactoryFunc func(pattern string, args ...any) Message
+
+// NewMessage 执行消息创建函数。
+func (f MessageFactoryFunc) NewMessage(pattern string, args ...any) Message {
+	if f == nil {
+		return NewParameterizedMessage(pattern, args...)
+	}
+	return f(pattern, args...)
+}
+
+// ParameterizedMessageFactory 创建 {} 占位符参数化消息。
+type ParameterizedMessageFactory struct{}
+
+// NewMessage 创建参数化消息。
+func (ParameterizedMessageFactory) NewMessage(pattern string, args ...any) Message {
+	return NewParameterizedMessage(pattern, args...)
+}
+
+// SimpleMessageFactory 忽略参数并创建普通字符串消息。
+type SimpleMessageFactory struct{}
+
+// NewMessage 创建普通字符串消息。
+func (SimpleMessageFactory) NewMessage(pattern string, _ ...any) Message {
+	return NewSimpleMessage(pattern)
+}
+
 // SimpleMessage 是不可变字符串消息。
 type SimpleMessage string
 

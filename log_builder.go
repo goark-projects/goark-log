@@ -165,7 +165,11 @@ func (b LogBuilder) Log(message string) error {
 
 // Logf 使用 {} 占位符写出参数化消息。
 func (b LogBuilder) Logf(pattern string, args ...any) error {
-	return b.LogMessage(NewParameterizedMessage(pattern, args...))
+	factory := MessageFactory(ParameterizedMessageFactory{})
+	if b.logger != nil && b.logger.messageFactory != nil {
+		factory = b.logger.messageFactory
+	}
+	return b.LogMessage(factory.NewMessage(pattern, args...))
 }
 
 // LogMessage 写出 Message 对象。

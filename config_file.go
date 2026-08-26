@@ -393,6 +393,9 @@ type filterConfig struct {
 	Value              string               `yaml:"value"`
 	Values             map[string]string    `yaml:"values"`
 	Thresholds         map[string]string    `yaml:"thresholds"`
+	Filters            []string             `yaml:"filters"`
+	FilterRefs         []string             `yaml:"filterRefs"`
+	FilterRefsKebab    []string             `yaml:"filter-refs"`
 	KeyValuePair       []keyValuePairConfig `yaml:"KeyValuePair"`
 	KeyValuePairs      []keyValuePairConfig `yaml:"keyValuePairs"`
 	KeyValuePairsKebab []keyValuePairConfig `yaml:"key-value-pairs"`
@@ -1116,6 +1119,15 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.Thresholds, err = resolveStringMapLookups(lookups, c.Thresholds); err != nil {
 		return fmt.Errorf("thresholds: %w", err)
+	}
+	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
+		return fmt.Errorf("filters: %w", err)
+	}
+	if c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs); err != nil {
+		return fmt.Errorf("filterRefs: %w", err)
+	}
+	if c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab); err != nil {
+		return fmt.Errorf("filter-refs: %w", err)
 	}
 	if c.KeyValuePair, err = resolveKeyValuePairLookups(lookups, c.KeyValuePair); err != nil {
 		return fmt.Errorf("KeyValuePair: %w", err)
@@ -1896,6 +1908,10 @@ func (c loggerConfig) filterRefs() []string {
 	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
+func (c filterConfig) filterRefs() []string {
+	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+}
+
 func (c *fileConfig) filterRefs() []string {
 	if c == nil {
 		return nil
@@ -1909,8 +1925,9 @@ func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, 
 	}
 	names := sortedFilterNames(c.Filters)
 	filters := make(map[string]Filter, len(c.Filters))
+	visiting := make(map[string]bool, len(c.Filters))
 	for _, name := range names {
-		filter, err := buildFilter(name, c.Filters[name], registry)
+		filter, err := c.buildFilter(name, registry, filters, visiting)
 		if err != nil {
 			return nil, err
 		}
@@ -1919,7 +1936,51 @@ func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, 
 	return filters, nil
 }
 
-func buildFilter(name string, spec filterConfig, registry *PluginRegistry) (Filter, error) {
+func (c *fileConfig) buildFilter(name string, registry *PluginRegistry, filters map[string]Filter, visiting map[string]bool) (Filter, error) {
+	if filter, ok := filters[name]; ok {
+		return filter, nil
+	}
+	if visiting[name] {
+		return nil, fmt.Errorf("goark-log: filter %q has cyclic filterRefs", name)
+	}
+	spec, ok := c.Filters[name]
+	if !ok {
+		return nil, fmt.Errorf("goark-log: filter %q is not configured", name)
+	}
+	visiting[name] = true
+	defer delete(visiting, name)
+	nested, err := c.resolveNestedFilters(spec.filterRefs(), registry, filters, visiting)
+	if err != nil {
+		return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
+	}
+	filter, err := buildFilter(name, spec, nested, registry)
+	if err != nil {
+		return nil, err
+	}
+	filters[name] = filter
+	return filter, nil
+}
+
+func (c *fileConfig) resolveNestedFilters(refs []string, registry *PluginRegistry, filters map[string]Filter, visiting map[string]bool) ([]Filter, error) {
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	nested := make([]Filter, 0, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return nil, fmt.Errorf("filter ref is empty")
+		}
+		filter, err := c.buildFilter(ref, registry, filters, visiting)
+		if err != nil {
+			return nil, err
+		}
+		nested = append(nested, filter)
+	}
+	return nested, nil
+}
+
+func buildFilter(name string, spec filterConfig, nested []Filter, registry *PluginRegistry) (Filter, error) {
 	if normalizeKind(spec.Type) == "" {
 		return nil, fmt.Errorf("goark-log: filter %q type is empty", name)
 	}
@@ -1927,7 +1988,9 @@ func buildFilter(name string, spec filterConfig, registry *PluginRegistry) (Filt
 	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported filter %q type %q", name, spec.Type)
 	}
-	filter, err := factory(spec.filterBuildConfig(name))
+	config := spec.filterBuildConfig(name)
+	config.Filters = nested
+	filter, err := factory(config)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: filter %q: %w", name, err)
 	}

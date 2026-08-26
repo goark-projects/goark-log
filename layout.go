@@ -2,6 +2,7 @@ package goarklog
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"os"
@@ -76,8 +77,10 @@ type patternToken struct {
 	key       string
 	minWidth  int
 	maxWidth  int
+	precision int
 	leftAlign bool
 	timeUnix  timeUnixMode
+	child     *PatternLayout
 }
 
 type patternTokenKind int
@@ -101,6 +104,9 @@ const (
 	tokenCallerFile
 	tokenCallerLine
 	tokenCallerLocation
+	tokenUUID
+	tokenSubPattern
+	tokenNotEmpty
 )
 
 type timeUnixMode uint8
@@ -192,30 +198,42 @@ func readPatternToken(pattern string) (patternToken, int, error) {
 		return patternToken{}, 0, fmt.Errorf("goark-log: unsupported pattern token near %q", pattern)
 	}
 	converter := pattern[converterStart:index]
-	option := ""
+	options := []string(nil)
 	if index < len(pattern) && pattern[index] == '{' {
-		var err error
-		option, index, err = readPatternOption(pattern, index)
-		if err != nil {
-			return patternToken{}, 0, err
+		for index < len(pattern) && pattern[index] == '{' {
+			option, next, err := readPatternOption(pattern, index)
+			if err != nil {
+				return patternToken{}, 0, err
+			}
+			options = append(options, option)
+			index = next
 		}
 	}
-	if err := configurePatternToken(&token, converter, option); err != nil {
+	if err := configurePatternToken(&token, converter, options); err != nil {
 		return patternToken{}, 0, err
 	}
 	return token, index, nil
 }
 
 func readPatternOption(pattern string, start int) (string, int, error) {
-	end := strings.IndexByte(pattern[start+1:], '}')
-	if end < 0 {
-		return "", 0, fmt.Errorf("goark-log: pattern option is not closed near %q", pattern[start:])
+	depth := 0
+	for index := start; index < len(pattern); index++ {
+		switch pattern[index] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return pattern[start+1 : index], index + 1, nil
+			}
+		}
 	}
-	return pattern[start+1 : start+1+end], start + end + 2, nil
+	return "", 0, fmt.Errorf("goark-log: pattern option is not closed near %q", pattern[start:])
 }
 
-func configurePatternToken(token *patternToken, converter string, option string) error {
+func configurePatternToken(token *patternToken, converter string, options []string) error {
 	normalized := strings.ToLower(converter)
+	option := firstPatternOption(options)
 	switch {
 	case converter == "C" || normalized == "class":
 		token.kind = tokenCallerClass
@@ -238,9 +256,10 @@ func configurePatternToken(token *patternToken, converter string, option string)
 		token.kind = tokenThread
 	case normalized == "logger" || converter == "c":
 		token.kind = tokenLogger
+		token.precision = parsePatternPrecision(option)
 	case normalized == "msg" || normalized == "message" || converter == "m":
 		token.kind = tokenMessage
-	case normalized == "attrs" || normalized == "kvp":
+	case normalized == "attrs" || normalized == "kvp" || normalized == "map":
 		token.kind = tokenAttrs
 	case converter == "X" || normalized == "mdc":
 		if strings.TrimSpace(option) == "" {
@@ -257,6 +276,22 @@ func configurePatternToken(token *patternToken, converter string, option string)
 		token.kind = tokenContextStack
 	case normalized == "n":
 		token.kind = tokenNewline
+	case normalized == "uuid":
+		token.kind = tokenUUID
+	case normalized == "highlight" || normalized == "style":
+		child, err := NewPatternLayout(option)
+		if err != nil {
+			return err
+		}
+		token.kind = tokenSubPattern
+		token.child = child
+	case normalized == "notempty":
+		child, err := NewPatternLayout(option)
+		if err != nil {
+			return err
+		}
+		token.kind = tokenNotEmpty
+		token.child = child
 	default:
 		return fmt.Errorf("goark-log: unsupported pattern converter %q", converter)
 	}
@@ -333,7 +368,7 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 	case tokenThread:
 		return eventThreadName(event)
 	case tokenLogger:
-		return event.Logger
+		return loggerNameWithPrecision(event.Logger, token.precision)
 	case tokenMessage:
 		return event.Message
 	case tokenAttr:
@@ -368,9 +403,88 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 		return strconv.Itoa(frame.line)
 	case tokenCallerLocation:
 		return caller.resolve(event).location()
+	case tokenUUID:
+		return newPatternUUID()
+	case tokenSubPattern:
+		return formatChildPattern(token.child, event)
+	case tokenNotEmpty:
+		value := formatChildPattern(token.child, event)
+		if strings.TrimSpace(value) == "" {
+			return ""
+		}
+		return value
 	default:
 		return ""
 	}
+}
+
+func firstPatternOption(options []string) string {
+	if len(options) == 0 {
+		return ""
+	}
+	return options[0]
+}
+
+func parsePatternPrecision(option string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(option))
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func loggerNameWithPrecision(name string, precision int) string {
+	if precision <= 0 || name == "" {
+		return name
+	}
+	parts := strings.Split(name, ".")
+	if precision >= len(parts) {
+		return name
+	}
+	return strings.Join(parts[len(parts)-precision:], ".")
+}
+
+func formatChildPattern(layout *PatternLayout, event Event) string {
+	if layout == nil {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		return ""
+	}
+	return buf.String()
+}
+
+func newPatternUUID() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 16)
+	}
+	value[6] = (value[6] & 0x0f) | 0x40
+	value[8] = (value[8] & 0x3f) | 0x80
+	var out [36]byte
+	hex := "0123456789abcdef"
+	source := 0
+	for index := 0; index < len(out); index++ {
+		switch index {
+		case 8, 13, 18, 23:
+			out[index] = '-'
+		default:
+			if index == 14 {
+				out[index] = '4'
+				source++
+				continue
+			}
+			b := value[source/2]
+			if source%2 == 0 {
+				out[index] = hex[b>>4]
+			} else {
+				out[index] = hex[b&0x0f]
+			}
+			source++
+		}
+	}
+	return string(out[:])
 }
 
 type callerCache struct {

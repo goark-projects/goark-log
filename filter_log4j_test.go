@@ -238,6 +238,66 @@ filters:
 	}
 }
 
+func TestDecodeStructuredConfig_whenCompositeFilterRefsConfigured_shouldApplyInOrder(t *testing.T) {
+	config, err := decodeStructuredConfig(strings.NewReader(`
+filters:
+  allow-info:
+    type: ThresholdFilter
+    level: info
+    onMatch: neutral
+    onMismatch: deny
+  deny-timeout:
+    type: StringMatchFilter
+    text: timeout
+    onMatch: deny
+    onMismatch: neutral
+  chain:
+    type: CompositeFilter
+    filterRefs: [allow-info, deny-timeout]
+`), NewLookupResolver())
+	if err != nil {
+		t.Fatalf("decodeStructuredConfig() error = %v", err)
+	}
+	filters, err := config.buildFilters(DefaultPluginRegistry())
+	if err != nil {
+		t.Fatalf("buildFilters() error = %v", err)
+	}
+	info := testEvent("request done", fixedTestTime())
+	info.Level = slog.LevelInfo
+	if decision := filters["chain"].Decide(context.Background(), info); decision != FilterNeutral {
+		t.Fatalf("info Decide() = %v, want neutral", decision)
+	}
+	timeout := testEvent("request timeout", fixedTestTime())
+	timeout.Level = slog.LevelInfo
+	if decision := filters["chain"].Decide(context.Background(), timeout); decision != FilterDeny {
+		t.Fatalf("timeout Decide() = %v, want deny", decision)
+	}
+	debug := testEvent("debug", fixedTestTime())
+	debug.Level = slog.LevelDebug
+	if decision := filters["chain"].Decide(context.Background(), debug); decision != FilterDeny {
+		t.Fatalf("debug Decide() = %v, want deny", decision)
+	}
+}
+
+func TestDecodeStructuredConfig_whenCompositeFilterHasCycle_shouldReject(t *testing.T) {
+	config, err := decodeStructuredConfig(strings.NewReader(`
+filters:
+  a:
+    type: CompositeFilter
+    filterRefs: [b]
+  b:
+    type: CompositeFilter
+    filterRefs: [a]
+`), NewLookupResolver())
+	if err != nil {
+		t.Fatalf("decodeStructuredConfig() error = %v", err)
+	}
+	_, err = config.buildFilters(DefaultPluginRegistry())
+	if err == nil || !strings.Contains(err.Error(), "cyclic") {
+		t.Fatalf("buildFilters() error = %v, want cyclic filterRefs rejection", err)
+	}
+}
+
 func TestDecodePropertiesConfig_whenKeyValuePairFiltersConfigured_shouldBuildFilters(t *testing.T) {
 	config, err := decodePropertiesConfig(strings.NewReader(`
 filter.map.type = MapFilter
@@ -267,6 +327,32 @@ filter.dynamic.kv0.value = debug
 		if decision := filters[name].Decide(context.Background(), event); decision != FilterNeutral {
 			t.Fatalf("filter %s Decide() = %v, want %v", name, decision, FilterNeutral)
 		}
+	}
+}
+
+func TestDecodePropertiesConfig_whenCompositeFilterRefsConfigured_shouldBuildFilters(t *testing.T) {
+	config, err := decodePropertiesConfig(strings.NewReader(`
+filter.allow.type = ThresholdFilter
+filter.allow.level = info
+filter.allow.onMismatch = deny
+filter.text.type = StringMatchFilter
+filter.text.text = timeout
+filter.text.onMatch = deny
+filter.text.onMismatch = neutral
+filter.chain.type = CompositeFilter
+filter.chain.filterRefs = allow,text
+`), NewLookupResolver())
+	if err != nil {
+		t.Fatalf("decodePropertiesConfig() error = %v", err)
+	}
+	filters, err := config.buildFilters(DefaultPluginRegistry())
+	if err != nil {
+		t.Fatalf("buildFilters() error = %v", err)
+	}
+	event := testEvent("request timeout", fixedTestTime())
+	event.Level = slog.LevelInfo
+	if decision := filters["chain"].Decide(context.Background(), event); decision != FilterDeny {
+		t.Fatalf("Decide() = %v, want deny", decision)
 	}
 }
 
@@ -301,5 +387,32 @@ func TestDecodeXMLConfig_whenLog4jStyleFiltersConfigured_shouldBuildFilters(t *t
 		if decision := filters[name].Decide(context.Background(), event); decision != FilterAccept {
 			t.Fatalf("filter %s Decide() = %v, want %v", name, decision, FilterAccept)
 		}
+	}
+}
+
+func TestDecodeXMLConfig_whenCompositeFilterRefsConfigured_shouldBuildFilters(t *testing.T) {
+	config, err := decodeXMLConfig(strings.NewReader(`
+<Configuration>
+  <Filters>
+    <ThresholdFilter name="allow" level="INFO" onMatch="NEUTRAL" onMismatch="DENY"/>
+    <StringMatchFilter name="text" text="timeout" onMatch="DENY" onMismatch="NEUTRAL"/>
+    <CompositeFilter name="chain">
+      <FilterRef ref="allow"/>
+      <FilterRef ref="text"/>
+    </CompositeFilter>
+  </Filters>
+</Configuration>
+`), NewLookupResolver())
+	if err != nil {
+		t.Fatalf("decodeXMLConfig() error = %v", err)
+	}
+	filters, err := config.buildFilters(DefaultPluginRegistry())
+	if err != nil {
+		t.Fatalf("buildFilters() error = %v", err)
+	}
+	event := testEvent("request timeout", fixedTestTime())
+	event.Level = slog.LevelInfo
+	if decision := filters["chain"].Decide(context.Background(), event); decision != FilterDeny {
+		t.Fatalf("Decide() = %v, want deny", decision)
 	}
 }

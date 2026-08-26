@@ -363,6 +363,8 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 			filter.Thresholds = make(map[string]string)
 		}
 		filter.Thresholds[mapKey] = value
+	case field == "filters" || field == "filterRefs" || field == "filter-refs":
+		filter.FilterRefs = propertyList(value)
 	case field == "defaultThreshold" || field == "default-threshold":
 		filter.DefaultThreshold = value
 	case field == "pattern":

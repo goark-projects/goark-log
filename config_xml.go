@@ -156,6 +156,7 @@ type xmlFilters struct {
 	Attribute          []xmlFilter `xml:"AttributeFilter"`
 	Deny               []xmlFilter `xml:"DenyFilter"`
 	DenyAll            []xmlFilter `xml:"DenyAllFilter"`
+	Composite          []xmlFilter `xml:"CompositeFilter"`
 	Marker             []xmlFilter `xml:"MarkerFilter"`
 	NoMarker           []xmlFilter `xml:"NoMarkerFilter"`
 	Map                []xmlFilter `xml:"MapFilter"`
@@ -190,6 +191,7 @@ type xmlFilter struct {
 	Pattern          string            `xml:"pattern,attr"`
 	OnMatch          string            `xml:"onMatch,attr"`
 	OnMismatch       string            `xml:"onMismatch,attr"`
+	FilterRefs       []xmlFilterRef    `xml:"FilterRef"`
 	KeyValuePair     []xmlKeyValuePair `xml:"KeyValuePair"`
 }
 
@@ -312,6 +314,7 @@ func (c xmlConfig) filters(file *fileConfig) error {
 		{kind: "attr", filters: c.Filters.Attribute},
 		{kind: "deny", filters: c.Filters.Deny},
 		{kind: "denyAll", filters: c.Filters.DenyAll},
+		{kind: "composite", filters: c.Filters.Composite},
 		{kind: "marker", filters: c.Filters.Marker},
 		{kind: "noMarker", filters: c.Filters.NoMarker},
 		{kind: "map", filters: c.Filters.Map},
@@ -490,6 +493,7 @@ func (f xmlFilter) config(kind string) (filterConfig, error) {
 		Pattern:          f.Pattern,
 		OnMatch:          f.OnMatch,
 		OnMismatch:       f.OnMismatch,
+		FilterRefs:       xmlFilterRefs(f.FilterRefs),
 		KeyValuePair:     xmlKeyValuePairs(f.KeyValuePair),
 	}, nil
 }
