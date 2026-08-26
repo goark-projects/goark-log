@@ -189,6 +189,16 @@ func (l *Logger) ErrorContext(ctx context.Context, message string, attrs ...slog
 	return l.logAttrs(ctx, slog.LevelError, message, attrs, 2)
 }
 
+// Fatal 写出 FATAL 级别日志。
+func (l *Logger) Fatal(message string, attrs ...slog.Attr) error {
+	return l.logAttrs(context.Background(), LevelFatal, message, attrs, 2)
+}
+
+// FatalContext 写出带 context 的 FATAL 级别日志。
+func (l *Logger) FatalContext(ctx context.Context, message string, attrs ...slog.Attr) error {
+	return l.logAttrs(ctx, LevelFatal, message, attrs, 2)
+}
+
 func (l *Logger) clone() *Logger {
 	next := *l
 	next.attrs = append([]slog.Attr(nil), l.attrs...)

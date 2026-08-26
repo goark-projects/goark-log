@@ -10,19 +10,31 @@ import (
 
 type xmlConfig struct {
 	XMLName         xml.Name
-	Status          string         `xml:"status,attr"`
-	MonitorInterval string         `xml:"monitorInterval,attr"`
-	Properties      []xmlProperty  `xml:"Properties>Property"`
-	Appenders       xmlAppenders   `xml:"Appenders"`
-	Filters         xmlFilters     `xml:"Filters"`
-	AsyncLogger     xmlAsyncLogger `xml:"AsyncLogger"`
-	Loggers         xmlLoggers     `xml:"Loggers"`
+	Status          string          `xml:"status,attr"`
+	MonitorInterval string          `xml:"monitorInterval,attr"`
+	Properties      []xmlProperty   `xml:"Properties>Property"`
+	CustomLevels    xmlCustomLevels `xml:"CustomLevels"`
+	Appenders       xmlAppenders    `xml:"Appenders"`
+	Filters         xmlFilters      `xml:"Filters"`
+	AsyncLogger     xmlAsyncLogger  `xml:"AsyncLogger"`
+	Loggers         xmlLoggers      `xml:"Loggers"`
 }
 
 type xmlProperty struct {
 	Name  string `xml:"name,attr"`
 	Value string `xml:"value,attr"`
 	Text  string `xml:",chardata"`
+}
+
+type xmlCustomLevels struct {
+	Levels []xmlCustomLevel `xml:"CustomLevel"`
+}
+
+type xmlCustomLevel struct {
+	Name     string `xml:"name,attr"`
+	Value    string `xml:"value,attr"`
+	IntLevel string `xml:"intLevel,attr"`
+	Text     string `xml:",chardata"`
 }
 
 type xmlAppenders struct {
@@ -270,6 +282,7 @@ func (c xmlConfig) fileConfig() (fileConfig, error) {
 		Status:          c.Status,
 		MonitorInterval: c.MonitorInterval,
 		Properties:      c.properties(),
+		CustomLevels:    c.customLevels(),
 		Appenders:       make(map[string]appenderConfig),
 		Filters:         make(map[string]filterConfig),
 		Loggers:         make(map[string]loggerConfig),
@@ -289,6 +302,21 @@ func (c xmlConfig) fileConfig() (fileConfig, error) {
 	}
 	file.AsyncLogger = async
 	return file, nil
+}
+
+func (c xmlConfig) customLevels() map[string]string {
+	if len(c.CustomLevels.Levels) == 0 {
+		return nil
+	}
+	levels := make(map[string]string, len(c.CustomLevels.Levels))
+	for _, level := range c.CustomLevels.Levels {
+		name := strings.TrimSpace(level.Name)
+		if name == "" {
+			continue
+		}
+		levels[name] = firstNonBlank(level.IntLevel, level.Value, level.Text)
+	}
+	return levels
 }
 
 func (c xmlConfig) properties() map[string]string {

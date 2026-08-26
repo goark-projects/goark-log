@@ -539,6 +539,82 @@ root:
 	}
 }
 
+func TestLoadOptions_whenYamlCustomLevelsConfigured_shouldRegisterBeforeLevelParsing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, `
+customLevels:
+  AUDIT_YAML: 6
+appenders:
+  console:
+    type: console
+root:
+  level: audit_yaml
+  appenderRefs: [console]
+`)
+
+	options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	if options.Root.Level != slog.Level(6) {
+		t.Fatalf("root level = %d, want 6", options.Root.Level)
+	}
+	if got := LevelName(slog.Level(6)); got != "AUDIT_YAML" {
+		t.Fatalf("LevelName(6) = %q, want AUDIT_YAML", got)
+	}
+}
+
+func TestLoadOptions_whenPropertiesCustomLevelConfigured_shouldRegister(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "goark-log.properties")
+	writeConfig(t, configPath, `
+customLevel.AUDIT_PROP = 7
+appender.console.type = console
+rootLogger.level = audit_prop
+rootLogger.appenderRefs = console
+`)
+
+	options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	if options.Root.Level != slog.Level(7) {
+		t.Fatalf("root level = %d, want 7", options.Root.Level)
+	}
+}
+
+func TestLoadOptions_whenXmlCustomLevelConfigured_shouldRegister(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "goark-log.xml")
+	writeConfig(t, configPath, `
+<Configuration>
+  <CustomLevels>
+    <CustomLevel name="AUDIT_XML" intLevel="5"/>
+  </CustomLevels>
+  <Appenders>
+    <Console name="console"/>
+  </Appenders>
+  <Loggers>
+    <Root level="audit_xml">
+      <AppenderRef ref="console"/>
+    </Root>
+  </Loggers>
+</Configuration>
+`)
+
+	options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	if options.Root.Level != slog.Level(5) {
+		t.Fatalf("root level = %d, want 5", options.Root.Level)
+	}
+}
+
 func TestNewConfigured_whenRollingPoliciesAndStrategyUsed_shouldBuildLog4jStyleYaml(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

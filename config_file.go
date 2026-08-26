@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,21 +16,23 @@ import (
 )
 
 type fileConfig struct {
-	Configuration    *fileConfig               `yaml:"configuration"`
-	Status           string                    `yaml:"status"`
-	MonitorInterval  string                    `yaml:"monitorInterval"`
-	MonitorKebab     string                    `yaml:"monitor-interval"`
-	Properties       map[string]string         `yaml:"properties"`
-	Appenders        map[string]appenderConfig `yaml:"appenders"`
-	Filters          map[string]filterConfig   `yaml:"filters"`
-	FilterRefs       []string                  `yaml:"filterRefs"`
-	FilterRefsKebab  []string                  `yaml:"filter-refs"`
-	AsyncLogger      asyncLoggerConfig         `yaml:"asyncLogger"`
-	AsyncLoggerKebab asyncLoggerConfig         `yaml:"async-logger"`
-	Async            asyncLoggerConfig         `yaml:"async"`
-	Root             loggerConfig              `yaml:"root"`
-	Loggers          map[string]loggerConfig   `yaml:"loggers"`
-	Goark            struct {
+	Configuration     *fileConfig               `yaml:"configuration"`
+	Status            string                    `yaml:"status"`
+	MonitorInterval   string                    `yaml:"monitorInterval"`
+	MonitorKebab      string                    `yaml:"monitor-interval"`
+	Properties        map[string]string         `yaml:"properties"`
+	CustomLevels      map[string]string         `yaml:"customLevels"`
+	CustomLevelsKebab map[string]string         `yaml:"custom-levels"`
+	Appenders         map[string]appenderConfig `yaml:"appenders"`
+	Filters           map[string]filterConfig   `yaml:"filters"`
+	FilterRefs        []string                  `yaml:"filterRefs"`
+	FilterRefsKebab   []string                  `yaml:"filter-refs"`
+	AsyncLogger       asyncLoggerConfig         `yaml:"asyncLogger"`
+	AsyncLoggerKebab  asyncLoggerConfig         `yaml:"async-logger"`
+	Async             asyncLoggerConfig         `yaml:"async"`
+	Root              loggerConfig              `yaml:"root"`
+	Loggers           map[string]loggerConfig   `yaml:"loggers"`
+	Goark             struct {
 		Log *fileConfig `yaml:"log"`
 	} `yaml:"goark"`
 }
@@ -510,6 +513,9 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 	if c == nil || c.empty() {
 		return DefaultOptions(), nil
 	}
+	if err := c.registerCustomLevels(); err != nil {
+		return Options{}, err
+	}
 	if err := c.validateAsyncLoggerConfig(); err != nil {
 		return Options{}, err
 	}
@@ -664,6 +670,9 @@ func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
 		return fmt.Errorf("goark-log: monitor-interval: %w", err)
 	}
 	if err := c.resolveProperties(lookups); err != nil {
+		return err
+	}
+	if err := c.resolveCustomLevelLookups(lookups); err != nil {
 		return err
 	}
 	c.FilterRefs, err = resolveStringListLookups(lookups, c.FilterRefs)
@@ -1306,24 +1315,65 @@ func (c keyValuePairConfig) resolveLookups(lookups *LookupResolver) (keyValuePai
 	return c, nil
 }
 
+func (c *fileConfig) resolveCustomLevelLookups(lookups *LookupResolver) error {
+	if c == nil {
+		return nil
+	}
+	resolved, err := resolveStringMapLookups(lookups, c.CustomLevels)
+	if err != nil {
+		return fmt.Errorf("goark-log: customLevels: %w", err)
+	}
+	c.CustomLevels = resolved
+	resolvedKebab, err := resolveStringMapLookups(lookups, c.CustomLevelsKebab)
+	if err != nil {
+		return fmt.Errorf("goark-log: custom-levels: %w", err)
+	}
+	c.CustomLevelsKebab = resolvedKebab
+	return nil
+}
+
+func (c *fileConfig) registerCustomLevels() error {
+	levels := mergeStringMaps(copyStringMap(c.CustomLevels), c.CustomLevelsKebab)
+	for name, value := range levels {
+		parsed, err := parseCustomLevelValue(value)
+		if err != nil {
+			return fmt.Errorf("goark-log: custom level %q: %w", name, err)
+		}
+		if err := RegisterLevel(name, slog.Level(parsed)); err != nil {
+			return fmt.Errorf("goark-log: custom level %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func parseCustomLevelValue(value string) (int, error) {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, fmt.Errorf("value %q is invalid", value)
+	}
+	return parsed, nil
+}
+
 func (c *fileConfig) withoutWrappers() *fileConfig {
 	if c == nil {
 		return nil
 	}
 	return &fileConfig{
-		Status:           c.Status,
-		MonitorInterval:  c.MonitorInterval,
-		MonitorKebab:     c.MonitorKebab,
-		Properties:       c.Properties,
-		Appenders:        c.Appenders,
-		Filters:          c.Filters,
-		FilterRefs:       c.FilterRefs,
-		FilterRefsKebab:  c.FilterRefsKebab,
-		AsyncLogger:      c.AsyncLogger,
-		AsyncLoggerKebab: c.AsyncLoggerKebab,
-		Async:            c.Async,
-		Root:             c.Root,
-		Loggers:          c.Loggers,
+		Status:            c.Status,
+		MonitorInterval:   c.MonitorInterval,
+		MonitorKebab:      c.MonitorKebab,
+		Properties:        c.Properties,
+		CustomLevels:      c.CustomLevels,
+		CustomLevelsKebab: c.CustomLevelsKebab,
+		Appenders:         c.Appenders,
+		Filters:           c.Filters,
+		FilterRefs:        c.FilterRefs,
+		FilterRefsKebab:   c.FilterRefsKebab,
+		AsyncLogger:       c.AsyncLogger,
+		AsyncLoggerKebab:  c.AsyncLoggerKebab,
+		Async:             c.Async,
+		Root:              c.Root,
+		Loggers:           c.Loggers,
 	}
 }
 
@@ -1336,6 +1386,8 @@ func (c *fileConfig) empty() bool {
 		strings.TrimSpace(c.MonitorInterval) == "" &&
 		strings.TrimSpace(c.MonitorKebab) == "" &&
 		len(c.Properties) == 0 &&
+		len(c.CustomLevels) == 0 &&
+		len(c.CustomLevelsKebab) == 0 &&
 		len(c.Filters) == 0 &&
 		len(c.FilterRefs) == 0 &&
 		len(c.FilterRefsKebab) == 0 &&

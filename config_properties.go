@@ -58,10 +58,11 @@ func cutProperty(line string) (string, string, bool) {
 func propertiesToFileConfig(values map[string]string) (fileConfig, error) {
 	aliases := collectPropertyAliases(values)
 	config := fileConfig{
-		Properties: make(map[string]string),
-		Appenders:  make(map[string]appenderConfig),
-		Filters:    make(map[string]filterConfig),
-		Loggers:    make(map[string]loggerConfig),
+		Properties:   make(map[string]string),
+		CustomLevels: make(map[string]string),
+		Appenders:    make(map[string]appenderConfig),
+		Filters:      make(map[string]filterConfig),
+		Loggers:      make(map[string]loggerConfig),
 	}
 	for key, value := range values {
 		if err := applyProperty(&config, aliases, key, value); err != nil {
@@ -73,6 +74,9 @@ func propertiesToFileConfig(values map[string]string) (fileConfig, error) {
 	}
 	if len(config.Properties) == 0 {
 		config.Properties = nil
+	}
+	if len(config.CustomLevels) == 0 {
+		config.CustomLevels = nil
 	}
 	return config, nil
 }
@@ -136,6 +140,18 @@ func applyProperty(config *fileConfig, aliases propertyAliases, key string, valu
 			return fmt.Errorf("goark-log: properties key %q has empty property name", key)
 		}
 		config.Properties[name] = value
+	case strings.HasPrefix(key, "customLevel."):
+		name := strings.TrimPrefix(key, "customLevel.")
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("goark-log: properties key %q has empty custom level name", key)
+		}
+		config.CustomLevels[name] = value
+	case strings.HasPrefix(key, "custom-level."):
+		name := strings.TrimPrefix(key, "custom-level.")
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("goark-log: properties key %q has empty custom level name", key)
+		}
+		config.CustomLevels[name] = value
 	case strings.HasPrefix(key, "asyncLogger."):
 		return applyAsyncLoggerProperty(&config.AsyncLogger, strings.TrimPrefix(key, "asyncLogger."), value)
 	case strings.HasPrefix(key, "async-logger."):

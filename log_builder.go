@@ -55,6 +55,11 @@ func (l *Logger) AtError() LogBuilder {
 	return l.At(slog.LevelError)
 }
 
+// AtFatal 创建 FATAL 级别事件构造器。
+func (l *Logger) AtFatal() LogBuilder {
+	return l.At(LevelFatal)
+}
+
 // Enabled 判断事件构造器是否会写出日志。
 func (b LogBuilder) Enabled() bool {
 	return b.enabled

@@ -3,6 +3,7 @@ package goarklog
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,7 +11,13 @@ import (
 )
 
 const (
+	// LevelAll 表示最低阈值，配置为 ALL 时允许所有事件进入日志管线。
+	LevelAll   slog.Level = math.MinInt
 	LevelTrace slog.Level = -8
+	// LevelFatal 表示比 ERROR 更高的致命级别。
+	LevelFatal slog.Level = 12
+	// LevelOff 表示最高阈值，配置为 OFF 时关闭普通日志事件。
+	LevelOff slog.Level = math.MaxInt
 )
 
 var defaultLevelRegistry = newDefaultLevelRegistry()
@@ -114,6 +121,14 @@ func (r *LevelRegistry) Name(level slog.Level) string {
 }
 
 func defaultLevelName(level slog.Level) string {
+	switch level {
+	case LevelAll:
+		return "ALL"
+	case LevelOff:
+		return "OFF"
+	case LevelFatal:
+		return "FATAL"
+	}
 	switch {
 	case level <= LevelTrace:
 		return "TRACE"
@@ -123,13 +138,17 @@ func defaultLevelName(level slog.Level) string {
 		return "INFO"
 	case level < slog.LevelError:
 		return "WARN"
-	default:
+	case level < LevelFatal:
 		return "ERROR"
+	default:
+		return "FATAL"
 	}
 }
 
 func isBuiltInLevel(name string, level slog.Level) bool {
 	switch name {
+	case "ALL":
+		return level == LevelAll
 	case "TRACE":
 		return level == LevelTrace
 	case "DEBUG":
@@ -140,6 +159,10 @@ func isBuiltInLevel(name string, level slog.Level) bool {
 		return level == slog.LevelWarn
 	case "ERROR":
 		return level == slog.LevelError
+	case "FATAL":
+		return level == LevelFatal
+	case "OFF":
+		return level == LevelOff
 	default:
 		return false
 	}
@@ -152,14 +175,17 @@ func levelPointer(level slog.Level) *slog.Level {
 
 func newDefaultLevelRegistry() *LevelRegistry {
 	registry := &LevelRegistry{
-		byName:  make(map[string]slog.Level, 5),
-		byValue: make(map[slog.Level]string, 5),
+		byName:  make(map[string]slog.Level, 8),
+		byValue: make(map[slog.Level]string, 8),
 	}
+	registry.mustRegisterBuiltIn("ALL", LevelAll)
 	registry.mustRegisterBuiltIn("TRACE", LevelTrace)
 	registry.mustRegisterBuiltIn("DEBUG", slog.LevelDebug)
 	registry.mustRegisterBuiltIn("INFO", slog.LevelInfo)
 	registry.mustRegisterBuiltIn("WARN", slog.LevelWarn)
 	registry.mustRegisterBuiltIn("ERROR", slog.LevelError)
+	registry.mustRegisterBuiltIn("FATAL", LevelFatal)
+	registry.mustRegisterBuiltIn("OFF", LevelOff)
 	return registry
 }
 

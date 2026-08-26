@@ -1,7 +1,9 @@
 package goarklog
 
 import (
+	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +23,30 @@ func TestLevelRegistry_whenCustomLevelRegistered_shouldParseAndFormatName(t *tes
 	}
 	if got := registry.Name(level); got != "NOTICE" {
 		t.Fatalf("Name() = %q, want NOTICE", got)
+	}
+}
+
+func TestLevelRegistry_whenBuiltInLog4jLevelsParsed_shouldSupportThresholdNames(t *testing.T) {
+	tests := []struct {
+		name  string
+		level slog.Level
+	}{
+		{name: "ALL", level: LevelAll},
+		{name: "TRACE", level: LevelTrace},
+		{name: "FATAL", level: LevelFatal},
+		{name: "OFF", level: LevelOff},
+	}
+	for _, test := range tests {
+		parsed, err := ParseLevel(test.name)
+		if err != nil {
+			t.Fatalf("ParseLevel(%s) error = %v", test.name, err)
+		}
+		if parsed != test.level {
+			t.Fatalf("ParseLevel(%s) = %d, want %d", test.name, parsed, test.level)
+		}
+		if got := LevelName(test.level); got != test.name {
+			t.Fatalf("LevelName(%d) = %q, want %q", test.level, got, test.name)
+		}
 	}
 }
 
@@ -55,5 +81,26 @@ func TestLevelRegistry_whenUnknownValue_shouldFallbackToStandardRange(t *testing
 	registry := NewLevelRegistry()
 	if got := registry.Name(slog.Level(2)); got != "INFO" {
 		t.Fatalf("Name(2) = %q, want INFO", got)
+	}
+}
+
+func TestNativeLogger_whenFatalUsed_shouldWriteFatalLevelName(t *testing.T) {
+	var out bytes.Buffer
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewConsoleAppender(WithConsoleWriter(&out), WithConsoleLayout(TextLayout{}))},
+		Root:      RootLogger{Level: slog.LevelError, AppenderRefs: []string{"console"}},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.level")
+	if err != nil {
+		t.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	if err := logger.AtFatal().Log("fatal event"); err != nil {
+		t.Fatalf("AtFatal().Log() error = %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "level=FATAL") || !strings.Contains(got, "fatal event") {
+		t.Fatalf("fatal output is wrong: %q", got)
 	}
 }
