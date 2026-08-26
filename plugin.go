@@ -327,6 +327,9 @@ func (r *PluginRegistry) jsonTemplateResolverFactory(kind string) (JSONTemplateR
 func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterAppender("console", buildConsolePlugin)
 	_ = registry.RegisterAppender("file", buildFilePlugin)
+	_ = registry.RegisterAppender("json", buildJSONPlugin)
+	_ = registry.RegisterAppender("jsonDirect", buildJSONPlugin)
+	_ = registry.RegisterAppender("jsonWriter", buildJSONPlugin)
 	_ = registry.RegisterAppender("rolling", buildRollingPlugin)
 	_ = registry.RegisterAppender("rollingFile", buildRollingPlugin)
 	_ = registry.RegisterAppender("async", buildAsyncPlugin)
@@ -463,6 +466,17 @@ func buildFilePlugin(config AppenderBuildConfig) (Appender, error) {
 		options = append(options, WithFileFlushOnWrite(true))
 	}
 	return NewFileAppender(config.FileName, options...)
+}
+
+func buildJSONPlugin(config AppenderBuildConfig) (Appender, error) {
+	switch strings.ToLower(strings.TrimSpace(config.Target)) {
+	case "", "stderr":
+		return NewJSONAppender(WithJSONAppenderName(config.Name), WithJSONAppenderWriter(os.Stderr)), nil
+	case "stdout":
+		return NewJSONAppender(WithJSONAppenderName(config.Name), WithJSONAppenderWriter(os.Stdout)), nil
+	default:
+		return nil, fmt.Errorf("goark-log: appender %q JSON target %q is invalid", config.Name, config.Target)
+	}
 }
 
 func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {

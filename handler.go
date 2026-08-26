@@ -125,11 +125,36 @@ func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []sl
 	if level < route.Level {
 		return nil
 	}
+	if h.async == nil && pc == 0 {
+		if handled, err := h.dispatchAttrsFast(ctx, route, logger, when, level, message, attrs); handled {
+			return err
+		}
+	}
 	event := newEventFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, h.async != nil)
 	if h.async != nil {
 		return h.async.append(ctx, event)
 	}
 	return h.dispatchRoute(ctx, route, event)
+}
+
+func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
+	if h == nil || h.router == nil {
+		return fmt.Errorf("goark-log: handler is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	route := h.router.route(logger)
+	if level < route.Level {
+		return nil
+	}
+	if h.async == nil && pc == 0 {
+		if handled, err := h.dispatchFixedAttrsFast(ctx, route, logger, when, level, message, attr0, attr1, attr2); handled {
+			return err
+		}
+	}
+	attrs := []slog.Attr{attr0, attr1, attr2}
+	return h.logAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs)
 }
 
 func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) error {

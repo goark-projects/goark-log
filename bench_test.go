@@ -151,10 +151,83 @@ func BenchmarkNativeLoggerLogAttrs(b *testing.B) {
 	}
 }
 
+func BenchmarkNativeLoggerDirectJSON(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.LogAttrs(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", i),
+		); err != nil {
+			b.Fatalf("LogAttrs() error = %v", err)
+		}
+	}
+}
+
+func BenchmarkNativeLoggerDirectJSON3(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.LogAttrs3(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", i),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		); err != nil {
+			b.Fatalf("LogAttrs3() error = %v", err)
+		}
+	}
+}
+
 func BenchmarkNativeLoggerBuilder(b *testing.B) {
 	handler, err := NewHandler(Options{
 		Appenders: []Appender{NewConsoleAppender(WithConsoleWriter(io.Discard), WithConsoleLayout(TextLayout{}))},
 		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.AtInfo().
+			WithString("profile", "bench").
+			WithInt("index", i).
+			Log("event"); err != nil {
+			b.Fatalf("LogBuilder.Log() error = %v", err)
+		}
+	}
+}
+
+func BenchmarkNativeLoggerBuilderDirectJSON(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 	})
 	if err != nil {
 		b.Fatalf("NewHandler() error = %v", err)

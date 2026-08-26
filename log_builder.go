@@ -7,14 +7,18 @@ import (
 	"strings"
 )
 
+const logBuilderInlineAttrs = 8
+
 // LogBuilder 是 Log4j2 风格的事件构造器。
 type LogBuilder struct {
-	logger  *Logger
-	ctx     context.Context
-	level   slog.Level
-	attrs   []slog.Attr
-	groups  []string
-	enabled bool
+	logger    *Logger
+	ctx       context.Context
+	level     slog.Level
+	inline    [logBuilderInlineAttrs]slog.Attr
+	attrCount int
+	attrs     []slog.Attr
+	groups    []string
+	enabled   bool
 }
 
 // At 创建指定级别的事件构造器。
@@ -87,8 +91,10 @@ func (b LogBuilder) WithAttr(attr slog.Attr) LogBuilder {
 	if attr.Key == "" || attr.Key == loggerNameKey {
 		return b
 	}
-	b.attrs = append(append([]slog.Attr(nil), b.attrs...), appendAttr(nil, b.groups, attr)...)
-	return b
+	if len(b.groups) > 0 {
+		attr.Key = groupKey(b.groups, attr.Key)
+	}
+	return b.appendOneAttr(attr)
 }
 
 // WithAttrs 追加结构化属性集合。
@@ -96,16 +102,16 @@ func (b LogBuilder) WithAttrs(attrs ...slog.Attr) LogBuilder {
 	if !b.enabled || len(attrs) == 0 {
 		return b
 	}
-	next := make([]slog.Attr, 0, len(b.attrs)+len(attrs))
-	next = append(next, b.attrs...)
 	for _, attr := range attrs {
 		attr = normalizeAttr(attr)
 		if attr.Key == "" || attr.Key == loggerNameKey {
 			continue
 		}
-		next = appendAttr(next, b.groups, attr)
+		if len(b.groups) > 0 {
+			attr.Key = groupKey(b.groups, attr.Key)
+		}
+		b = b.appendOneAttr(attr)
 	}
-	b.attrs = next
 	return b
 }
 
@@ -183,7 +189,7 @@ func (b LogBuilder) LogMessage(message Message) error {
 	if message == nil {
 		message = SimpleMessage("")
 	}
-	attrs := b.attrs
+	attrs := b.attrSlice()
 	if attributed, ok := message.(AttributedMessage); ok {
 		attrs = append(append([]slog.Attr(nil), attrs...), attributed.Attrs()...)
 	}
@@ -192,4 +198,33 @@ func (b LogBuilder) LogMessage(message Message) error {
 		ctx = context.Background()
 	}
 	return b.logger.logAttrs(ctx, b.level, message.String(), attrs, 3)
+}
+
+func (b LogBuilder) appendOneAttr(attr slog.Attr) LogBuilder {
+	if len(b.attrs) > 0 {
+		next := make([]slog.Attr, 0, len(b.attrs)+1)
+		next = append(next, b.attrs...)
+		next = append(next, attr)
+		b.attrs = next
+		b.attrCount = len(next)
+		return b
+	}
+	if b.attrCount < len(b.inline) {
+		b.inline[b.attrCount] = attr
+		b.attrCount++
+		return b
+	}
+	next := make([]slog.Attr, 0, b.attrCount+1)
+	next = append(next, b.inline[:b.attrCount]...)
+	next = append(next, attr)
+	b.attrs = next
+	b.attrCount = len(next)
+	return b
+}
+
+func (b LogBuilder) attrSlice() []slog.Attr {
+	if len(b.attrs) > 0 {
+		return b.attrs
+	}
+	return b.inline[:b.attrCount]
 }

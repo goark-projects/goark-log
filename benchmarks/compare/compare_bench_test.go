@@ -56,6 +56,60 @@ func BenchmarkCompareDiscard(b *testing.B) {
 		benchmarkGoarkNative(b, logger)
 	})
 
+	b.Run("goark-native-direct-json", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNative(b, logger)
+	})
+
+	b.Run("goark-native-direct-json3", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNative3(b, logger)
+	})
+
+	b.Run("goark-builder-direct-json", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkBuilder(b, logger)
+	})
+
 	b.Run("goark-info-json", func(b *testing.B) {
 		handler, err := goarklog.NewHandler(goarklog.Options{
 			Appenders: []goarklog.Appender{
@@ -196,6 +250,34 @@ func benchmarkGoarkNative(b *testing.B, logger *goarklog.Logger) {
 			slog.Duration("elapsed", 10*time.Millisecond),
 		); err != nil {
 			b.Fatalf("LogAttrs() error = %v", err)
+		}
+	}
+}
+
+func benchmarkGoarkNative3(b *testing.B, logger *goarklog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		if err := logger.LogAttrs3(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", index),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		); err != nil {
+			b.Fatalf("LogAttrs3() error = %v", err)
+		}
+	}
+}
+
+func benchmarkGoarkBuilder(b *testing.B, logger *goarklog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		if err := logger.AtInfo().
+			WithString("profile", "bench").
+			WithInt("index", index).
+			WithAttr(slog.Duration("elapsed", 10*time.Millisecond)).
+			Log("event"); err != nil {
+			b.Fatalf("LogBuilder.Log() error = %v", err)
 		}
 	}
 }

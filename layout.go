@@ -53,16 +53,33 @@ func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
 type JSONLayout struct{}
 
 func (JSONLayout) Format(buf *bytes.Buffer, event Event) error {
+	appendJSONEvent(buf, event.Time, event.Level, event.Logger, event.Message, event.Attrs)
+	return nil
+}
+
+func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
 	buf.WriteByte('{')
-	appendJSONFieldTime(buf, "time", event.Time, defaultTimeFormat, false)
-	appendJSONFieldString(buf, "level", levelName(event.Level), true)
-	appendJSONFieldString(buf, "logger", event.Logger, true)
-	appendJSONFieldString(buf, "msg", event.Message, true)
-	for _, attr := range event.Attrs {
+	appendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
+	appendJSONFieldString(buf, "level", levelName(level), true)
+	appendJSONFieldString(buf, "logger", logger, true)
+	appendJSONFieldString(buf, "msg", message, true)
+	for _, attr := range attrs {
 		appendJSONFieldValue(buf, attr.Key, attr.Value, true)
 	}
 	buf.WriteString("}\n")
-	return nil
+}
+
+func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
+	buf.WriteByte('{')
+	appendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
+	appendJSONFieldString(buf, "level", levelName(level), true)
+	appendJSONFieldString(buf, "logger", logger, true)
+	appendJSONFieldString(buf, "msg", message, true)
+	for index := 0; index < count && index < len(attrs); index++ {
+		attr := attrs[index]
+		appendJSONFieldValue(buf, attr.Key, attr.Value, true)
+	}
+	buf.WriteString("}\n")
 }
 
 // PatternLayout 支持 Log4j2 风格的基础占位符子集。

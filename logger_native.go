@@ -126,6 +126,18 @@ func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, message string,
 	return l.logAttrs(ctx, level, message, attrs, 2)
 }
 
+// LogAttrs3 使用三个固定属性写出事件，避免极热路径的 variadic slice 分配。
+func (l *Logger) LogAttrs3(ctx context.Context, level slog.Level, message string, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
+	if l == nil || l.handler == nil {
+		return fmt.Errorf("goark-log: native logger is nil")
+	}
+	pc := uintptr(0)
+	if l.includeCaller || l.handler.asyncIncludeLocation() {
+		pc = callerPC(2)
+	}
+	return l.handler.log3Attrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attr0, attr1, attr2)
+}
+
 func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string, attrs []slog.Attr, callerSkip int) error {
 	if l == nil || l.handler == nil {
 		return fmt.Errorf("goark-log: native logger is nil")
