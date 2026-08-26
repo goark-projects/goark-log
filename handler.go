@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // Options 描述 Handler 的运行期结构。
@@ -77,10 +78,14 @@ func NewDefaultHandler() *Handler {
 }
 
 func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
+	return h.enabled(h.name, level)
+}
+
+func (h *Handler) enabled(name string, level slog.Level) bool {
 	if h == nil || h.router == nil {
 		return level >= slog.LevelInfo
 	}
-	return level >= h.router.route(h.name).Level
+	return level >= h.router.route(name).Level
 }
 
 func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
@@ -105,6 +110,24 @@ func (h *Handler) dispatch(ctx context.Context, event Event) error {
 	route := h.router.route(event.Logger)
 	if event.Level < route.Level {
 		return nil
+	}
+	return h.dispatchRoute(ctx, route, event)
+}
+
+func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error {
+	if h == nil || h.router == nil {
+		return fmt.Errorf("goark-log: handler is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	route := h.router.route(logger)
+	if level < route.Level {
+		return nil
+	}
+	event := newEventFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, h.async != nil)
+	if h.async != nil {
+		return h.async.append(ctx, event)
 	}
 	return h.dispatchRoute(ctx, route, event)
 }

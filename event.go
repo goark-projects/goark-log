@@ -48,13 +48,26 @@ func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, grou
 		attrs = appendAttr(attrs, groups, attr)
 		return true
 	})
-	marker := markerFromAttrs(attrs)
+	return newEventFromCollected(ctx, logger, record.Time, record.Level, record.Message, record.PC, attrs)
+}
+
+func newEventFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr, copyAttrs bool) Event {
+	if logger == "" {
+		logger = defaultLoggerName
+	}
+	contextAttrs := ContextAttrs(ctx)
+	collected := makeEventAttrs(handlerAttrs, contextAttrs, groups, attrs, copyAttrs)
+	return newEventFromCollected(ctx, logger, when, level, message, pc, collected)
+}
+
+func newEventFromCollected(ctx context.Context, logger string, when time.Time, level slog.Level, message string, pc uintptr, collected []slog.Attr) Event {
+	marker := markerFromAttrs(collected)
 	if marker == nil {
 		if contextMarker, ok := ContextMarker(ctx); ok {
 			marker = markerPointer(contextMarker)
 		}
 	}
-	threadName := threadNameFromAttrs(attrs)
+	threadName := threadNameFromAttrs(collected)
 	if threadName == "" {
 		threadName = ContextThreadName(ctx)
 	}
@@ -62,19 +75,46 @@ func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, grou
 		threadName = defaultThreadName
 	}
 	contextStack := ContextStack(ctx)
-	contextStack = appendContextStackValues(contextStack, contextStackFromAttrs(attrs)...)
+	contextStack = appendContextStackValues(contextStack, contextStackFromAttrs(collected)...)
 	return Event{
-		Time:         record.Time,
-		Level:        record.Level,
-		Message:      record.Message,
+		Time:         when,
+		Level:        level,
+		Message:      message,
 		Logger:       logger,
-		PC:           record.PC,
-		Attrs:        attrs,
+		PC:           pc,
+		Attrs:        collected,
 		Marker:       marker,
-		Throwable:    throwableFromAttrs(attrs),
+		Throwable:    throwableFromAttrs(collected),
 		ThreadName:   threadName,
 		ContextStack: contextStack,
 	}
+}
+
+func makeEventAttrs(handlerAttrs []slog.Attr, contextAttrs []slog.Attr, groups []string, attrs []slog.Attr, copyAttrs bool) []slog.Attr {
+	total := len(handlerAttrs) + len(contextAttrs) + len(attrs)
+	if total == 0 {
+		return nil
+	}
+	if !copyAttrs && len(handlerAttrs) == 0 && len(contextAttrs) == 0 && len(groups) == 0 && attrsCanShare(attrs) {
+		return attrs
+	}
+	collected := make([]slog.Attr, 0, total)
+	collected = appendAttrs(collected, nil, handlerAttrs)
+	collected = appendAttrs(collected, nil, contextAttrs)
+	collected = appendAttrs(collected, groups, attrs)
+	return collected
+}
+
+func attrsCanShare(attrs []slog.Attr) bool {
+	for _, attr := range attrs {
+		if attr.Key == "" || attr.Key == loggerNameKey {
+			return false
+		}
+		if attr.Value.Kind() == slog.KindLogValuer {
+			return false
+		}
+	}
+	return true
 }
 
 func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {

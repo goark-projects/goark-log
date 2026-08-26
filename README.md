@@ -28,8 +28,18 @@ func main() {
 	defer handler.Close()
 
 	logger := goarklog.WithName(slog.Default(), "goark.boot")
-	logger.Info("service started", slog.String("profile", "dev"))
+logger.Info("service started", slog.String("profile", "dev"))
 }
+```
+
+延迟敏感路径可以使用原生 `Logger` API，直接把 `slog.Attr` 写入 goark-log 事件管线：
+
+```go
+native, err := goarklog.NewNativeLogger(handler, "goark.boot")
+if err != nil {
+	panic(err)
+}
+_ = native.Info("service started", slog.String("profile", "dev"))
 ```
 
 ## 配置优先级
@@ -202,6 +212,8 @@ go test -run '^$' -bench . -benchmem ./...
 variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayout` 对常见
 `slog` 基础类型保持低分配编码；文件类 appender 默认启用缓冲写入，延迟敏感场景再打开
 `flushOnWrite`。
+
+更高吞吐场景可以使用 `NewNativeLogger` 创建原生 logger，绕过 `slog.Record` 构造并直接进入 goark-log `Event` 管线。默认不采集调用位置，需要 `%class`、`%method`、`%file`、`%line` 或 `%location` 时显式传入 `WithLoggerCaller(true)`。
 
 当前 JSON 热路径采用手写 `bytes.Buffer` 编码，常见 `slog` 基础类型保持 `0 alloc/op`。Sonic 评估只可能覆盖任意对象 fallback，本地临时依赖下载/编译超过两分钟未完成，且不会改善主路径，因此核心库暂不引入该依赖。
 

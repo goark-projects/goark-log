@@ -107,6 +107,30 @@ func BenchmarkHandlerLogAttrs(b *testing.B) {
 	}
 }
 
+func BenchmarkNativeLoggerLogAttrs(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewConsoleAppender(WithConsoleWriter(io.Discard), WithConsoleLayout(TextLayout{}))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.LogAttrs(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", i),
+		); err != nil {
+			b.Fatalf("LogAttrs() error = %v", err)
+		}
+	}
+}
+
 func BenchmarkAsyncAppender(b *testing.B) {
 	strategies := []AsyncOverflowStrategy{
 		AsyncOverflowBlock,
