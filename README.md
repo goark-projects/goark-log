@@ -28,7 +28,7 @@ func main() {
 	defer handler.Close()
 
 	logger := goarklog.WithName(slog.Default(), "goark.boot")
-logger.Info("service started", slog.String("profile", "dev"))
+	logger.Info("service started", slog.String("profile", "dev"))
 }
 ```
 
@@ -40,7 +40,13 @@ if err != nil {
 	panic(err)
 }
 _ = native.Info("service started", slog.String("profile", "dev"))
+_ = native.AtInfo().
+	WithMarker(goarklog.NewMarker("BOOT")).
+	WithString("profile", "dev").
+	Log("service started")
 ```
+
+`Logger.AtInfo()/AtDebug()/AtWarn()/AtError()/AtTrace()` 提供 Log4j2 风格 fluent builder；`SimpleMessage`、`ParameterizedMessage`、`MapMessage`、`StructuredDataMessage` 提供 Go-native 消息模型。需要自定义级别时使用 `RegisterLevel("NOTICE", slog.Level(2))`，布局输出会优先使用注册名称。
 
 ## 配置优先级
 
@@ -163,7 +169,9 @@ logger.InfoContext(ctx, "request done")
 `PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`。调用位置来自 `slog.Record.PC`，
 只有 pattern 使用 caller token 时才解析 runtime frame。
 
-`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。核心库还提供 `XMLLayout` 和 `CSVLayout`，配置中可使用 `layout.type: xml` 或 `layout.type: csv`。
+`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`mdc` 支持 `flatten: true` 把 group 展平成点分 key，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
+
+核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。
 
 ## 过滤器
 
@@ -171,6 +179,8 @@ logger.InfoContext(ctx, "request done")
 
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。
+
+`ScriptFilter` 只提供 `ScriptEvaluator` 契约和安全默认策略，核心库不内置脚本引擎。JavaScript、Lua、expr、Starlark 等执行器应放在独立模块中注册，避免核心库绑定脚本运行时和安全策略。
 
 ## 安全边界
 
@@ -190,6 +200,8 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 ```
 
 核心包保留 `AppenderBuildConfig` 中的 URL、Address、Network、Timeout 等字段，用于独立外部模块读取配置；这些字段不是核心库自带外部 appender 的承诺。核心包自身只提供 `ConsoleAppender`、`FileAppender`、`RollingFileAppender`、`AsyncAppender`、`FailoverAppender`、`RoutingAppender`、`RewriteAppender` 等本地和组合型 appender。
+
+外部包如果只扩展默认注册表，可以直接使用包级 helper：`RegisterAppender`、`RegisterLayout`、`RegisterFilter`、`RegisterLookup`、`RegisterJSONTemplateResolver`。需要隔离测试或多套配置时，继续使用 `NewPluginRegistry()` 显式传入。
 
 ## Examples
 
@@ -219,7 +231,7 @@ variadic 装箱开销。内置 `TextLayout`、`JSONLayout`、默认 `PatternLayo
 
 更高吞吐场景可以使用 `NewNativeLogger` 创建原生 logger，绕过 `slog.Record` 构造并直接进入 goark-log `Event` 管线。默认不采集调用位置，需要 `%class`、`%method`、`%file`、`%line` 或 `%location` 时显式传入 `WithLoggerCaller(true)`。
 
-当前 JSON 热路径采用手写 `bytes.Buffer` 编码，常见 `slog` 基础类型保持 `0 alloc/op`。Sonic 评估只可能覆盖任意对象 fallback，本地临时依赖下载/编译超过两分钟未完成，且不会改善主路径，因此核心库暂不引入该依赖。
+当前 JSON 热路径采用手写 `bytes.Buffer` 编码，常见 `slog` 基础类型保持 `0 alloc/op`。复杂 `slog.Any` 对象 fallback 使用 ByteDance Sonic 编码；基础字段不走反射 JSON，避免破坏主路径分配表现。
 
 和 zap、zerolog 的对标基准放在独立子模块，避免核心库引入额外依赖：
 
