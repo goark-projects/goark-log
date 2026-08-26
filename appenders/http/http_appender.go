@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 const defaultTimeout = 5 * time.Second

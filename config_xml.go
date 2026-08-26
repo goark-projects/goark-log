@@ -108,26 +108,50 @@ type xmlRollingStrategy struct {
 }
 
 type xmlFilters struct {
-	Threshold []xmlFilter `xml:"ThresholdFilter"`
-	Level     []xmlFilter `xml:"LevelFilter"`
-	Range     []xmlFilter `xml:"LevelRangeFilter"`
-	Regex     []xmlFilter `xml:"RegexFilter"`
-	Attr      []xmlFilter `xml:"AttrFilter"`
-	Attribute []xmlFilter `xml:"AttributeFilter"`
+	Threshold        []xmlFilter `xml:"ThresholdFilter"`
+	Level            []xmlFilter `xml:"LevelFilter"`
+	Range            []xmlFilter `xml:"LevelRangeFilter"`
+	Regex            []xmlFilter `xml:"RegexFilter"`
+	Attr             []xmlFilter `xml:"AttrFilter"`
+	Attribute        []xmlFilter `xml:"AttributeFilter"`
+	Deny             []xmlFilter `xml:"DenyFilter"`
+	DenyAll          []xmlFilter `xml:"DenyAllFilter"`
+	Marker           []xmlFilter `xml:"MarkerFilter"`
+	NoMarker         []xmlFilter `xml:"NoMarkerFilter"`
+	Map              []xmlFilter `xml:"MapFilter"`
+	ThreadContextMap []xmlFilter `xml:"ThreadContextMapFilter"`
+	StringMatch      []xmlFilter `xml:"StringMatchFilter"`
+	Time             []xmlFilter `xml:"TimeFilter"`
+	Burst            []xmlFilter `xml:"BurstFilter"`
+	DynamicThreshold []xmlFilter `xml:"DynamicThresholdFilter"`
 }
 
 type xmlFilter struct {
-	Name       string `xml:"name,attr"`
-	Type       string `xml:"type,attr"`
-	Level      string `xml:"level,attr"`
-	MinLevel   string `xml:"minLevel,attr"`
-	MaxLevel   string `xml:"maxLevel,attr"`
-	Field      string `xml:"field,attr"`
-	Key        string `xml:"key,attr"`
-	Value      string `xml:"value,attr"`
-	Pattern    string `xml:"pattern,attr"`
-	OnMatch    string `xml:"onMatch,attr"`
-	OnMismatch string `xml:"onMismatch,attr"`
+	Name             string            `xml:"name,attr"`
+	Type             string            `xml:"type,attr"`
+	Level            string            `xml:"level,attr"`
+	MinLevel         string            `xml:"minLevel,attr"`
+	MaxLevel         string            `xml:"maxLevel,attr"`
+	Marker           string            `xml:"marker,attr"`
+	Text             string            `xml:"text,attr"`
+	Operator         string            `xml:"operator,attr"`
+	Start            string            `xml:"start,attr"`
+	End              string            `xml:"end,attr"`
+	Rate             string            `xml:"rate,attr"`
+	MaxBurst         string            `xml:"maxBurst,attr"`
+	Field            string            `xml:"field,attr"`
+	Key              string            `xml:"key,attr"`
+	Value            string            `xml:"value,attr"`
+	DefaultThreshold string            `xml:"defaultThreshold,attr"`
+	Pattern          string            `xml:"pattern,attr"`
+	OnMatch          string            `xml:"onMatch,attr"`
+	OnMismatch       string            `xml:"onMismatch,attr"`
+	KeyValuePair     []xmlKeyValuePair `xml:"KeyValuePair"`
+}
+
+type xmlKeyValuePair struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:"value,attr"`
 }
 
 type xmlAsyncLogger struct {
@@ -241,6 +265,16 @@ func (c xmlConfig) filters(file *fileConfig) error {
 		{kind: "regex", filters: c.Filters.Regex},
 		{kind: "attr", filters: c.Filters.Attr},
 		{kind: "attr", filters: c.Filters.Attribute},
+		{kind: "deny", filters: c.Filters.Deny},
+		{kind: "denyAll", filters: c.Filters.DenyAll},
+		{kind: "marker", filters: c.Filters.Marker},
+		{kind: "noMarker", filters: c.Filters.NoMarker},
+		{kind: "map", filters: c.Filters.Map},
+		{kind: "threadContextMap", filters: c.Filters.ThreadContextMap},
+		{kind: "stringMatch", filters: c.Filters.StringMatch},
+		{kind: "time", filters: c.Filters.Time},
+		{kind: "burst", filters: c.Filters.Burst},
+		{kind: "dynamicThreshold", filters: c.Filters.DynamicThreshold},
 	}
 	for _, group := range groups {
 		for _, item := range group.filters {
@@ -248,7 +282,11 @@ func (c xmlConfig) filters(file *fileConfig) error {
 			if name == "" {
 				return fmt.Errorf("goark-log: XML filter name is empty")
 			}
-			file.Filters[name] = item.config(group.kind)
+			config, err := item.config(group.kind)
+			if err != nil {
+				return fmt.Errorf("goark-log: XML filter %q: %w", name, err)
+			}
+			file.Filters[name] = config
 		}
 	}
 	return nil
@@ -357,22 +395,35 @@ func (l xmlLayout) config() layoutConfig {
 	return layoutConfig{Type: kind, Pattern: l.Pattern, EventTemplate: l.Template}
 }
 
-func (f xmlFilter) config(kind string) filterConfig {
+func (f xmlFilter) config(kind string) (filterConfig, error) {
 	if strings.TrimSpace(f.Type) != "" {
 		kind = f.Type
 	}
-	return filterConfig{
-		Type:       kind,
-		Level:      f.Level,
-		MinLevel:   f.MinLevel,
-		MaxLevel:   f.MaxLevel,
-		Field:      f.Field,
-		Key:        f.Key,
-		Value:      f.Value,
-		Pattern:    f.Pattern,
-		OnMatch:    f.OnMatch,
-		OnMismatch: f.OnMismatch,
+	maxBurst, err := parseXMLInt(f.MaxBurst, "maxBurst")
+	if err != nil {
+		return filterConfig{}, err
 	}
+	return filterConfig{
+		Type:             kind,
+		Level:            f.Level,
+		MinLevel:         f.MinLevel,
+		MaxLevel:         f.MaxLevel,
+		Marker:           f.Marker,
+		Text:             f.Text,
+		Operator:         f.Operator,
+		Start:            f.Start,
+		End:              f.End,
+		Rate:             f.Rate,
+		MaxBurst:         maxBurst,
+		Field:            f.Field,
+		Key:              f.Key,
+		Value:            f.Value,
+		DefaultThreshold: f.DefaultThreshold,
+		Pattern:          f.Pattern,
+		OnMatch:          f.OnMatch,
+		OnMismatch:       f.OnMismatch,
+		KeyValuePair:     xmlKeyValuePairs(f.KeyValuePair),
+	}, nil
 }
 
 func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
@@ -459,6 +510,17 @@ func xmlFilterRefs(refs []xmlFilterRef) []string {
 	out := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		out = append(out, strings.TrimSpace(ref.Ref))
+	}
+	return out
+}
+
+func xmlKeyValuePairs(pairs []xmlKeyValuePair) []keyValuePairConfig {
+	out := make([]keyValuePairConfig, 0, len(pairs))
+	for _, pair := range pairs {
+		out = append(out, keyValuePairConfig{
+			Key:   pair.Key,
+			Value: pair.Value,
+		})
 	}
 	return out
 }

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func TestPublicAPICompile(t *testing.T) {

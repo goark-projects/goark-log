@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func main() {

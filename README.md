@@ -17,7 +17,7 @@ import (
 	"context"
 	"log/slog"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func main() {
@@ -155,6 +155,12 @@ logger.InfoContext(ctx, "request done")
 
 `JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`marker`、`throwable`、`contextStack`、`mdc`、`attr`、`endOfBatch`。
 
+## 过滤器
+
+内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
+
+`MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
+
 ## 外部 Appender 包
 
 外部系统连接保持独立包，不默认进入核心库依赖。需要时显式导入并注册：
@@ -168,7 +174,7 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 )
 ```
 
-当前提供 `goark.dev/goark-log/appenders/http`、`goark.dev/goark-log/appenders/socket`、`goark.dev/goark-log/appenders/syslog`。核心包同时提供 `FailoverAppender`、`RoutingAppender`、`RewriteAppender` 作为组合型 appender。
+当前提供 `goark.dev/log/appenders/http`、`goark.dev/log/appenders/socket`、`goark.dev/log/appenders/syslog`。核心包同时提供 `FailoverAppender`、`RoutingAppender`、`RewriteAppender` 作为组合型 appender。
 
 ## Examples
 

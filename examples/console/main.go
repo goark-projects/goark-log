@@ -3,7 +3,7 @@ package main
 import (
 	"log/slog"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func main() {

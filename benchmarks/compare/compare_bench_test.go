@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func BenchmarkCompareDiscard(b *testing.B) {

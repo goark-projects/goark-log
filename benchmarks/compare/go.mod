@@ -1,11 +1,11 @@
-module goark.dev/goark-log/benchmarks/compare
+module goark.dev/log/benchmarks/compare
 
 go 1.25
 
 require (
 	github.com/rs/zerolog v1.35.1
 	go.uber.org/zap v1.28.0
-	goark.dev/goark-log v0.0.0
+	goark.dev/log v0.0.0
 )
 
 require (
@@ -16,4 +16,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace goark.dev/goark-log => ../..
+replace goark.dev/log => ../..

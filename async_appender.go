@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"goark.dev/goark-log/internal/disruptor"
+	"goark.dev/log/internal/disruptor"
 )
 
 const (

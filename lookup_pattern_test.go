@@ -86,7 +86,7 @@ func TestPatternLayout_whenCallerTokensUsed_shouldRenderGoLocation(t *testing.T)
 	}
 	line := buf.String()
 	for _, want := range []string{
-		"goark-log",
+		"goark.dev/log",
 		"TestPatternLayout_whenCallerTokensUsed",
 		"lookup_pattern_test.go",
 		"|SQL\n",

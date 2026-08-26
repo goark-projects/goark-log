@@ -336,20 +336,40 @@ func (c appenderRefConfig) resolveLookups(lookups *LookupResolver) (appenderRefC
 }
 
 type filterConfig struct {
-	Type            string `yaml:"type"`
-	Level           string `yaml:"level"`
-	MinLevel        string `yaml:"minLevel"`
-	MinLevelKebab   string `yaml:"min-level"`
-	MaxLevel        string `yaml:"maxLevel"`
-	MaxLevelKebab   string `yaml:"max-level"`
-	Field           string `yaml:"field"`
-	Key             string `yaml:"key"`
-	Value           string `yaml:"value"`
-	Pattern         string `yaml:"pattern"`
-	OnMatch         string `yaml:"onMatch"`
-	OnMatchKebab    string `yaml:"on-match"`
-	OnMismatch      string `yaml:"onMismatch"`
-	OnMismatchKebab string `yaml:"on-mismatch"`
+	Type               string               `yaml:"type"`
+	Level              string               `yaml:"level"`
+	MinLevel           string               `yaml:"minLevel"`
+	MinLevelKebab      string               `yaml:"min-level"`
+	MaxLevel           string               `yaml:"maxLevel"`
+	MaxLevelKebab      string               `yaml:"max-level"`
+	Marker             string               `yaml:"marker"`
+	Text               string               `yaml:"text"`
+	Operator           string               `yaml:"operator"`
+	Start              string               `yaml:"start"`
+	End                string               `yaml:"end"`
+	Rate               string               `yaml:"rate"`
+	MaxBurst           int                  `yaml:"maxBurst"`
+	MaxBurstKebab      int                  `yaml:"max-burst"`
+	Field              string               `yaml:"field"`
+	Key                string               `yaml:"key"`
+	Value              string               `yaml:"value"`
+	Values             map[string]string    `yaml:"values"`
+	Thresholds         map[string]string    `yaml:"thresholds"`
+	KeyValuePair       []keyValuePairConfig `yaml:"KeyValuePair"`
+	KeyValuePairs      []keyValuePairConfig `yaml:"keyValuePairs"`
+	KeyValuePairsKebab []keyValuePairConfig `yaml:"key-value-pairs"`
+	DefaultThreshold   string               `yaml:"defaultThreshold"`
+	DefaultKebab       string               `yaml:"default-threshold"`
+	Pattern            string               `yaml:"pattern"`
+	OnMatch            string               `yaml:"onMatch"`
+	OnMatchKebab       string               `yaml:"on-match"`
+	OnMismatch         string               `yaml:"onMismatch"`
+	OnMismatchKebab    string               `yaml:"on-mismatch"`
+}
+
+type keyValuePairConfig struct {
+	Key   string `yaml:"key"`
+	Value string `yaml:"value"`
 }
 
 func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (*fileConfig, error) {
@@ -954,6 +974,24 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.MaxLevelKebab, err = resolveStringLookup(lookups, c.MaxLevelKebab); err != nil {
 		return fmt.Errorf("max-level: %w", err)
 	}
+	if c.Marker, err = resolveStringLookup(lookups, c.Marker); err != nil {
+		return fmt.Errorf("marker: %w", err)
+	}
+	if c.Text, err = resolveStringLookup(lookups, c.Text); err != nil {
+		return fmt.Errorf("text: %w", err)
+	}
+	if c.Operator, err = resolveStringLookup(lookups, c.Operator); err != nil {
+		return fmt.Errorf("operator: %w", err)
+	}
+	if c.Start, err = resolveStringLookup(lookups, c.Start); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+	if c.End, err = resolveStringLookup(lookups, c.End); err != nil {
+		return fmt.Errorf("end: %w", err)
+	}
+	if c.Rate, err = resolveStringLookup(lookups, c.Rate); err != nil {
+		return fmt.Errorf("rate: %w", err)
+	}
 	if c.Field, err = resolveStringLookup(lookups, c.Field); err != nil {
 		return fmt.Errorf("field: %w", err)
 	}
@@ -962,6 +1000,27 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.Value, err = resolveStringLookup(lookups, c.Value); err != nil {
 		return fmt.Errorf("value: %w", err)
+	}
+	if c.Values, err = resolveStringMapLookups(lookups, c.Values); err != nil {
+		return fmt.Errorf("values: %w", err)
+	}
+	if c.Thresholds, err = resolveStringMapLookups(lookups, c.Thresholds); err != nil {
+		return fmt.Errorf("thresholds: %w", err)
+	}
+	if c.KeyValuePair, err = resolveKeyValuePairLookups(lookups, c.KeyValuePair); err != nil {
+		return fmt.Errorf("KeyValuePair: %w", err)
+	}
+	if c.KeyValuePairs, err = resolveKeyValuePairLookups(lookups, c.KeyValuePairs); err != nil {
+		return fmt.Errorf("keyValuePairs: %w", err)
+	}
+	if c.KeyValuePairsKebab, err = resolveKeyValuePairLookups(lookups, c.KeyValuePairsKebab); err != nil {
+		return fmt.Errorf("key-value-pairs: %w", err)
+	}
+	if c.DefaultThreshold, err = resolveStringLookup(lookups, c.DefaultThreshold); err != nil {
+		return fmt.Errorf("defaultThreshold: %w", err)
+	}
+	if c.DefaultKebab, err = resolveStringLookup(lookups, c.DefaultKebab); err != nil {
+		return fmt.Errorf("default-threshold: %w", err)
 	}
 	if c.Pattern, err = resolveStringLookup(lookups, c.Pattern); err != nil {
 		return fmt.Errorf("pattern: %w", err)
@@ -1018,6 +1077,54 @@ func resolveStringListLookups(lookups *LookupResolver, values []string) ([]strin
 		out = append(out, resolved)
 	}
 	return out, nil
+}
+
+func resolveStringMapLookups(lookups *LookupResolver, values map[string]string) (map[string]string, error) {
+	if len(values) == 0 {
+		return values, nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		resolvedKey, err := resolveStringLookup(lookups, key)
+		if err != nil {
+			return nil, err
+		}
+		resolvedValue, err := resolveStringLookup(lookups, value)
+		if err != nil {
+			return nil, err
+		}
+		out[resolvedKey] = resolvedValue
+	}
+	return out, nil
+}
+
+func resolveKeyValuePairLookups(lookups *LookupResolver, values []keyValuePairConfig) ([]keyValuePairConfig, error) {
+	if len(values) == 0 {
+		return values, nil
+	}
+	out := make([]keyValuePairConfig, 0, len(values))
+	for index, value := range values {
+		resolved, err := value.resolveLookups(lookups)
+		if err != nil {
+			return nil, fmt.Errorf("%d: %w", index, err)
+		}
+		if strings.TrimSpace(resolved.Key) == "" {
+			return nil, fmt.Errorf("%d: key is empty", index)
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
+}
+
+func (c keyValuePairConfig) resolveLookups(lookups *LookupResolver) (keyValuePairConfig, error) {
+	var err error
+	if c.Key, err = resolveStringLookup(lookups, c.Key); err != nil {
+		return keyValuePairConfig{}, fmt.Errorf("key: %w", err)
+	}
+	if c.Value, err = resolveStringLookup(lookups, c.Value); err != nil {
+		return keyValuePairConfig{}, fmt.Errorf("value: %w", err)
+	}
+	return c, nil
 }
 
 func (c *fileConfig) withoutWrappers() *fileConfig {
@@ -1682,19 +1789,106 @@ func (c filterConfig) maxLevel() string {
 	return firstNonBlank(c.MaxLevel, c.MaxLevelKebab)
 }
 
+func (c filterConfig) maxBurst() int {
+	if c.MaxBurst != 0 {
+		return c.MaxBurst
+	}
+	return c.MaxBurstKebab
+}
+
+func (c filterConfig) defaultThreshold() string {
+	return firstNonBlank(c.DefaultThreshold, c.DefaultKebab)
+}
+
+func (c filterConfig) values() map[string]string {
+	values := copyStringMap(c.Values)
+	if isDynamicThresholdFilterKind(c.Type) {
+		return values
+	}
+	return mergeStringMaps(values, c.keyValuePairs())
+}
+
+func (c filterConfig) thresholds() map[string]string {
+	thresholds := copyStringMap(c.Thresholds)
+	if !isDynamicThresholdFilterKind(c.Type) {
+		return thresholds
+	}
+	return mergeStringMaps(thresholds, c.keyValuePairs())
+}
+
+func (c filterConfig) keyValuePairs() map[string]string {
+	pairs := make(map[string]string)
+	for _, groups := range [][]keyValuePairConfig{c.KeyValuePair, c.KeyValuePairs, c.KeyValuePairsKebab} {
+		for _, pair := range groups {
+			key := strings.TrimSpace(pair.Key)
+			if key == "" {
+				continue
+			}
+			pairs[key] = pair.Value
+		}
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+	return pairs
+}
+
 func (c filterConfig) filterBuildConfig(name string) FilterBuildConfig {
 	return FilterBuildConfig{
-		Name:       name,
-		Type:       c.Type,
-		Level:      c.Level,
-		MinLevel:   c.minLevel(),
-		MaxLevel:   c.maxLevel(),
-		Field:      c.Field,
-		Key:        c.Key,
-		Value:      c.Value,
-		Pattern:    c.Pattern,
-		OnMatch:    firstNonBlank(c.OnMatch, c.OnMatchKebab),
-		OnMismatch: firstNonBlank(c.OnMismatch, c.OnMismatchKebab),
+		Name:             name,
+		Type:             c.Type,
+		Level:            c.Level,
+		MinLevel:         c.minLevel(),
+		MaxLevel:         c.maxLevel(),
+		Marker:           c.Marker,
+		Text:             c.Text,
+		Operator:         c.Operator,
+		Start:            c.Start,
+		End:              c.End,
+		Rate:             c.Rate,
+		MaxBurst:         c.maxBurst(),
+		Field:            c.Field,
+		Key:              c.Key,
+		Value:            c.Value,
+		Values:           c.values(),
+		Thresholds:       c.thresholds(),
+		DefaultThreshold: c.defaultThreshold(),
+		Pattern:          c.Pattern,
+		OnMatch:          firstNonBlank(c.OnMatch, c.OnMatchKebab),
+		OnMismatch:       firstNonBlank(c.OnMismatch, c.OnMismatchKebab),
+	}
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func mergeStringMaps(base map[string]string, overlay map[string]string) map[string]string {
+	if len(overlay) == 0 {
+		return base
+	}
+	if base == nil {
+		base = make(map[string]string, len(overlay))
+	}
+	for key, value := range overlay {
+		base[key] = value
+	}
+	return base
+}
+
+func isDynamicThresholdFilterKind(value string) bool {
+	switch normalizeKind(value) {
+	case "dynamicthreshold", "dynamicthresholdfilter":
+		return true
+	default:
+		return false
 	}
 }
 

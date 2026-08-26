@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 const defaultDialTimeout = 5 * time.Second

@@ -2,6 +2,7 @@ package goarklog
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -74,17 +75,27 @@ type LayoutBuildConfig struct {
 
 // FilterBuildConfig 是 filter 插件的构建输入。
 type FilterBuildConfig struct {
-	Name       string
-	Type       string
-	Level      string
-	MinLevel   string
-	MaxLevel   string
-	Field      string
-	Key        string
-	Value      string
-	Pattern    string
-	OnMatch    string
-	OnMismatch string
+	Name             string
+	Type             string
+	Level            string
+	MinLevel         string
+	MaxLevel         string
+	Marker           string
+	Text             string
+	Operator         string
+	Start            string
+	End              string
+	Rate             string
+	MaxBurst         int
+	Field            string
+	Key              string
+	Value            string
+	Values           map[string]string
+	Thresholds       map[string]string
+	DefaultThreshold string
+	Pattern          string
+	OnMatch          string
+	OnMismatch       string
 }
 
 // PluginRegistry 保存显式注册的日志插件。
@@ -261,11 +272,37 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	})
 
 	_ = registry.RegisterFilter("threshold", buildThresholdFilterPlugin)
+	_ = registry.RegisterFilter("thresholdFilter", buildThresholdFilterPlugin)
 	_ = registry.RegisterFilter("level", buildLevelFilterPlugin)
+	_ = registry.RegisterFilter("levelFilter", buildLevelFilterPlugin)
 	_ = registry.RegisterFilter("levelRange", buildLevelRangeFilterPlugin)
+	_ = registry.RegisterFilter("levelRangeFilter", buildLevelRangeFilterPlugin)
 	_ = registry.RegisterFilter("regex", buildRegexFilterPlugin)
+	_ = registry.RegisterFilter("regexFilter", buildRegexFilterPlugin)
 	_ = registry.RegisterFilter("attr", buildAttrFilterPlugin)
 	_ = registry.RegisterFilter("attribute", buildAttrFilterPlugin)
+	_ = registry.RegisterFilter("attrFilter", buildAttrFilterPlugin)
+	_ = registry.RegisterFilter("attributeFilter", buildAttrFilterPlugin)
+	_ = registry.RegisterFilter("deny", buildDenyFilterPlugin)
+	_ = registry.RegisterFilter("denyAll", buildDenyFilterPlugin)
+	_ = registry.RegisterFilter("denyFilter", buildDenyFilterPlugin)
+	_ = registry.RegisterFilter("denyAllFilter", buildDenyFilterPlugin)
+	_ = registry.RegisterFilter("marker", buildMarkerFilterPlugin)
+	_ = registry.RegisterFilter("markerFilter", buildMarkerFilterPlugin)
+	_ = registry.RegisterFilter("noMarker", buildNoMarkerFilterPlugin)
+	_ = registry.RegisterFilter("noMarkerFilter", buildNoMarkerFilterPlugin)
+	_ = registry.RegisterFilter("map", buildMapFilterPlugin)
+	_ = registry.RegisterFilter("mapFilter", buildMapFilterPlugin)
+	_ = registry.RegisterFilter("threadContextMap", buildThreadContextMapFilterPlugin)
+	_ = registry.RegisterFilter("threadContextMapFilter", buildThreadContextMapFilterPlugin)
+	_ = registry.RegisterFilter("stringMatch", buildStringMatchFilterPlugin)
+	_ = registry.RegisterFilter("stringMatchFilter", buildStringMatchFilterPlugin)
+	_ = registry.RegisterFilter("time", buildTimeFilterPlugin)
+	_ = registry.RegisterFilter("timeFilter", buildTimeFilterPlugin)
+	_ = registry.RegisterFilter("burst", buildBurstFilterPlugin)
+	_ = registry.RegisterFilter("burstFilter", buildBurstFilterPlugin)
+	_ = registry.RegisterFilter("dynamicThreshold", buildDynamicThresholdFilterPlugin)
+	_ = registry.RegisterFilter("dynamicThresholdFilter", buildDynamicThresholdFilterPlugin)
 }
 
 func buildConsolePlugin(config AppenderBuildConfig) (Appender, error) {
@@ -493,6 +530,105 @@ func buildAttrFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	return NewAttrFilter(config.Key, config.Value, options...)
 }
 
+func buildDenyFilterPlugin(FilterBuildConfig) (Filter, error) {
+	return NewDenyFilter(), nil
+}
+
+func buildMarkerFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewMarkerFilter(firstNonBlank(config.Marker, config.Value), options...)
+}
+
+func buildNoMarkerFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewNoMarkerFilter(options...), nil
+}
+
+func buildMapFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, values, err := config.mapFilterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewMapFilter(values, options...)
+}
+
+func buildThreadContextMapFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, values, err := config.mapFilterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewThreadContextMapFilter(values, options...)
+}
+
+func buildStringMatchFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewStringMatchFilter(firstNonBlank(config.Text, config.Value, config.Pattern), options...)
+}
+
+func buildTimeFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewTimeFilter(firstNonBlank(config.Start, "00:00:00"), firstNonBlank(config.End, "23:59:59.999999999"), options...)
+}
+
+func buildBurstFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	level, err := ParseLevel(firstNonBlank(config.Level, "warn"))
+	if err != nil {
+		return nil, err
+	}
+	rate := 10.0
+	if strings.TrimSpace(config.Rate) != "" {
+		parsed, err := parseFloat(config.Rate, "burst filter rate")
+		if err != nil {
+			return nil, err
+		}
+		rate = parsed
+	}
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	maxBurst := config.MaxBurst
+	if maxBurst == 0 {
+		maxBurst = int(rate * 10)
+		if maxBurst <= 0 {
+			maxBurst = 1
+		}
+	}
+	return NewBurstFilter(level, rate, maxBurst, options...)
+}
+
+func buildDynamicThresholdFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	defaultLevel, err := ParseLevel(firstNonBlank(config.DefaultThreshold, config.Level, "error"))
+	if err != nil {
+		return nil, err
+	}
+	thresholds := make(map[string]slog.Level, len(config.Thresholds))
+	for value, levelText := range config.Thresholds {
+		level, err := ParseLevel(levelText)
+		if err != nil {
+			return nil, err
+		}
+		thresholds[value] = level
+	}
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewDynamicThresholdFilter(config.Key, defaultLevel, thresholds, options...)
+}
+
 func (c FilterBuildConfig) filterOptions() ([]FilterOption, error) {
 	onMatch, err := parseFilterDecisionOrDefault(c.OnMatch, FilterNeutral)
 	if err != nil {
@@ -506,6 +642,33 @@ func (c FilterBuildConfig) filterOptions() ([]FilterOption, error) {
 		WithFilterOnMatch(onMatch),
 		WithFilterOnMismatch(onMismatch),
 	}, nil
+}
+
+func (c FilterBuildConfig) mapFilterOptions() ([]MapFilterOption, map[string]string, error) {
+	values := make(map[string]string, len(c.Values)+1)
+	for key, value := range c.Values {
+		values[key] = value
+	}
+	if strings.TrimSpace(c.Key) != "" {
+		values[c.Key] = c.Value
+	}
+	operator, err := ParseMapFilterOperator(c.Operator)
+	if err != nil {
+		return nil, nil, err
+	}
+	onMatch, err := parseFilterDecisionOrDefault(c.OnMatch, FilterNeutral)
+	if err != nil {
+		return nil, nil, err
+	}
+	onMismatch, err := parseFilterDecisionOrDefault(c.OnMismatch, FilterDeny)
+	if err != nil {
+		return nil, nil, err
+	}
+	return []MapFilterOption{
+		WithMapFilterOperator(operator),
+		WithMapFilterOnMatch(onMatch),
+		WithMapFilterOnMismatch(onMismatch),
+	}, values, nil
 }
 
 func (c FilterBuildConfig) regexOutcomeOptions() ([]RegexFilterOption, error) {

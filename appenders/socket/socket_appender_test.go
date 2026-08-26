@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func TestAppender_whenTCPConfigured_shouldWriteToSocket(t *testing.T) {

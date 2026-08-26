@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"goark.dev/goark-log/internal/disruptor"
+	"goark.dev/log/internal/disruptor"
 )
 
 // AsyncWaitStrategy 定义异步队列等待策略。

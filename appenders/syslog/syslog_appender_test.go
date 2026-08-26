@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	goarklog "goark.dev/goark-log"
+	goarklog "goark.dev/log"
 )
 
 func TestAppender_whenUDPConfigured_shouldSendRFC5424StylePacket(t *testing.T) {

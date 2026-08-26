@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -66,6 +67,9 @@ func propertiesToFileConfig(values map[string]string) (fileConfig, error) {
 		if err := applyProperty(&config, aliases, key, value); err != nil {
 			return fileConfig{}, err
 		}
+	}
+	if err := applyFilterKeyValuePairs(&config, values); err != nil {
+		return fileConfig{}, err
 	}
 	if len(config.Properties) == 0 {
 		config.Properties = nil
@@ -246,30 +250,152 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 		return nil
 	}
 	filter := config.Filters[id]
-	switch field {
-	case "type":
+	switch {
+	case field == "type":
 		filter.Type = value
-	case "level":
+	case field == "level":
 		filter.Level = value
-	case "minLevel", "min-level":
+	case field == "minLevel" || field == "min-level":
 		filter.MinLevel = value
-	case "maxLevel", "max-level":
+	case field == "maxLevel" || field == "max-level":
 		filter.MaxLevel = value
-	case "field":
+	case field == "marker":
+		filter.Marker = value
+	case field == "text":
+		filter.Text = value
+	case field == "operator":
+		filter.Operator = value
+	case field == "start":
+		filter.Start = value
+	case field == "end":
+		filter.End = value
+	case field == "rate":
+		filter.Rate = value
+	case field == "maxBurst" || field == "max-burst":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		filter.MaxBurst = parsed
+	case field == "field":
 		filter.Field = value
-	case "key":
+	case field == "key":
 		filter.Key = value
-	case "value":
+	case field == "value":
 		filter.Value = value
-	case "pattern":
+	case strings.HasPrefix(field, "values."):
+		mapKey := strings.TrimSpace(strings.TrimPrefix(field, "values."))
+		if mapKey == "" {
+			return fmt.Errorf("goark-log: properties filter.%s.%s has empty values key", id, field)
+		}
+		if filter.Values == nil {
+			filter.Values = make(map[string]string)
+		}
+		filter.Values[mapKey] = value
+	case strings.HasPrefix(field, "thresholds."):
+		mapKey := strings.TrimSpace(strings.TrimPrefix(field, "thresholds."))
+		if mapKey == "" {
+			return fmt.Errorf("goark-log: properties filter.%s.%s has empty thresholds key", id, field)
+		}
+		if filter.Thresholds == nil {
+			filter.Thresholds = make(map[string]string)
+		}
+		filter.Thresholds[mapKey] = value
+	case field == "defaultThreshold" || field == "default-threshold":
+		filter.DefaultThreshold = value
+	case field == "pattern":
 		filter.Pattern = value
-	case "onMatch", "on-match":
+	case field == "onMatch" || field == "on-match":
 		filter.OnMatch = value
-	case "onMismatch", "on-mismatch":
+	case field == "onMismatch" || field == "on-mismatch":
 		filter.OnMismatch = value
 	}
 	config.Filters[id] = filter
 	return nil
+}
+
+type propertyFilterPair struct {
+	key      string
+	value    string
+	hasKey   bool
+	hasValue bool
+}
+
+func applyFilterKeyValuePairs(config *fileConfig, values map[string]string) error {
+	pairsByFilter := make(map[string]map[string]propertyFilterPair)
+	for key, value := range values {
+		filterID, pairID, field, ok := splitFilterPairProperty(key)
+		if !ok {
+			continue
+		}
+		pairs := pairsByFilter[filterID]
+		if pairs == nil {
+			pairs = make(map[string]propertyFilterPair)
+			pairsByFilter[filterID] = pairs
+		}
+		pair := pairs[pairID]
+		switch field {
+		case "key":
+			pair.key = value
+			pair.hasKey = true
+		case "value":
+			pair.value = value
+			pair.hasValue = true
+		}
+		pairs[pairID] = pair
+	}
+	filterIDs := make([]string, 0, len(pairsByFilter))
+	for filterID := range pairsByFilter {
+		filterIDs = append(filterIDs, filterID)
+	}
+	sort.Strings(filterIDs)
+	for _, filterID := range filterIDs {
+		filter := config.Filters[filterID]
+		pairIDs := make([]string, 0, len(pairsByFilter[filterID]))
+		for pairID := range pairsByFilter[filterID] {
+			pairIDs = append(pairIDs, pairID)
+		}
+		sort.Strings(pairIDs)
+		for _, pairID := range pairIDs {
+			pair := pairsByFilter[filterID][pairID]
+			if !pair.hasKey && !pair.hasValue {
+				continue
+			}
+			if !pair.hasKey || strings.TrimSpace(pair.key) == "" || !pair.hasValue {
+				return fmt.Errorf("goark-log: properties filter.%s.%s requires key and value", filterID, pairID)
+			}
+			filter.KeyValuePair = append(filter.KeyValuePair, keyValuePairConfig{
+				Key:   pair.key,
+				Value: pair.value,
+			})
+		}
+		config.Filters[filterID] = filter
+	}
+	return nil
+}
+
+func splitFilterPairProperty(key string) (string, string, string, bool) {
+	if !strings.HasPrefix(key, "filter.") {
+		return "", "", "", false
+	}
+	filterID, field, ok := splitPropertyID(strings.TrimPrefix(key, "filter."))
+	if !ok {
+		return "", "", "", false
+	}
+	pairID, pairField, ok := splitPropertyID(field)
+	if !ok {
+		return "", "", "", false
+	}
+	normalized := normalizeKind(pairID)
+	if !strings.HasPrefix(normalized, "keyvaluepair") && !strings.HasPrefix(normalized, "kv") {
+		return "", "", "", false
+	}
+	switch strings.ToLower(pairField) {
+	case "key", "value":
+		return filterID, pairID, strings.ToLower(pairField), true
+	default:
+		return "", "", "", false
+	}
 }
 
 func splitPropertyID(key string) (string, string, bool) {

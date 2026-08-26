@@ -1,4 +1,4 @@
-module goark.dev/goark-log
+module goark.dev/log
 
 go 1.25
 
