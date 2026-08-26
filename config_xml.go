@@ -204,6 +204,7 @@ type xmlAsyncLogger struct {
 	BatchSize        string `xml:"batchSize,attr"`
 	OverflowStrategy string `xml:"overflowStrategy,attr"`
 	WaitStrategy     string `xml:"waitStrategy,attr"`
+	IncludeLocation  string `xml:"includeLocation,attr"`
 }
 
 type xmlLoggers struct {
@@ -508,6 +509,7 @@ func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
 		BatchSize:        batchSize,
 		OverflowStrategy: c.OverflowStrategy,
 		WaitStrategy:     c.WaitStrategy,
+		IncludeLocation:  parseXMLBoolPointer(c.IncludeLocation),
 	}, nil
 }
 

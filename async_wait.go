@@ -20,11 +20,11 @@ const (
 // ParseAsyncWaitStrategy 解析异步队列等待策略。
 func ParseAsyncWaitStrategy(value string) (AsyncWaitStrategy, error) {
 	switch AsyncWaitStrategy(strings.ToLower(strings.TrimSpace(value))) {
-	case "", AsyncWaitBlock:
+	case "", AsyncWaitBlock, "blocking", "timeout", "timeout-block", "timeoutblocking":
 		return AsyncWaitBlock, nil
-	case AsyncWaitSleep:
+	case AsyncWaitSleep, "sleeping":
 		return AsyncWaitSleep, nil
-	case AsyncWaitYield:
+	case AsyncWaitYield, "yielding":
 		return AsyncWaitYield, nil
 	case AsyncWaitSpin, "busy-spin", "busyspin":
 		return AsyncWaitSpin, nil

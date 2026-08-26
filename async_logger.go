@@ -25,6 +25,7 @@ type AsyncLoggerOptions struct {
 	BatchSize        int
 	OverflowStrategy AsyncOverflowStrategy
 	WaitStrategy     AsyncWaitStrategy
+	IncludeLocation  bool
 }
 
 type asyncLogger struct {
@@ -112,6 +113,7 @@ func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions
 		BatchSize:        batchSize,
 		OverflowStrategy: strategy,
 		WaitStrategy:     wait,
+		IncludeLocation:  options.IncludeLocation,
 	}, nil
 }
 
@@ -287,6 +289,10 @@ func (a *asyncLogger) failedCount() uint64 {
 		return 0
 	}
 	return a.failed.Load()
+}
+
+func (a *asyncLogger) includeLocation() bool {
+	return a != nil && a.options.IncludeLocation
 }
 
 func (a *asyncLogger) remainingCapacity() int64 {

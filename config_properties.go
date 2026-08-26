@@ -136,12 +136,52 @@ func applyProperty(config *fileConfig, aliases propertyAliases, key string, valu
 			return fmt.Errorf("goark-log: properties key %q has empty property name", key)
 		}
 		config.Properties[name] = value
+	case strings.HasPrefix(key, "asyncLogger."):
+		return applyAsyncLoggerProperty(&config.AsyncLogger, strings.TrimPrefix(key, "asyncLogger."), value)
+	case strings.HasPrefix(key, "async-logger."):
+		return applyAsyncLoggerProperty(&config.AsyncLoggerKebab, strings.TrimPrefix(key, "async-logger."), value)
+	case strings.HasPrefix(key, "async."):
+		return applyAsyncLoggerProperty(&config.Async, strings.TrimPrefix(key, "async."), value)
 	case strings.HasPrefix(key, "appender."):
 		return applyAppenderProperty(config, aliases, strings.TrimPrefix(key, "appender."), value)
 	case strings.HasPrefix(key, "logger."):
 		return applyLoggerProperty(config, aliases, strings.TrimPrefix(key, "logger."), value)
 	case strings.HasPrefix(key, "filter."):
 		return applyFilterProperty(config, strings.TrimPrefix(key, "filter."), value)
+	}
+	return nil
+}
+
+func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value string) error {
+	switch key {
+	case "enabled":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.Enabled = &parsed
+	case "queueSize", "queue-size":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		config.QueueSize = parsed
+	case "batchSize", "batch-size":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		config.BatchSize = parsed
+	case "overflowStrategy", "overflow-strategy":
+		config.OverflowStrategy = value
+	case "waitStrategy", "wait-strategy":
+		config.WaitStrategy = value
+	case "includeLocation", "include-location":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.IncludeLocation = &parsed
 	}
 	return nil
 }

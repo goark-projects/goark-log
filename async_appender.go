@@ -32,13 +32,13 @@ const (
 // ParseAsyncOverflowStrategy 解析异步队列满策略。
 func ParseAsyncOverflowStrategy(value string) (AsyncOverflowStrategy, error) {
 	switch AsyncOverflowStrategy(strings.ToLower(strings.TrimSpace(value))) {
-	case "", AsyncOverflowBlock:
+	case "", AsyncOverflowBlock, "blocking":
 		return AsyncOverflowBlock, nil
-	case AsyncOverflowDrop:
+	case AsyncOverflowDrop, "discard", "discard-newest":
 		return AsyncOverflowDrop, nil
-	case AsyncOverflowDropDebug:
+	case AsyncOverflowDropDebug, "dropdebug", "discard-debug", "discarddebug":
 		return AsyncOverflowDropDebug, nil
-	case AsyncOverflowSyncFallback:
+	case AsyncOverflowSyncFallback, "sync", "synchronous", "synchronize":
 		return AsyncOverflowSyncFallback, nil
 	default:
 		return "", fmt.Errorf("goark-log: unsupported async overflow strategy %q", value)

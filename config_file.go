@@ -222,6 +222,8 @@ type asyncLoggerConfig struct {
 	OverflowStrategyKebab string `yaml:"overflow-strategy"`
 	WaitStrategy          string `yaml:"waitStrategy"`
 	WaitStrategyKebab     string `yaml:"wait-strategy"`
+	IncludeLocation       *bool  `yaml:"includeLocation"`
+	IncludeLocationKebab  *bool  `yaml:"include-location"`
 }
 
 type loggerConfig struct {
@@ -1295,7 +1297,9 @@ func (c asyncLoggerConfig) empty() bool {
 		strings.TrimSpace(c.OverflowStrategy) == "" &&
 		strings.TrimSpace(c.OverflowStrategyKebab) == "" &&
 		strings.TrimSpace(c.WaitStrategy) == "" &&
-		strings.TrimSpace(c.WaitStrategyKebab) == ""
+		strings.TrimSpace(c.WaitStrategyKebab) == "" &&
+		c.IncludeLocation == nil &&
+		c.IncludeLocationKebab == nil
 }
 
 func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
@@ -1308,6 +1312,7 @@ func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
 		BatchSize:        config.batchSize(),
 		OverflowStrategy: AsyncOverflowStrategy(config.overflowStrategy()),
 		WaitStrategy:     AsyncWaitStrategy(config.waitStrategy()),
+		IncludeLocation:  config.includeLocation(),
 	}
 	if config.Enabled != nil {
 		options.Enabled = *config.Enabled
@@ -1344,6 +1349,16 @@ func (c asyncLoggerConfig) overflowStrategy() string {
 
 func (c asyncLoggerConfig) waitStrategy() string {
 	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
+}
+
+func (c asyncLoggerConfig) includeLocation() bool {
+	if c.IncludeLocation != nil {
+		return *c.IncludeLocation
+	}
+	if c.IncludeLocationKebab != nil {
+		return *c.IncludeLocationKebab
+	}
+	return false
 }
 
 func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {

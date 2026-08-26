@@ -227,6 +227,18 @@ func (h *Handler) AsyncFailed() uint64 {
 	return h.async.failedCount()
 }
 
+// AsyncRemainingCapacity 返回 Handler 层异步队列剩余容量。
+func (h *Handler) AsyncRemainingCapacity() int64 {
+	if h == nil || h.async == nil {
+		return 0
+	}
+	return h.async.remainingCapacity()
+}
+
+func (h *Handler) asyncIncludeLocation() bool {
+	return h != nil && h.async != nil && h.async.includeLocation()
+}
+
 func (h *Handler) clone() *Handler {
 	next := *h
 	next.attrs = append([]slog.Attr(nil), h.attrs...)

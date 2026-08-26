@@ -202,6 +202,106 @@ func TestAsyncLogger_whenDropDebugQueueFull_shouldDropDebugOnly(t *testing.T) {
 	}
 }
 
+func TestAsyncLogger_whenIncludeLocationEnabled_shouldCaptureNativeCaller(t *testing.T) {
+	delegate := newRecordingAppender("delegate")
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{delegate},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"delegate"}},
+		Async: AsyncLoggerOptions{
+			Enabled:         true,
+			QueueSize:       8,
+			BatchSize:       2,
+			IncludeLocation: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.async.location")
+	if err != nil {
+		t.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	if err := logger.Info("with async location"); err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	events := delegate.Events()
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+	frame := callerFrameFromPC(events[0].PC)
+	if !strings.Contains(frame.method, "TestAsyncLogger_whenIncludeLocationEnabled") {
+		t.Fatalf("caller method = %q, want test method", frame.method)
+	}
+}
+
+func TestAsyncLoggerOptions_whenAliasesUsed_shouldNormalize(t *testing.T) {
+	options, err := normalizeAsyncLoggerOptions(AsyncLoggerOptions{
+		Enabled:          true,
+		QueueSize:        7,
+		BatchSize:        16,
+		OverflowStrategy: "discard-debug",
+		WaitStrategy:     "busy-spin",
+		IncludeLocation:  true,
+	})
+	if err != nil {
+		t.Fatalf("normalizeAsyncLoggerOptions() error = %v", err)
+	}
+	if options.QueueSize != 8 {
+		t.Fatalf("QueueSize = %d, want normalized power of two 8", options.QueueSize)
+	}
+	if options.BatchSize != 8 {
+		t.Fatalf("BatchSize = %d, want capped queue size 8", options.BatchSize)
+	}
+	if options.OverflowStrategy != AsyncOverflowDropDebug {
+		t.Fatalf("OverflowStrategy = %q, want %q", options.OverflowStrategy, AsyncOverflowDropDebug)
+	}
+	if options.WaitStrategy != AsyncWaitSpin {
+		t.Fatalf("WaitStrategy = %q, want %q", options.WaitStrategy, AsyncWaitSpin)
+	}
+	if !options.IncludeLocation {
+		t.Fatalf("IncludeLocation = false, want true")
+	}
+}
+
+func TestNewConfigured_whenAsyncLoggerPropertiesConfigured_shouldBuildOptions(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.properties")
+	writeConfig(t, configPath, `
+asyncLogger.enabled = true
+asyncLogger.queueSize = 7
+asyncLogger.batchSize = 16
+asyncLogger.overflowStrategy = discard
+asyncLogger.waitStrategy = timeout
+asyncLogger.includeLocation = true
+appender.console.type = console
+rootLogger.level = info
+rootLogger.appenderRefs = console
+`)
+	_, handler, _, err := NewConfigured(context.Background(), WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	defer handler.Close()
+	if handler.async == nil {
+		t.Fatalf("async logger is nil")
+	}
+	if handler.async.options.QueueSize != 8 || handler.async.options.BatchSize != 8 {
+		t.Fatalf("async options = %+v, want normalized queue/batch size 8", handler.async.options)
+	}
+	if handler.async.options.OverflowStrategy != AsyncOverflowDrop {
+		t.Fatalf("OverflowStrategy = %q, want %q", handler.async.options.OverflowStrategy, AsyncOverflowDrop)
+	}
+	if handler.async.options.WaitStrategy != AsyncWaitBlock {
+		t.Fatalf("WaitStrategy = %q, want %q", handler.async.options.WaitStrategy, AsyncWaitBlock)
+	}
+	if !handler.async.options.IncludeLocation {
+		t.Fatalf("IncludeLocation = false, want true")
+	}
+}
+
 func TestNewConfigured_whenAsyncLoggerYamlEnabled_shouldDrainFileOnClose(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "logs", "async-logger.log")

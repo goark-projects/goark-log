@@ -120,7 +120,7 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string,
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
-	if l.includeCaller {
+	if l.includeCaller || l.handler.asyncIncludeLocation() {
 		pc = callerPC(callerSkip)
 	}
 	return l.handler.logAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)
