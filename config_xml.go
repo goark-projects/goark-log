@@ -60,6 +60,10 @@ type xmlAppender struct {
 	JsonLayout       xmlLayout          `xml:"JsonLayout"`
 	JSONLayout       xmlLayout          `xml:"JSONLayout"`
 	JsonTemplate     xmlLayout          `xml:"JsonTemplateLayout"`
+	XmlLayout        xmlLayout          `xml:"XmlLayout"`
+	XMLLayout        xmlLayout          `xml:"XMLLayout"`
+	CsvLayout        xmlLayout          `xml:"CsvLayout"`
+	CSVLayout        xmlLayout          `xml:"CSVLayout"`
 	Layout           xmlLayout          `xml:"Layout"`
 	AppenderRefs     []xmlAppenderRef   `xml:"AppenderRef"`
 	FilterRefs       []xmlFilterRef     `xml:"FilterRef"`
@@ -143,22 +147,25 @@ type xmlRollingDeleteAccumulatedSize struct {
 }
 
 type xmlFilters struct {
-	Threshold        []xmlFilter `xml:"ThresholdFilter"`
-	Level            []xmlFilter `xml:"LevelFilter"`
-	Range            []xmlFilter `xml:"LevelRangeFilter"`
-	Regex            []xmlFilter `xml:"RegexFilter"`
-	Attr             []xmlFilter `xml:"AttrFilter"`
-	Attribute        []xmlFilter `xml:"AttributeFilter"`
-	Deny             []xmlFilter `xml:"DenyFilter"`
-	DenyAll          []xmlFilter `xml:"DenyAllFilter"`
-	Marker           []xmlFilter `xml:"MarkerFilter"`
-	NoMarker         []xmlFilter `xml:"NoMarkerFilter"`
-	Map              []xmlFilter `xml:"MapFilter"`
-	ThreadContextMap []xmlFilter `xml:"ThreadContextMapFilter"`
-	StringMatch      []xmlFilter `xml:"StringMatchFilter"`
-	Time             []xmlFilter `xml:"TimeFilter"`
-	Burst            []xmlFilter `xml:"BurstFilter"`
-	DynamicThreshold []xmlFilter `xml:"DynamicThresholdFilter"`
+	Threshold          []xmlFilter `xml:"ThresholdFilter"`
+	Level              []xmlFilter `xml:"LevelFilter"`
+	Range              []xmlFilter `xml:"LevelRangeFilter"`
+	Regex              []xmlFilter `xml:"RegexFilter"`
+	Attr               []xmlFilter `xml:"AttrFilter"`
+	Attribute          []xmlFilter `xml:"AttributeFilter"`
+	Deny               []xmlFilter `xml:"DenyFilter"`
+	DenyAll            []xmlFilter `xml:"DenyAllFilter"`
+	Marker             []xmlFilter `xml:"MarkerFilter"`
+	NoMarker           []xmlFilter `xml:"NoMarkerFilter"`
+	Map                []xmlFilter `xml:"MapFilter"`
+	ThreadContextMap   []xmlFilter `xml:"ThreadContextMapFilter"`
+	ThreadContextStack []xmlFilter `xml:"ThreadContextStackFilter"`
+	StructuredData     []xmlFilter `xml:"StructuredDataFilter"`
+	Throwable          []xmlFilter `xml:"ThrowableFilter"`
+	StringMatch        []xmlFilter `xml:"StringMatchFilter"`
+	Time               []xmlFilter `xml:"TimeFilter"`
+	Burst              []xmlFilter `xml:"BurstFilter"`
+	DynamicThreshold   []xmlFilter `xml:"DynamicThresholdFilter"`
 }
 
 type xmlFilter struct {
@@ -307,6 +314,9 @@ func (c xmlConfig) filters(file *fileConfig) error {
 		{kind: "noMarker", filters: c.Filters.NoMarker},
 		{kind: "map", filters: c.Filters.Map},
 		{kind: "threadContextMap", filters: c.Filters.ThreadContextMap},
+		{kind: "threadContextStack", filters: c.Filters.ThreadContextStack},
+		{kind: "structuredData", filters: c.Filters.StructuredData},
+		{kind: "throwable", filters: c.Filters.Throwable},
 		{kind: "stringMatch", filters: c.Filters.StringMatch},
 		{kind: "time", filters: c.Filters.Time},
 		{kind: "burst", filters: c.Filters.Burst},
@@ -406,7 +416,7 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 }
 
 func (a xmlAppender) layout() layoutConfig {
-	for _, layout := range []xmlLayout{a.PatternLayout, a.TextLayout, a.JsonLayout, a.JSONLayout, a.JsonTemplate, a.Layout} {
+	for _, layout := range []xmlLayout{a.PatternLayout, a.TextLayout, a.JsonLayout, a.JSONLayout, a.JsonTemplate, a.XmlLayout, a.XMLLayout, a.CsvLayout, a.CSVLayout, a.Layout} {
 		if layout.XMLName.Local == "" &&
 			strings.TrimSpace(layout.Type) == "" &&
 			strings.TrimSpace(layout.Pattern) == "" &&
@@ -429,6 +439,10 @@ func (l xmlLayout) config() layoutConfig {
 		kind = "json"
 	case "jsontemplatelayout", "jsontemplate":
 		kind = "jsonTemplate"
+	case "xmllayout", "xml":
+		kind = "xml"
+	case "csvlayout", "csv":
+		kind = "csv"
 	default:
 		kind = l.Type
 	}

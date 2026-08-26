@@ -148,10 +148,16 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage) (j
 		return messageJSONResolver{}, nil
 	case "thread":
 		return threadJSONResolver{}, nil
+	case "threadname":
+		return threadJSONResolver{}, nil
 	case "marker":
 		return markerJSONResolver{}, nil
 	case "throwable", "exception", "thrown":
 		return throwableJSONResolver{}, nil
+	case "source", "location":
+		return sourceJSONResolver{}, nil
+	case "process":
+		return processJSONResolver{}, nil
 	case "contextstack", "ndc":
 		return contextStackJSONResolver{}, nil
 	case "mdc", "contextmap", "attrs":
@@ -262,6 +268,33 @@ func (throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		return
 	}
 	appendJSONString(buf, value)
+}
+
+type sourceJSONResolver struct{}
+
+func (sourceJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
+	frame := callerFrameFromPC(event.PC)
+	if frame.method == "" && frame.file == "" && frame.line == 0 {
+		buf.WriteString("null")
+		return
+	}
+	buf.WriteByte('{')
+	appendJSONFieldString(buf, "class", frame.class, false)
+	appendJSONFieldString(buf, "method", frame.method, true)
+	appendJSONFieldString(buf, "file", frame.file, true)
+	appendJSONKey(buf, "line", true)
+	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(frame.line), 10))
+	appendJSONFieldString(buf, "location", frame.location(), true)
+	buf.WriteByte('}')
+}
+
+type processJSONResolver struct{}
+
+func (processJSONResolver) AppendJSON(buf *bytes.Buffer, _ Event) {
+	buf.WriteByte('{')
+	appendJSONKey(buf, "pid", false)
+	buf.WriteString(processIDString)
+	buf.WriteByte('}')
 }
 
 type contextStackJSONResolver struct{}

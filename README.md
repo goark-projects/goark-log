@@ -163,11 +163,11 @@ logger.InfoContext(ctx, "request done")
 `PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`。调用位置来自 `slog.Record.PC`，
 只有 pattern 使用 caller token 时才解析 runtime frame。
 
-`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`marker`、`throwable`、`contextStack`、`mdc`、`attr`、`endOfBatch`。
+`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。核心库还提供 `XMLLayout` 和 `CSVLayout`，配置中可使用 `layout.type: xml` 或 `layout.type: csv`。
 
 ## 过滤器
 
-内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
+内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`ThreadContextStackFilter`、`StructuredDataFilter`、`ThrowableFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
 
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。

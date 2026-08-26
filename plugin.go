@@ -275,6 +275,18 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterLayout("jsonTemplate", func(config LayoutBuildConfig) (Layout, error) {
 		return NewJSONTemplateLayout(config.EventTemplate)
 	})
+	_ = registry.RegisterLayout("xml", func(_ LayoutBuildConfig) (Layout, error) {
+		return XMLLayout{}, nil
+	})
+	_ = registry.RegisterLayout("xmlLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return XMLLayout{}, nil
+	})
+	_ = registry.RegisterLayout("csv", func(_ LayoutBuildConfig) (Layout, error) {
+		return CSVLayout{}, nil
+	})
+	_ = registry.RegisterLayout("csvLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return CSVLayout{}, nil
+	})
 
 	_ = registry.RegisterFilter("threshold", buildThresholdFilterPlugin)
 	_ = registry.RegisterFilter("thresholdFilter", buildThresholdFilterPlugin)
@@ -300,6 +312,12 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterFilter("mapFilter", buildMapFilterPlugin)
 	_ = registry.RegisterFilter("threadContextMap", buildThreadContextMapFilterPlugin)
 	_ = registry.RegisterFilter("threadContextMapFilter", buildThreadContextMapFilterPlugin)
+	_ = registry.RegisterFilter("threadContextStack", buildThreadContextStackFilterPlugin)
+	_ = registry.RegisterFilter("threadContextStackFilter", buildThreadContextStackFilterPlugin)
+	_ = registry.RegisterFilter("structuredData", buildStructuredDataFilterPlugin)
+	_ = registry.RegisterFilter("structuredDataFilter", buildStructuredDataFilterPlugin)
+	_ = registry.RegisterFilter("throwable", buildThrowableFilterPlugin)
+	_ = registry.RegisterFilter("throwableFilter", buildThrowableFilterPlugin)
 	_ = registry.RegisterFilter("stringMatch", buildStringMatchFilterPlugin)
 	_ = registry.RegisterFilter("stringMatchFilter", buildStringMatchFilterPlugin)
 	_ = registry.RegisterFilter("time", buildTimeFilterPlugin)
@@ -580,6 +598,30 @@ func buildThreadContextMapFilterPlugin(config FilterBuildConfig) (Filter, error)
 		return nil, err
 	}
 	return NewThreadContextMapFilter(values, options...)
+}
+
+func buildThreadContextStackFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewThreadContextStackFilter(firstNonBlank(config.Value, config.Text, config.Pattern), options...)
+}
+
+func buildStructuredDataFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, values, err := config.mapFilterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewStructuredDataFilter(values, options...)
+}
+
+func buildThrowableFilterPlugin(config FilterBuildConfig) (Filter, error) {
+	options, err := config.filterOptions()
+	if err != nil {
+		return nil, err
+	}
+	return NewThrowableFilter(firstNonBlank(config.Pattern, config.Text, config.Value), options...)
 }
 
 func buildStringMatchFilterPlugin(config FilterBuildConfig) (Filter, error) {
