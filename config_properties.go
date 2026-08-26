@@ -203,6 +203,13 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	}
 	id = aliases.appenderName(id)
 	appender := config.Appenders[id]
+	if strings.HasPrefix(field, "layout.") {
+		if err := applyLayoutProperty(&appender.Layout, strings.TrimPrefix(field, "layout."), value); err != nil {
+			return err
+		}
+		config.Appenders[id] = appender
+		return nil
+	}
 	switch field {
 	case "name":
 		return nil
@@ -260,14 +267,6 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.FlushOnWrite = parsed
 	case "filters", "filterRefs", "filter-refs":
 		appender.Filters = propertyList(value)
-	case "layout.type":
-		appender.Layout.Type = value
-	case "layout.pattern":
-		appender.Layout.Pattern = value
-	case "layout.eventTemplate", "layout.event-template":
-		appender.Layout.EventTemplate = value
-	case "layout.eventTemplateUri", "layout.event-template-uri", "layout.eventTemplatePath", "layout.event-template-path":
-		appender.Layout.EventTemplateURI = value
 	case "rolling.filePattern", "rolling.file-pattern":
 		appender.Rolling.FilePattern = value
 	case "rolling.maxSize", "rolling.max-size":
@@ -304,6 +303,66 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Rolling.DirectWrite = parsed
 	}
 	config.Appenders[id] = appender
+	return nil
+}
+
+func applyLayoutProperty(config *layoutConfig, key string, value string) error {
+	switch key {
+	case "type":
+		config.Type = value
+	case "pattern":
+		config.Pattern = value
+	case "eventTemplate", "event-template":
+		config.EventTemplate = value
+	case "eventTemplateUri", "event-template-uri", "eventTemplatePath", "event-template-path":
+		config.EventTemplateURI = value
+	case "compact":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.Compact = parsed
+	case "eventEol", "event-eol":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.EventEOL = parsed
+	case "complete":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.Complete = parsed
+	case "includeStacktrace", "include-stacktrace":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.IncludeStacktrace = parsed
+	case "stacktraceAsString", "stacktrace-as-string":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.StacktraceAsString = parsed
+	case "propertiesAsList", "properties-as-list":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.PropertiesAsList = parsed
+	case "includeNullDelimiter", "include-null-delimiter":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.IncludeNullDelimiter = parsed
+	case "header":
+		config.Header = value
+	case "footer":
+		config.Footer = value
+	}
 	return nil
 }
 

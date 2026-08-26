@@ -53,12 +53,64 @@ func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
 	return nil
 }
 
-// JSONLayout 输出单行 JSON。
-type JSONLayout struct{}
+// JSONLayout 输出 JSON 事件。
+type JSONLayout struct {
+	options LayoutOptions
+	state   *jsonLayoutState
+}
 
-func (JSONLayout) Format(buf *bytes.Buffer, event Event) error {
-	appendJSONEvent(buf, event.Time, event.Level, event.Logger, event.Message, event.Attrs)
+// NewJSONLayout 创建可配置 JSON 布局。
+func NewJSONLayout(options LayoutOptions) JSONLayout {
+	layout := JSONLayout{options: options}
+	if options.Complete {
+		layout.state = &jsonLayoutState{}
+	}
+	return layout
+}
+
+func (l JSONLayout) Format(buf *bytes.Buffer, event Event) error {
+	if l.options.Complete && l.state != nil && l.state.events.Add(1) > 1 {
+		buf.WriteByte(',')
+		if l.options.EventEOL || !l.options.Compact {
+			buf.WriteByte('\n')
+		}
+	}
+	appendJSONLayoutEvent(buf, event, l.options)
 	return nil
+}
+
+func (l JSONLayout) AppendHeader(buf *bytes.Buffer) error {
+	if l.state != nil {
+		l.state.events.Store(0)
+	}
+	if !l.options.Complete {
+		return nil
+	}
+	header := l.options.Header
+	if strings.TrimSpace(header) == "" {
+		header = "["
+	}
+	buf.WriteString(header)
+	if l.options.EventEOL || !l.options.Compact {
+		buf.WriteByte('\n')
+	}
+	return nil
+}
+
+func (l JSONLayout) AppendFooter(buf *bytes.Buffer) error {
+	if !l.options.Complete {
+		return nil
+	}
+	footer := l.options.Footer
+	if strings.TrimSpace(footer) == "" {
+		footer = "]"
+	}
+	buf.WriteString(footer)
+	return nil
+}
+
+type jsonLayoutState struct {
+	events atomic.Uint64
 }
 
 func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
@@ -71,6 +123,31 @@ func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger
 		appendJSONFieldValue(buf, attr.Key, attr.Value, true)
 	}
 	buf.WriteString("}\n")
+}
+
+func appendJSONLayoutEvent(buf *bytes.Buffer, event Event, options LayoutOptions) {
+	buf.WriteByte('{')
+	appendJSONFieldTime(buf, "time", event.Time, defaultTimeFormat, false)
+	appendJSONFieldString(buf, "level", levelName(event.Level), true)
+	appendJSONFieldString(buf, "logger", event.Logger, true)
+	appendJSONFieldString(buf, "msg", event.Message, true)
+	if options.PropertiesAsList {
+		appendJSONAttrsListField(buf, "contextMap", event.Attrs, true)
+	} else {
+		for _, attr := range event.Attrs {
+			appendJSONFieldValue(buf, attr.Key, attr.Value, true)
+		}
+	}
+	if event.Throwable != nil && (options.IncludeStacktrace || options.StacktraceAsString) {
+		appendJSONKey(buf, "thrown", true)
+		if options.StacktraceAsString {
+			appendJSONString(buf, throwableStackString(event.Throwable))
+		} else {
+			appendThrowableJSON(buf, event.Throwable)
+		}
+	}
+	buf.WriteByte('}')
+	appendLayoutTerminator(buf, options)
 }
 
 func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
@@ -1014,6 +1091,22 @@ func appendJSONAny(buf *bytes.Buffer, value any) {
 	}
 }
 
+func appendJSONAttrsListField(buf *bytes.Buffer, key string, attrs []slog.Attr, comma bool) {
+	appendJSONKey(buf, key, comma)
+	buf.WriteByte('[')
+	for index, attr := range attrs {
+		if index > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte('{')
+		appendJSONFieldString(buf, "key", attr.Key, false)
+		appendJSONKey(buf, "value", true)
+		appendJSONValue(buf, attr.Value)
+		buf.WriteByte('}')
+	}
+	buf.WriteByte(']')
+}
+
 func attrValueString(value slog.Value) string {
 	value = value.Resolve()
 	switch value.Kind() {
@@ -1047,5 +1140,33 @@ func attrValueString(value slog.Value) string {
 		return builder.String()
 	default:
 		return fmt.Sprint(value.Any())
+	}
+}
+
+func throwableStackString(throwable *Throwable) string {
+	if throwable == nil {
+		return ""
+	}
+	var builder strings.Builder
+	appendThrowableStackString(&builder, throwable)
+	return builder.String()
+}
+
+func appendThrowableStackString(builder *strings.Builder, throwable *Throwable) {
+	if throwable == nil {
+		return
+	}
+	if throwable.Type != "" {
+		builder.WriteString(throwable.Type)
+		builder.WriteString(": ")
+	}
+	builder.WriteString(throwable.Message)
+	for _, frame := range throwable.Stack {
+		builder.WriteString("\n\tat ")
+		builder.WriteString(frame)
+	}
+	if throwable.Cause != nil {
+		builder.WriteString("\nCaused by: ")
+		appendThrowableStackString(builder, throwable.Cause)
 	}
 }

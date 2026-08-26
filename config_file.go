@@ -77,14 +77,28 @@ type appenderConfig struct {
 }
 
 type layoutConfig struct {
-	Type                   string `yaml:"type"`
-	Pattern                string `yaml:"pattern"`
-	EventTemplate          string `yaml:"eventTemplate"`
-	EventTemplateKebab     string `yaml:"event-template"`
-	EventTemplateURI       string `yaml:"eventTemplateUri"`
-	EventTemplateURIKebab  string `yaml:"event-template-uri"`
-	EventTemplatePath      string `yaml:"eventTemplatePath"`
-	EventTemplatePathKebab string `yaml:"event-template-path"`
+	Type                      string `yaml:"type"`
+	Pattern                   string `yaml:"pattern"`
+	EventTemplate             string `yaml:"eventTemplate"`
+	EventTemplateKebab        string `yaml:"event-template"`
+	EventTemplateURI          string `yaml:"eventTemplateUri"`
+	EventTemplateURIKebab     string `yaml:"event-template-uri"`
+	EventTemplatePath         string `yaml:"eventTemplatePath"`
+	EventTemplatePathKebab    string `yaml:"event-template-path"`
+	Compact                   bool   `yaml:"compact"`
+	EventEOL                  bool   `yaml:"eventEol"`
+	EventEOLKebab             bool   `yaml:"event-eol"`
+	Complete                  bool   `yaml:"complete"`
+	IncludeStacktrace         bool   `yaml:"includeStacktrace"`
+	IncludeStacktraceKebab    bool   `yaml:"include-stacktrace"`
+	StacktraceAsString        bool   `yaml:"stacktraceAsString"`
+	StacktraceAsStringKebab   bool   `yaml:"stacktrace-as-string"`
+	PropertiesAsList          bool   `yaml:"propertiesAsList"`
+	PropertiesAsListKebab     bool   `yaml:"properties-as-list"`
+	IncludeNullDelimiter      bool   `yaml:"includeNullDelimiter"`
+	IncludeNullDelimiterKebab bool   `yaml:"include-null-delimiter"`
+	Header                    string `yaml:"header"`
+	Footer                    string `yaml:"footer"`
 }
 
 type rollingConfig struct {
@@ -845,6 +859,12 @@ func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.EventTemplatePathKebab, err = resolveStringLookup(lookups, c.EventTemplatePathKebab); err != nil {
 		return fmt.Errorf("event-template-path: %w", err)
 	}
+	if c.Header, err = resolveStringLookup(lookups, c.Header); err != nil {
+		return fmt.Errorf("header: %w", err)
+	}
+	if c.Footer, err = resolveStringLookup(lookups, c.Footer); err != nil {
+		return fmt.Errorf("footer: %w", err)
+	}
 	return nil
 }
 
@@ -1537,6 +1557,7 @@ func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) 
 		Pattern:          config.Pattern,
 		EventTemplate:    config.eventTemplate(),
 		EventTemplateURI: config.eventTemplateURI(),
+		Options:          config.options(),
 		Registry:         registry,
 	})
 }
@@ -1547,6 +1568,20 @@ func (c layoutConfig) eventTemplate() string {
 
 func (c layoutConfig) eventTemplateURI() string {
 	return firstNonBlank(c.EventTemplateURI, c.EventTemplateURIKebab, c.EventTemplatePath, c.EventTemplatePathKebab)
+}
+
+func (c layoutConfig) options() LayoutOptions {
+	return LayoutOptions{
+		Compact:              c.Compact,
+		EventEOL:             c.EventEOL || c.EventEOLKebab,
+		Complete:             c.Complete,
+		IncludeStacktrace:    c.IncludeStacktrace || c.IncludeStacktraceKebab,
+		StacktraceAsString:   c.StacktraceAsString || c.StacktraceAsStringKebab,
+		PropertiesAsList:     c.PropertiesAsList || c.PropertiesAsListKebab,
+		IncludeNullDelimiter: c.IncludeNullDelimiter || c.IncludeNullDelimiterKebab,
+		Header:               c.Header,
+		Footer:               c.Footer,
+	}
 }
 
 func configFormat(path string) (string, error) {

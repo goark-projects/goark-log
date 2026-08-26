@@ -180,6 +180,126 @@ root:
 	}
 }
 
+func TestLoadOptions_whenStructuredLayoutOptionsConfigured_shouldPopulateJSONLayout(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name       string
+		configName string
+		content    func(logPath string) string
+	}{
+		{
+			name:       "yaml",
+			configName: "goark-log.yml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+appenders:
+  file:
+    type: file
+    fileName: %q
+    layout:
+      type: json
+      compact: true
+      eventEol: true
+      complete: true
+      includeStacktrace: true
+      stacktraceAsString: true
+      propertiesAsList: true
+      includeNullDelimiter: true
+      header: H
+      footer: F
+root:
+  level: info
+  appenderRefs: [file]
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "json",
+			configName: "goark-log.json",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`{
+  "appenders": {
+    "file": {
+      "type": "file",
+      "fileName": %q,
+      "layout": {
+        "type": "json",
+        "compact": true,
+        "eventEol": true,
+        "complete": true,
+        "includeStacktrace": true,
+        "stacktraceAsString": true,
+        "propertiesAsList": true,
+        "includeNullDelimiter": true,
+        "header": "H",
+        "footer": "F"
+      }
+    }
+  },
+  "root": {"level": "info", "appenderRefs": ["file"]}
+}`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "xml",
+			configName: "goark-log.xml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+<Configuration>
+  <Appenders>
+    <File name="file" fileName="%s">
+      <JSONLayout compact="true" eventEol="true" complete="true" includeStacktrace="true" stacktraceAsString="true" propertiesAsList="true" includeNullDelimiter="true" header="H" footer="F"/>
+    </File>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="file"/>
+    </Root>
+  </Loggers>
+</Configuration>
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "properties",
+			configName: "goark-log.properties",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+appender.file.type = file
+appender.file.fileName = %s
+appender.file.layout.type = json
+appender.file.layout.compact = true
+appender.file.layout.eventEol = true
+appender.file.layout.complete = true
+appender.file.layout.includeStacktrace = true
+appender.file.layout.stacktraceAsString = true
+appender.file.layout.propertiesAsList = true
+appender.file.layout.includeNullDelimiter = true
+appender.file.layout.header = H
+appender.file.layout.footer = F
+rootLogger.level = info
+rootLogger.appenderRefs = file
+`, filepath.ToSlash(logPath))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			logPath := filepath.Join(dir, "logs", "app.log")
+			configPath := filepath.Join(dir, tc.configName)
+			writeConfig(t, configPath, tc.content(logPath))
+
+			options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+			if err != nil {
+				t.Fatalf("LoadOptions() error = %v", err)
+			}
+			defer closeAppenderList(options.Appenders)
+			layout := configuredFileJSONLayout(t, options.Appenders, "file")
+			assertFullLayoutOptions(t, layout.options)
+		})
+	}
+}
+
 func TestNewConfigured_whenLog4jStyleConfigurationWrapperUsed_shouldBuildGoYamlExperience(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -889,5 +1009,37 @@ func assertRootLevel(t *testing.T, options Options, level slog.Level) {
 	t.Helper()
 	if options.Root.Level != level {
 		t.Fatalf("root level = %v, want %v", options.Root.Level, level)
+	}
+}
+
+func configuredFileJSONLayout(t *testing.T, appenders []Appender, name string) JSONLayout {
+	t.Helper()
+	for _, appender := range appenders {
+		file, ok := appender.(*FileAppender)
+		if !ok || file.Name() != name {
+			continue
+		}
+		layout, ok := file.layout.(JSONLayout)
+		if !ok {
+			t.Fatalf("file layout type = %T, want JSONLayout", file.layout)
+		}
+		return layout
+	}
+	t.Fatalf("file appender %q was not built: %+v", name, appenders)
+	return JSONLayout{}
+}
+
+func assertFullLayoutOptions(t *testing.T, options LayoutOptions) {
+	t.Helper()
+	if !options.Compact ||
+		!options.EventEOL ||
+		!options.Complete ||
+		!options.IncludeStacktrace ||
+		!options.StacktraceAsString ||
+		!options.PropertiesAsList ||
+		!options.IncludeNullDelimiter ||
+		options.Header != "H" ||
+		options.Footer != "F" {
+		t.Fatalf("layout options = %+v, want every option populated", options)
 	}
 }

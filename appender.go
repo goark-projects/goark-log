@@ -24,10 +24,12 @@ var bufferPool = sync.Pool{
 
 // ConsoleAppender 把日志写入 stdout、stderr 或自定义 writer。
 type ConsoleAppender struct {
-	name   string
-	writer io.Writer
-	layout Layout
-	mu     sync.Mutex
+	name    string
+	writer  io.Writer
+	layout  Layout
+	mu      sync.Mutex
+	started bool
+	closed  bool
 }
 
 // ConsoleOption 调整 ConsoleAppender。
@@ -97,12 +99,34 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.closed {
+		return fmt.Errorf("goark-log: console appender %q is closed", a.Name())
+	}
+	if !a.started {
+		if _, err := writeLayoutHeader(a.writer, a.layout); err != nil {
+			return err
+		}
+		a.started = true
+	}
 	_, err := a.writer.Write(buf.Bytes())
 	return err
 }
 
 func (a *ConsoleAppender) Close() error {
-	return nil
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return nil
+	}
+	a.closed = true
+	if !a.started {
+		return nil
+	}
+	_, err := writeLayoutFooter(a.writer, a.layout)
+	return err
 }
 
 func releaseBuffer(buf *bytes.Buffer) {

@@ -2,8 +2,10 @@ package goarklog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -100,6 +102,82 @@ func TestGELFLayout_whenEventFormatted_shouldWriteGELFJSON(t *testing.T) {
 	}
 	if decoded["_traceId"] != "trace-1" {
 		t.Fatalf("_traceId = %#v, want trace-1", decoded["_traceId"])
+	}
+}
+
+func TestJSONLayout_whenOptionsEnabled_shouldWriteListPropertiesAndStackString(t *testing.T) {
+	event := benchmarkEvent()
+	event.Attrs = []slog.Attr{slog.String("traceId", "trace-1")}
+	event.Throwable = &Throwable{
+		Type:    "errors.errorString",
+		Message: "query failed",
+		Stack:   []string{"goark.orm.query(query.go:10)"},
+	}
+	layout := NewJSONLayout(LayoutOptions{
+		Compact:              true,
+		PropertiesAsList:     true,
+		StacktraceAsString:   true,
+		IncludeNullDelimiter: true,
+	})
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	output := buf.Bytes()
+	if !bytes.HasSuffix(output, []byte{0}) {
+		t.Fatalf("JSON output = %q, want NUL delimiter", string(output))
+	}
+	if bytes.Contains(output, []byte{'\n'}) {
+		t.Fatalf("JSON output = %q, compact layout should not add newline", string(output))
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
+		t.Fatalf("Unmarshal() error = %v, json=%s", err, string(output))
+	}
+	contextMap, ok := decoded["contextMap"].([]any)
+	if !ok || len(contextMap) != 1 {
+		t.Fatalf("contextMap = %#v, want one property item", decoded["contextMap"])
+	}
+	item, ok := contextMap[0].(map[string]any)
+	if !ok || item["key"] != "traceId" || item["value"] != "trace-1" {
+		t.Fatalf("contextMap[0] = %#v, want traceId property", contextMap[0])
+	}
+	thrown, ok := decoded["thrown"].(string)
+	if !ok || !strings.Contains(thrown, "query.go:10") {
+		t.Fatalf("thrown = %#v, want stack string", decoded["thrown"])
+	}
+}
+
+func TestFileAppender_whenCompleteJSONLayoutUsed_shouldWriteValidArray(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "complete.json")
+	appender, err := NewFileAppender(
+		path,
+		WithFileLayout(NewJSONLayout(LayoutOptions{Compact: true, Complete: true})),
+		WithFileBufferSize(0),
+	)
+	if err != nil {
+		t.Fatalf("NewFileAppender() error = %v", err)
+	}
+	event := benchmarkEvent()
+	if err := appender.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	event.Message = "second event"
+	if err := appender.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	var decoded []map[string]any
+	content := readTextFile(t, path)
+	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+		t.Fatalf("complete JSON output is invalid: %v\n%s", err, content)
+	}
+	if len(decoded) != 2 || decoded[1]["msg"] != "second event" {
+		t.Fatalf("decoded complete JSON = %#v, want two events", decoded)
 	}
 }
 

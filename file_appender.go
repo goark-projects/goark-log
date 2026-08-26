@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,9 +92,21 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 	if err != nil {
 		return nil, err
 	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("goark-log: stat log file %q: %w", cleanPath, err)
+	}
 	appender.file = file
 	if appender.bufferSize > 0 {
 		appender.writer = bufio.NewWriterSize(file, appender.bufferSize)
+	}
+	if info.Size() == 0 {
+		if _, err := appender.writeHeaderLocked(); err != nil {
+			_ = appender.flushLocked()
+			_ = file.Close()
+			return nil, fmt.Errorf("goark-log: write file appender %q header: %w", appender.Name(), err)
+		}
 	}
 	return appender, nil
 }
@@ -154,17 +168,15 @@ func (a *FileAppender) Close() error {
 		return nil
 	}
 	a.closed = true
+	_, footerErr := a.writeFooterLocked()
 	flushErr := a.flushLocked()
 	if a.file == nil {
-		return flushErr
+		return errors.Join(footerErr, flushErr)
 	}
 	err := a.file.Close()
 	a.file = nil
 	a.writer = nil
-	if flushErr != nil {
-		return flushErr
-	}
-	return err
+	return errors.Join(footerErr, flushErr, err)
 }
 
 func (a *FileAppender) flushLocked() error {
@@ -172,6 +184,32 @@ func (a *FileAppender) flushLocked() error {
 		return nil
 	}
 	return a.writer.Flush()
+}
+
+func (a *FileAppender) writeHeaderLocked() (int, error) {
+	writer := a.outputWriterLocked()
+	if writer == nil {
+		return 0, nil
+	}
+	return writeLayoutHeader(writer, a.layout)
+}
+
+func (a *FileAppender) writeFooterLocked() (int, error) {
+	writer := a.outputWriterLocked()
+	if writer == nil {
+		return 0, nil
+	}
+	return writeLayoutFooter(writer, a.layout)
+}
+
+func (a *FileAppender) outputWriterLocked() io.Writer {
+	if a == nil {
+		return nil
+	}
+	if a.writer != nil {
+		return a.writer
+	}
+	return a.file
 }
 
 func validateLogFilePath(path string) (string, error) {

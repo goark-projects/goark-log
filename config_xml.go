@@ -67,6 +67,15 @@ type xmlAppender struct {
 	XMLLayout        xmlLayout          `xml:"XMLLayout"`
 	CsvLayout        xmlLayout          `xml:"CsvLayout"`
 	CSVLayout        xmlLayout          `xml:"CSVLayout"`
+	GelfLayout       xmlLayout          `xml:"GelfLayout"`
+	GELFLayout       xmlLayout          `xml:"GELFLayout"`
+	Rfc5424Layout    xmlLayout          `xml:"Rfc5424Layout"`
+	RFC5424Layout    xmlLayout          `xml:"RFC5424Layout"`
+	SyslogLayout     xmlLayout          `xml:"SyslogLayout"`
+	YamlLayout       xmlLayout          `xml:"YamlLayout"`
+	YAMLLayout       xmlLayout          `xml:"YAMLLayout"`
+	HtmlLayout       xmlLayout          `xml:"HtmlLayout"`
+	HTMLLayout       xmlLayout          `xml:"HTMLLayout"`
 	Layout           xmlLayout          `xml:"Layout"`
 	AppenderRefs     []xmlAppenderRef   `xml:"AppenderRef"`
 	FilterRefs       []xmlFilterRef     `xml:"FilterRef"`
@@ -76,11 +85,20 @@ type xmlAppender struct {
 }
 
 type xmlLayout struct {
-	XMLName     xml.Name
-	Type        string `xml:"type,attr"`
-	Pattern     string `xml:"pattern,attr"`
-	Template    string `xml:"eventTemplate,attr"`
-	TemplateURI string `xml:"eventTemplateUri,attr"`
+	XMLName              xml.Name
+	Type                 string `xml:"type,attr"`
+	Pattern              string `xml:"pattern,attr"`
+	Template             string `xml:"eventTemplate,attr"`
+	TemplateURI          string `xml:"eventTemplateUri,attr"`
+	Compact              string `xml:"compact,attr"`
+	EventEOL             string `xml:"eventEol,attr"`
+	Complete             string `xml:"complete,attr"`
+	IncludeStacktrace    string `xml:"includeStacktrace,attr"`
+	StacktraceAsString   string `xml:"stacktraceAsString,attr"`
+	PropertiesAsList     string `xml:"propertiesAsList,attr"`
+	IncludeNullDelimiter string `xml:"includeNullDelimiter,attr"`
+	Header               string `xml:"header,attr"`
+	Footer               string `xml:"footer,attr"`
 }
 
 type xmlAppenderRef struct {
@@ -387,6 +405,10 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
+	layout, err := a.layout()
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q layout: %w", name, err)
+	}
 	strategy := a.effectiveStrategy()
 	config := appenderConfig{
 		Type:             xmlAppenderType(a.XMLName.Local, a.Type),
@@ -400,7 +422,7 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 		ConnectTimeout:   a.ConnectTimeout,
 		WriteTimeout:     a.WriteTimeout,
 		FileName:         a.FileName,
-		Layout:           a.layout(),
+		Layout:           layout,
 		AppenderRefs:     xmlAppenderRefs(a.AppenderRefs),
 		QueueSize:        queueSize,
 		OverflowStrategy: a.OverflowStrategy,
@@ -470,21 +492,54 @@ func (a xmlRollingDeleteAction) empty() bool {
 		strings.TrimSpace(a.IfAccumulatedFileSize.Exceeds) == ""
 }
 
-func (a xmlAppender) layout() layoutConfig {
-	for _, layout := range []xmlLayout{a.PatternLayout, a.TextLayout, a.JsonLayout, a.JSONLayout, a.JsonTemplate, a.XmlLayout, a.XMLLayout, a.CsvLayout, a.CSVLayout, a.Layout} {
+func (a xmlAppender) layout() (layoutConfig, error) {
+	for _, layout := range []xmlLayout{
+		a.PatternLayout,
+		a.TextLayout,
+		a.JsonLayout,
+		a.JSONLayout,
+		a.JsonTemplate,
+		a.XmlLayout,
+		a.XMLLayout,
+		a.CsvLayout,
+		a.CSVLayout,
+		a.GelfLayout,
+		a.GELFLayout,
+		a.Rfc5424Layout,
+		a.RFC5424Layout,
+		a.SyslogLayout,
+		a.YamlLayout,
+		a.YAMLLayout,
+		a.HtmlLayout,
+		a.HTMLLayout,
+		a.Layout,
+	} {
 		if layout.XMLName.Local == "" &&
 			strings.TrimSpace(layout.Type) == "" &&
 			strings.TrimSpace(layout.Pattern) == "" &&
 			strings.TrimSpace(layout.Template) == "" &&
-			strings.TrimSpace(layout.TemplateURI) == "" {
+			strings.TrimSpace(layout.TemplateURI) == "" &&
+			layout.emptyOptions() {
 			continue
 		}
 		return layout.config()
 	}
-	return layoutConfig{}
+	return layoutConfig{}, nil
 }
 
-func (l xmlLayout) config() layoutConfig {
+func (l xmlLayout) emptyOptions() bool {
+	return strings.TrimSpace(l.Compact) == "" &&
+		strings.TrimSpace(l.EventEOL) == "" &&
+		strings.TrimSpace(l.Complete) == "" &&
+		strings.TrimSpace(l.IncludeStacktrace) == "" &&
+		strings.TrimSpace(l.StacktraceAsString) == "" &&
+		strings.TrimSpace(l.PropertiesAsList) == "" &&
+		strings.TrimSpace(l.IncludeNullDelimiter) == "" &&
+		strings.TrimSpace(l.Header) == "" &&
+		strings.TrimSpace(l.Footer) == ""
+}
+
+func (l xmlLayout) config() (layoutConfig, error) {
 	kind := firstNonBlank(l.Type, l.XMLName.Local)
 	switch normalizeKind(kind) {
 	case "", "patternlayout", "pattern":
@@ -512,7 +567,49 @@ func (l xmlLayout) config() layoutConfig {
 	default:
 		kind = l.Type
 	}
-	return layoutConfig{Type: kind, Pattern: l.Pattern, EventTemplate: l.Template, EventTemplateURI: l.TemplateURI}
+	compact, err := parseXMLBool(l.Compact, "compact")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	eventEOL, err := parseXMLBool(l.EventEOL, "eventEol")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	complete, err := parseXMLBool(l.Complete, "complete")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	includeStacktrace, err := parseXMLBool(l.IncludeStacktrace, "includeStacktrace")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	stacktraceAsString, err := parseXMLBool(l.StacktraceAsString, "stacktraceAsString")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	propertiesAsList, err := parseXMLBool(l.PropertiesAsList, "propertiesAsList")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	includeNullDelimiter, err := parseXMLBool(l.IncludeNullDelimiter, "includeNullDelimiter")
+	if err != nil {
+		return layoutConfig{}, err
+	}
+	return layoutConfig{
+		Type:                 kind,
+		Pattern:              l.Pattern,
+		EventTemplate:        l.Template,
+		EventTemplateURI:     l.TemplateURI,
+		Compact:              compact,
+		EventEOL:             eventEOL,
+		Complete:             complete,
+		IncludeStacktrace:    includeStacktrace,
+		StacktraceAsString:   stacktraceAsString,
+		PropertiesAsList:     propertiesAsList,
+		IncludeNullDelimiter: includeNullDelimiter,
+		Header:               l.Header,
+		Footer:               l.Footer,
+	}, nil
 }
 
 func (f xmlFilter) config(kind string) (filterConfig, error) {
@@ -725,4 +822,12 @@ func parseXMLBoolPointer(value string) *bool {
 		return nil
 	}
 	return &parsed
+}
+
+func parseXMLBoolValue(value string) bool {
+	parsed, err := parseXMLBool(value, "")
+	if err != nil {
+		return false
+	}
+	return parsed
 }

@@ -329,18 +329,16 @@ func (a *RollingFileAppender) Close() error {
 		return nil
 	}
 	a.closed = true
+	_, footerErr := a.writeFooterLocked()
 	flushErr := a.flushLocked()
 	if a.file == nil {
-		return errors.Join(flushErr, a.closeActionWorker())
+		return errors.Join(footerErr, flushErr, a.closeActionWorker())
 	}
 	err := a.file.Close()
 	a.file = nil
 	a.writer = nil
 	actionErr := a.closeActionWorker()
-	if flushErr != nil {
-		return errors.Join(flushErr, actionErr)
-	}
-	return errors.Join(err, actionErr)
+	return errors.Join(footerErr, flushErr, err, actionErr)
 }
 
 func (a *RollingFileAppender) validate() error {
@@ -443,6 +441,17 @@ func (a *RollingFileAppender) open() error {
 		a.writer = bufio.NewWriterSize(file, a.bufferSize)
 	}
 	a.size = info.Size()
+	if a.size == 0 {
+		n, err := a.writeHeaderLocked()
+		if err != nil {
+			_ = a.flushLocked()
+			_ = file.Close()
+			a.file = nil
+			a.writer = nil
+			return fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+		}
+		a.size += int64(n)
+	}
 	a.nextRollover = nextRolloverAfter(a.now(), a.interval, a.modulate)
 	a.nextCron = nextCronRolloverAfter(a.now(), a.cron)
 	if err := a.initArchiveIndex(); err != nil {
@@ -473,6 +482,17 @@ func (a *RollingFileAppender) openDirect(now time.Time) error {
 		a.writer = bufio.NewWriterSize(file, a.bufferSize)
 	}
 	a.size = info.Size()
+	if a.size == 0 {
+		n, err := a.writeHeaderLocked()
+		if err != nil {
+			_ = a.flushLocked()
+			_ = file.Close()
+			a.file = nil
+			a.writer = nil
+			return fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+		}
+		a.size += int64(n)
+	}
 	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
 	a.nextCron = nextCronRolloverAfter(now, a.cron)
 	return nil
@@ -493,7 +513,7 @@ func (a *RollingFileAppender) shouldRollover(now time.Time, pendingBytes int64) 
 }
 
 func (a *RollingFileAppender) rollover(now time.Time) error {
-	if err := a.flushLocked(); err != nil {
+	if err := errors.Join(a.writeFooterErrorLocked(), a.flushLocked()); err != nil {
 		return fmt.Errorf("goark-log: flush active log file %q: %w", a.path, err)
 	}
 	if a.file != nil {
@@ -540,6 +560,37 @@ func (a *RollingFileAppender) flushLocked() error {
 		return nil
 	}
 	return a.writer.Flush()
+}
+
+func (a *RollingFileAppender) writeHeaderLocked() (int, error) {
+	writer := a.outputWriterLocked()
+	if writer == nil {
+		return 0, nil
+	}
+	return writeLayoutHeader(writer, a.layout)
+}
+
+func (a *RollingFileAppender) writeFooterLocked() (int, error) {
+	writer := a.outputWriterLocked()
+	if writer == nil {
+		return 0, nil
+	}
+	return writeLayoutFooter(writer, a.layout)
+}
+
+func (a *RollingFileAppender) writeFooterErrorLocked() error {
+	_, err := a.writeFooterLocked()
+	return err
+}
+
+func (a *RollingFileAppender) outputWriterLocked() io.Writer {
+	if a == nil {
+		return nil
+	}
+	if a.writer != nil {
+		return a.writer
+	}
+	return a.file
 }
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {

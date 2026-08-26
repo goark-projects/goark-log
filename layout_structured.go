@@ -17,10 +17,17 @@ import (
 var hostNameString = resolveHostName()
 
 // XMLLayout 输出单事件 XML 片段。
-type XMLLayout struct{}
+type XMLLayout struct {
+	options LayoutOptions
+}
+
+// NewXMLLayout 创建可配置 XML 布局。
+func NewXMLLayout(options LayoutOptions) XMLLayout {
+	return XMLLayout{options: options}
+}
 
 // Format 把事件编码为 XML。
-func (XMLLayout) Format(buf *bytes.Buffer, event Event) error {
+func (l XMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	buf.WriteString("<Event")
 	appendXMLAttr(buf, "time", eventTime(event.Time).Format(defaultTimeFormat))
 	appendXMLAttr(buf, "level", levelName(event.Level))
@@ -34,9 +41,7 @@ func (XMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	if marker := eventMarkerString(event); marker != "" {
 		appendXMLElement(buf, "Marker", marker)
 	}
-	if thrown := eventErrorString(event); thrown != "" {
-		appendXMLElement(buf, "Throwable", thrown)
-	}
+	appendXMLThrowable(buf, l.options, event)
 	if len(event.ContextStack) > 0 {
 		buf.WriteString("<ContextStack>")
 		for _, value := range event.ContextStack {
@@ -55,42 +60,77 @@ func (XMLLayout) Format(buf *bytes.Buffer, event Event) error {
 		}
 		buf.WriteString("</ContextMap>")
 	}
-	buf.WriteString("</Event>\n")
+	buf.WriteString("</Event>")
+	appendLayoutTerminator(buf, l.options)
+	return nil
+}
+
+func (l XMLLayout) AppendHeader(buf *bytes.Buffer) error {
+	appendLayoutHeader(buf, l.options)
+	return nil
+}
+
+func (l XMLLayout) AppendFooter(buf *bytes.Buffer) error {
+	appendLayoutFooter(buf, l.options)
 	return nil
 }
 
 // CSVLayout 输出单行 CSV，字段顺序固定。
-type CSVLayout struct{}
+type CSVLayout struct {
+	options LayoutOptions
+}
+
+// NewCSVLayout 创建可配置 CSV 布局。
+func NewCSVLayout(options LayoutOptions) CSVLayout {
+	return CSVLayout{options: options}
+}
 
 // Format 把事件编码为 CSV。
-func (CSVLayout) Format(buf *bytes.Buffer, event Event) error {
+func (l CSVLayout) Format(buf *bytes.Buffer, event Event) error {
 	appendCSVField(buf, eventTime(event.Time).Format(defaultTimeFormat), false)
 	appendCSVField(buf, levelName(event.Level), true)
 	appendCSVField(buf, event.Logger, true)
 	appendCSVField(buf, eventThreadName(event), true)
 	appendCSVField(buf, event.Message, true)
 	if len(event.Attrs) == 0 {
-		buf.WriteByte('\n')
+		appendLayoutTerminator(buf, l.options)
 		return nil
 	}
 	var attrs bytes.Buffer
 	appendPatternAttrs(&attrs, event.Attrs)
 	appendCSVField(buf, attrs.String(), true)
-	buf.WriteByte('\n')
+	appendLayoutTerminator(buf, l.options)
+	return nil
+}
+
+func (l CSVLayout) AppendHeader(buf *bytes.Buffer) error {
+	appendLayoutHeader(buf, l.options)
+	return nil
+}
+
+func (l CSVLayout) AppendFooter(buf *bytes.Buffer) error {
+	appendLayoutFooter(buf, l.options)
 	return nil
 }
 
 // GELFLayout 输出 Graylog Extended Log Format 单行 JSON。
-type GELFLayout struct{}
+type GELFLayout struct {
+	options LayoutOptions
+}
+
+// NewGELFLayout 创建可配置 GELF 布局。
+func NewGELFLayout(options LayoutOptions) GELFLayout {
+	return GELFLayout{options: options}
+}
 
 // Format 把事件编码为 GELF JSON。
-func (GELFLayout) Format(buf *bytes.Buffer, event Event) error {
+func (l GELFLayout) Format(buf *bytes.Buffer, event Event) error {
 	when := eventTime(event.Time)
 	buf.WriteByte('{')
 	appendJSONFieldString(buf, "version", "1.1", false)
 	appendJSONFieldString(buf, "host", hostNameString, true)
 	appendJSONFieldString(buf, "short_message", event.Message, true)
-	if thrown := eventErrorString(event); thrown != "" {
+	if thrown := gelfThrowableString(event, l.options); thrown != "" {
 		appendJSONFieldString(buf, "full_message", thrown, true)
 	}
 	appendJSONKey(buf, "timestamp", true)
@@ -109,7 +149,18 @@ func (GELFLayout) Format(buf *bytes.Buffer, event Event) error {
 		}
 		appendJSONFieldValue(buf, key, attr.Value, true)
 	}
-	buf.WriteString("}\n")
+	buf.WriteByte('}')
+	appendLayoutTerminator(buf, l.options)
+	return nil
+}
+
+func (l GELFLayout) AppendHeader(buf *bytes.Buffer) error {
+	appendLayoutHeader(buf, l.options)
+	return nil
+}
+
+func (l GELFLayout) AppendFooter(buf *bytes.Buffer) error {
+	appendLayoutFooter(buf, l.options)
 	return nil
 }
 
@@ -147,10 +198,17 @@ func (l RFC5424Layout) Format(buf *bytes.Buffer, event Event) error {
 }
 
 // YAMLLayout 输出单事件 YAML 文档。
-type YAMLLayout struct{}
+type YAMLLayout struct {
+	options LayoutOptions
+}
+
+// NewYAMLLayout 创建可配置 YAML 布局。
+func NewYAMLLayout(options LayoutOptions) YAMLLayout {
+	return YAMLLayout{options: options}
+}
 
 // Format 把事件编码为 YAML。
-func (YAMLLayout) Format(buf *bytes.Buffer, event Event) error {
+func (l YAMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	fields := map[string]any{
 		"time":    eventTime(event.Time).Format(defaultTimeFormat),
 		"level":   levelName(event.Level),
@@ -161,32 +219,51 @@ func (YAMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	if marker := eventMarkerString(event); marker != "" {
 		fields["marker"] = marker
 	}
-	if thrown := eventErrorString(event); thrown != "" {
-		fields["throwable"] = thrown
+	if throwable := yamlThrowableValue(event, l.options); throwable != nil {
+		fields["throwable"] = throwable
 	}
 	if len(event.ContextStack) > 0 {
 		fields["contextStack"] = append([]string(nil), event.ContextStack...)
 	}
 	if len(event.Attrs) > 0 {
-		attrs := make(map[string]any, len(event.Attrs))
-		for _, attr := range event.Attrs {
-			attrs[attr.Key] = slogValueAny(attr.Value)
-		}
-		fields["contextMap"] = attrs
+		fields["contextMap"] = yamlContextMapValue(event.Attrs, l.options)
 	}
 	data, err := yaml.Marshal(fields)
 	if err != nil {
 		return fmt.Errorf("goark-log: format YAML layout: %w", err)
 	}
+	if l.options.Compact {
+		data = bytes.TrimRight(data, "\n")
+	}
 	buf.Write(data)
+	if l.options.Compact || l.options.IncludeNullDelimiter {
+		appendLayoutTerminator(buf, l.options)
+	}
+	return nil
+}
+
+func (l YAMLLayout) AppendHeader(buf *bytes.Buffer) error {
+	appendLayoutHeader(buf, l.options)
+	return nil
+}
+
+func (l YAMLLayout) AppendFooter(buf *bytes.Buffer) error {
+	appendLayoutFooter(buf, l.options)
 	return nil
 }
 
 // HTMLLayout 输出 HTML 表格行，适合文件或控制台片段组合。
-type HTMLLayout struct{}
+type HTMLLayout struct {
+	options LayoutOptions
+}
+
+// NewHTMLLayout 创建可配置 HTML 布局。
+func NewHTMLLayout(options LayoutOptions) HTMLLayout {
+	return HTMLLayout{options: options}
+}
 
 // Format 把事件编码为 HTML 表格行。
-func (HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
+func (l HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	buf.WriteString("<tr>")
 	appendHTMLCell(buf, eventTime(event.Time).Format(defaultTimeFormat))
 	appendHTMLCell(buf, levelName(event.Level))
@@ -200,8 +277,113 @@ func (HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	} else {
 		appendHTMLCell(buf, "")
 	}
-	buf.WriteString("</tr>\n")
+	buf.WriteString("</tr>")
+	appendLayoutTerminator(buf, l.options)
 	return nil
+}
+
+func (l HTMLLayout) AppendHeader(buf *bytes.Buffer) error {
+	appendLayoutHeader(buf, l.options)
+	return nil
+}
+
+func (l HTMLLayout) AppendFooter(buf *bytes.Buffer) error {
+	appendLayoutFooter(buf, l.options)
+	return nil
+}
+
+func appendXMLThrowable(buf *bytes.Buffer, options LayoutOptions, event Event) {
+	if event.Throwable == nil {
+		if thrown := eventErrorString(event); thrown != "" {
+			appendXMLElement(buf, "Throwable", thrown)
+		}
+		return
+	}
+	if options.StacktraceAsString {
+		appendXMLElement(buf, "Throwable", throwableStackString(event.Throwable))
+		return
+	}
+	appendXMLElement(buf, "Throwable", event.Throwable.String())
+	if !options.IncludeStacktrace || len(event.Throwable.Stack) == 0 {
+		return
+	}
+	buf.WriteString("<StackTrace>")
+	for _, frame := range event.Throwable.Stack {
+		appendXMLElement(buf, "Frame", frame)
+	}
+	buf.WriteString("</StackTrace>")
+}
+
+func gelfThrowableString(event Event, options LayoutOptions) string {
+	if event.Throwable == nil {
+		return eventErrorString(event)
+	}
+	if options.StacktraceAsString || options.IncludeStacktrace {
+		return throwableStackString(event.Throwable)
+	}
+	return event.Throwable.String()
+}
+
+func yamlThrowableValue(event Event, options LayoutOptions) any {
+	if event.Throwable == nil {
+		if thrown := eventErrorString(event); thrown != "" {
+			return thrown
+		}
+		return nil
+	}
+	if options.StacktraceAsString {
+		return throwableStackString(event.Throwable)
+	}
+	if options.IncludeStacktrace {
+		return throwableMapValue(event.Throwable)
+	}
+	return event.Throwable.String()
+}
+
+func throwableMapValue(throwable *Throwable) map[string]any {
+	if throwable == nil {
+		return nil
+	}
+	value := map[string]any{
+		"type":      throwable.Type,
+		"message":   throwable.Message,
+		"rootCause": throwableRootMapValue(rootThrowable(throwable)),
+	}
+	if len(throwable.Stack) > 0 {
+		value["stackTrace"] = append([]string(nil), throwable.Stack...)
+	}
+	if throwable.Cause != nil {
+		value["cause"] = throwableMapValue(throwable.Cause)
+	}
+	return value
+}
+
+func throwableRootMapValue(throwable *Throwable) map[string]any {
+	if throwable == nil {
+		return nil
+	}
+	return map[string]any{
+		"type":    throwable.Type,
+		"message": throwable.Message,
+	}
+}
+
+func yamlContextMapValue(attrs []slog.Attr, options LayoutOptions) any {
+	if options.PropertiesAsList {
+		values := make([]map[string]any, 0, len(attrs))
+		for _, attr := range attrs {
+			values = append(values, map[string]any{
+				"key":   attr.Key,
+				"value": slogValueAny(attr.Value),
+			})
+		}
+		return values
+	}
+	values := make(map[string]any, len(attrs))
+	for _, attr := range attrs {
+		values[attr.Key] = slogValueAny(attr.Value)
+	}
+	return values
 }
 
 func appendXMLElement(buf *bytes.Buffer, name string, value string) {
