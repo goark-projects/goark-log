@@ -51,7 +51,9 @@ type AsyncAppender struct {
 	appenders      []Appender
 	queueSize      int
 	waitStrategy   AsyncWaitStrategy
+	waitOptions    AsyncWaitOptions
 	strategy       AsyncOverflowStrategy
+	errorHandler   AsyncErrorHandler
 	closeAppenders bool
 
 	queue     *disruptor.RingBuffer[asyncEntry]
@@ -100,6 +102,20 @@ func WithAsyncWaitStrategy(strategy AsyncWaitStrategy) AsyncOption {
 	}
 }
 
+// WithAsyncWaitOptions 设置异步队列等待策略参数。
+func WithAsyncWaitOptions(options AsyncWaitOptions) AsyncOption {
+	return func(appender *AsyncAppender) {
+		appender.waitOptions = options
+	}
+}
+
+// WithAsyncErrorHandler 设置异步后台写入失败处理器。
+func WithAsyncErrorHandler(handler AsyncErrorHandler) AsyncOption {
+	return func(appender *AsyncAppender) {
+		appender.errorHandler = handler
+	}
+}
+
 // WithAsyncCloseAppenders 设置关闭 async 时是否同时关闭下游 appender。
 func WithAsyncCloseAppenders(enabled bool) AsyncOption {
 	return func(appender *AsyncAppender) {
@@ -134,7 +150,7 @@ func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppen
 	appender.queueSize = normalizedQueueSize
 	appender.waitStrategy = waitStrategy
 	appender.appenders = append([]Appender(nil), appenders...)
-	appender.queue, err = disruptor.NewRingBuffer[asyncEntry](appender.queueSize, newAsyncWaitStrategy(appender.waitStrategy))
+	appender.queue, err = disruptor.NewRingBuffer[asyncEntry](appender.queueSize, newAsyncWaitStrategyWithOptions(appender.waitStrategy, appender.waitOptions))
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +253,9 @@ func (a *AsyncAppender) validate(appenders []Appender) error {
 		return fmt.Errorf("goark-log: async queue size must be > 0")
 	}
 	if _, err := ParseAsyncOverflowStrategy(string(a.strategy)); err != nil {
+		return err
+	}
+	if err := validateAsyncWaitOptions(a.waitOptions); err != nil {
 		return err
 	}
 	if len(appenders) == 0 {
@@ -345,6 +364,7 @@ func (a *AsyncAppender) flushBatch(batch []asyncEntry) {
 		event.EndOfBatch = index == len(batch)-1
 		if err := a.appendSync(context.Background(), event); err != nil {
 			joined = errors.Join(joined, err)
+			a.handleAsyncError(context.Background(), err, event)
 		}
 	}
 	if joined != nil {
@@ -368,4 +388,11 @@ func (a *AsyncAppender) closeDelegates() error {
 		joined = errors.Join(joined, appender.Close())
 	}
 	return joined
+}
+
+func (a *AsyncAppender) handleAsyncError(ctx context.Context, err error, event Event) {
+	if a == nil || a.errorHandler == nil || err == nil {
+		return
+	}
+	a.errorHandler.HandleAsyncError(ctx, err, event)
 }

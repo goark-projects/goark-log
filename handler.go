@@ -229,7 +229,7 @@ func (h *Handler) Reload(options Options) error {
 		if err != nil {
 			return err
 		}
-		if normalized != h.async.options {
+		if !sameAsyncLoggerRuntimeOptions(normalized, h.async.options) {
 			return fmt.Errorf("goark-log: async logger queue settings cannot be changed by reload")
 		}
 	}

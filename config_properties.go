@@ -176,6 +176,16 @@ func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value strin
 		config.OverflowStrategy = value
 	case "waitStrategy", "wait-strategy":
 		config.WaitStrategy = value
+	case "waitRetries", "wait-retries":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		config.WaitRetries = parsed
+	case "sleepTime", "sleep-time":
+		config.SleepTime = value
+	case "timeout":
+		config.Timeout = value
 	case "includeLocation", "include-location":
 		parsed, err := parsePropertyBool(value, key)
 		if err != nil {
@@ -230,6 +240,16 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.OverflowStrategy = value
 	case "waitStrategy", "wait-strategy":
 		appender.WaitStrategy = value
+	case "waitRetries", "wait-retries":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		appender.WaitRetries = parsed
+	case "sleepTime", "sleep-time":
+		appender.SleepTime = value
+	case "timeout":
+		appender.Timeout = value
 	case "bufferSize", "buffer-size":
 		appender.BufferSize = value
 	case "flushOnWrite", "flush-on-write":

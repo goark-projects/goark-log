@@ -3,6 +3,7 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"goark.dev/log/internal/disruptor"
 )
@@ -16,6 +17,26 @@ const (
 	AsyncWaitYield AsyncWaitStrategy = "yield"
 	AsyncWaitSpin  AsyncWaitStrategy = "spin"
 )
+
+// AsyncWaitOptions 描述异步等待策略的细粒度参数，零值保持默认行为。
+type AsyncWaitOptions struct {
+	Retries   int
+	SleepTime time.Duration
+	Timeout   time.Duration
+}
+
+func validateAsyncWaitOptions(options AsyncWaitOptions) error {
+	if options.Retries < 0 {
+		return fmt.Errorf("goark-log: async wait retries must be >= 0")
+	}
+	if options.SleepTime < 0 {
+		return fmt.Errorf("goark-log: async wait sleepTime is invalid")
+	}
+	if options.Timeout < 0 {
+		return fmt.Errorf("goark-log: async wait timeout is invalid")
+	}
+	return nil
+}
 
 // ParseAsyncWaitStrategy 解析异步队列等待策略。
 func ParseAsyncWaitStrategy(value string) (AsyncWaitStrategy, error) {
@@ -34,15 +55,24 @@ func ParseAsyncWaitStrategy(value string) (AsyncWaitStrategy, error) {
 }
 
 func newAsyncWaitStrategy(strategy AsyncWaitStrategy) disruptor.WaitStrategy {
+	return newAsyncWaitStrategyWithOptions(strategy, AsyncWaitOptions{})
+}
+
+func newAsyncWaitStrategyWithOptions(strategy AsyncWaitStrategy, options AsyncWaitOptions) disruptor.WaitStrategy {
+	waitOptions := disruptor.WaitStrategyOptions{
+		Retries:   options.Retries,
+		SleepTime: options.SleepTime,
+		Timeout:   options.Timeout,
+	}
 	switch strategy {
 	case AsyncWaitSleep:
-		return disruptor.NewWaitStrategy(disruptor.WaitSleeping)
+		return disruptor.NewWaitStrategyWithOptions(disruptor.WaitSleeping, waitOptions)
 	case AsyncWaitYield:
-		return disruptor.NewWaitStrategy(disruptor.WaitYielding)
+		return disruptor.NewWaitStrategyWithOptions(disruptor.WaitYielding, waitOptions)
 	case AsyncWaitSpin:
-		return disruptor.NewWaitStrategy(disruptor.WaitBusySpin)
+		return disruptor.NewWaitStrategyWithOptions(disruptor.WaitBusySpin, waitOptions)
 	default:
-		return disruptor.NewWaitStrategy(disruptor.WaitBlocking)
+		return disruptor.NewWaitStrategyWithOptions(disruptor.WaitBlocking, waitOptions)
 	}
 }
 

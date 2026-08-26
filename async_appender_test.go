@@ -184,6 +184,38 @@ func TestNewAsyncAppender_whenWaitStrategyInvalid_shouldReject(t *testing.T) {
 	}
 }
 
+func TestAsyncAppender_whenErrorHandlerConfigured_shouldReceiveWriteFailure(t *testing.T) {
+	errCh := make(chan error, 1)
+	appender, err := NewAsyncAppender([]Appender{failingAppender{name: "broken"}},
+		WithAsyncQueueSize(4),
+		WithAsyncErrorHandler(AsyncErrorHandlerFunc(func(_ context.Context, err error, event Event) {
+			if event.Message == "broken event" {
+				errCh <- err
+			}
+		})),
+	)
+	if err != nil {
+		t.Fatalf("NewAsyncAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("broken event", fixedTestTime())); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "forced failure") {
+			t.Fatalf("async error = %v, want forced failure", err)
+		}
+	default:
+		t.Fatalf("async error handler was not called")
+	}
+	if appender.Failed() != 1 {
+		t.Fatalf("Failed() = %d, want 1", appender.Failed())
+	}
+}
+
 func TestAsyncAppender_whenCloseWhileAppendBlocked_shouldUnblockAppend(t *testing.T) {
 	delegate := newGatedAppender("delegate")
 	t.Cleanup(delegate.releaseGate)

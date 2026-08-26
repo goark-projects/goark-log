@@ -41,6 +41,44 @@ func TestAsyncLogger_whenCloseCalled_shouldDrainQueuedEvents(t *testing.T) {
 	}
 }
 
+func TestAsyncLogger_whenErrorHandlerConfigured_shouldReceiveWriteFailure(t *testing.T) {
+	errCh := make(chan error, 1)
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{failingAppender{name: "broken"}},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"broken"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        8,
+			BatchSize:        2,
+			OverflowStrategy: AsyncOverflowBlock,
+			ErrorHandler: AsyncErrorHandlerFunc(func(_ context.Context, err error, event Event) {
+				if event.Message == "broken event" {
+					errCh <- err
+				}
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	logger := NewLogger(handler, "goark.async.logger")
+	logger.Info("broken event")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "forced failure") {
+			t.Fatalf("async logger error = %v, want forced failure", err)
+		}
+	default:
+		t.Fatalf("async logger error handler was not called")
+	}
+	if handler.AsyncFailed() != 1 {
+		t.Fatalf("AsyncFailed() = %d, want 1", handler.AsyncFailed())
+	}
+}
+
 func TestAsyncLogger_whenAppendAfterClose_shouldReject(t *testing.T) {
 	delegate := newRecordingAppender("delegate")
 	handler, err := NewHandler(Options{

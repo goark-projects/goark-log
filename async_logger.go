@@ -25,7 +25,9 @@ type AsyncLoggerOptions struct {
 	BatchSize        int
 	OverflowStrategy AsyncOverflowStrategy
 	WaitStrategy     AsyncWaitStrategy
+	WaitOptions      AsyncWaitOptions
 	IncludeLocation  bool
+	ErrorHandler     AsyncErrorHandler
 }
 
 type asyncLogger struct {
@@ -44,6 +46,7 @@ type asyncLogger struct {
 	batchSize int
 	strategy  AsyncOverflowStrategy
 	wait      AsyncWaitStrategy
+	waitOpts  AsyncWaitOptions
 	dropped   atomic.Uint64
 	failed    atomic.Uint64
 }
@@ -69,8 +72,9 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 		batchSize: normalized.BatchSize,
 		strategy:  normalized.OverflowStrategy,
 		wait:      normalized.WaitStrategy,
+		waitOpts:  normalized.WaitOptions,
 	}
-	async.queue, err = disruptor.NewRingBuffer[asyncLoggerEntry](normalized.QueueSize, newAsyncWaitStrategy(normalized.WaitStrategy))
+	async.queue, err = disruptor.NewRingBuffer[asyncLoggerEntry](normalized.QueueSize, newAsyncWaitStrategyWithOptions(normalized.WaitStrategy, normalized.WaitOptions))
 	if err != nil {
 		return nil, err
 	}
@@ -107,14 +111,29 @@ func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions
 	if err != nil {
 		return AsyncLoggerOptions{}, err
 	}
+	if err := validateAsyncWaitOptions(options.WaitOptions); err != nil {
+		return AsyncLoggerOptions{}, err
+	}
 	return AsyncLoggerOptions{
 		Enabled:          true,
 		QueueSize:        queueSize,
 		BatchSize:        batchSize,
 		OverflowStrategy: strategy,
 		WaitStrategy:     wait,
+		WaitOptions:      options.WaitOptions,
 		IncludeLocation:  options.IncludeLocation,
+		ErrorHandler:     options.ErrorHandler,
 	}, nil
+}
+
+func sameAsyncLoggerRuntimeOptions(left AsyncLoggerOptions, right AsyncLoggerOptions) bool {
+	return left.Enabled == right.Enabled &&
+		left.QueueSize == right.QueueSize &&
+		left.BatchSize == right.BatchSize &&
+		left.OverflowStrategy == right.OverflowStrategy &&
+		left.WaitStrategy == right.WaitStrategy &&
+		left.WaitOptions == right.WaitOptions &&
+		left.IncludeLocation == right.IncludeLocation
 }
 
 func (a *asyncLogger) append(ctx context.Context, event Event) error {
@@ -270,11 +289,19 @@ func (a *asyncLogger) flushBatch(batch []asyncLoggerEntry) {
 		event.EndOfBatch = index == len(batch)-1
 		if err := a.handler.dispatch(context.Background(), event); err != nil {
 			joined = errors.Join(joined, err)
+			a.handleAsyncError(context.Background(), err, event)
 		}
 	}
 	if joined != nil {
 		a.failed.Add(1)
 	}
+}
+
+func (a *asyncLogger) handleAsyncError(ctx context.Context, err error, event Event) {
+	if a == nil || a.options.ErrorHandler == nil || err == nil {
+		return
+	}
+	a.options.ErrorHandler.HandleAsyncError(ctx, err, event)
 }
 
 func (a *asyncLogger) droppedCount() uint64 {

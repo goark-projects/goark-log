@@ -53,6 +53,9 @@ type xmlAppender struct {
 	QueueSize        string             `xml:"queueSize,attr"`
 	OverflowStrategy string             `xml:"overflowStrategy,attr"`
 	WaitStrategy     string             `xml:"waitStrategy,attr"`
+	WaitRetries      string             `xml:"waitRetries,attr"`
+	SleepTime        string             `xml:"sleepTime,attr"`
+	Timeout          string             `xml:"timeout,attr"`
 	BufferSize       string             `xml:"bufferSize,attr"`
 	FlushOnWrite     string             `xml:"flushOnWrite,attr"`
 	PatternLayout    xmlLayout          `xml:"PatternLayout"`
@@ -206,6 +209,9 @@ type xmlAsyncLogger struct {
 	BatchSize        string `xml:"batchSize,attr"`
 	OverflowStrategy string `xml:"overflowStrategy,attr"`
 	WaitStrategy     string `xml:"waitStrategy,attr"`
+	WaitRetries      string `xml:"waitRetries,attr"`
+	SleepTime        string `xml:"sleepTime,attr"`
+	Timeout          string `xml:"timeout,attr"`
 	IncludeLocation  string `xml:"includeLocation,attr"`
 }
 
@@ -374,6 +380,10 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
+	waitRetries, err := parseXMLInt(a.WaitRetries, "waitRetries")
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
+	}
 	config := appenderConfig{
 		Type:             xmlAppenderType(a.XMLName.Local, a.Type),
 		Target:           xmlConsoleTarget(a.Target),
@@ -391,6 +401,9 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 		QueueSize:        queueSize,
 		OverflowStrategy: a.OverflowStrategy,
 		WaitStrategy:     a.WaitStrategy,
+		WaitRetries:      waitRetries,
+		SleepTime:        a.SleepTime,
+		Timeout:          a.Timeout,
 		BufferSize:       a.BufferSize,
 		FlushOnWrite:     flushOnWrite,
 		Filters:          xmlFilterRefs(a.FilterRefs),
@@ -507,12 +520,19 @@ func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
 	if err != nil {
 		return asyncLoggerConfig{}, err
 	}
+	waitRetries, err := parseXMLInt(c.WaitRetries, "waitRetries")
+	if err != nil {
+		return asyncLoggerConfig{}, err
+	}
 	return asyncLoggerConfig{
 		Enabled:          parseXMLBoolPointer(c.Enabled),
 		QueueSize:        queueSize,
 		BatchSize:        batchSize,
 		OverflowStrategy: c.OverflowStrategy,
 		WaitStrategy:     c.WaitStrategy,
+		WaitRetries:      waitRetries,
+		SleepTime:        c.SleepTime,
+		Timeout:          c.Timeout,
 		IncludeLocation:  parseXMLBoolPointer(c.IncludeLocation),
 	}, nil
 }

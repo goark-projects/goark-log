@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -61,6 +62,11 @@ type appenderConfig struct {
 	OverflowStrategyKebab string        `yaml:"overflow-strategy"`
 	WaitStrategy          string        `yaml:"waitStrategy"`
 	WaitStrategyKebab     string        `yaml:"wait-strategy"`
+	WaitRetries           int           `yaml:"waitRetries"`
+	WaitRetriesKebab      int           `yaml:"wait-retries"`
+	SleepTime             string        `yaml:"sleepTime"`
+	SleepTimeKebab        string        `yaml:"sleep-time"`
+	Timeout               string        `yaml:"timeout"`
 	BufferSize            string        `yaml:"bufferSize"`
 	BufferSizeKebab       string        `yaml:"buffer-size"`
 	FlushOnWrite          bool          `yaml:"flushOnWrite"`
@@ -222,6 +228,11 @@ type asyncLoggerConfig struct {
 	OverflowStrategyKebab string `yaml:"overflow-strategy"`
 	WaitStrategy          string `yaml:"waitStrategy"`
 	WaitStrategyKebab     string `yaml:"wait-strategy"`
+	WaitRetries           int    `yaml:"waitRetries"`
+	WaitRetriesKebab      int    `yaml:"wait-retries"`
+	SleepTime             string `yaml:"sleepTime"`
+	SleepTimeKebab        string `yaml:"sleep-time"`
+	Timeout               string `yaml:"timeout"`
 	IncludeLocation       *bool  `yaml:"includeLocation"`
 	IncludeLocationKebab  *bool  `yaml:"include-location"`
 }
@@ -586,6 +597,9 @@ func (c *fileConfig) validateAsyncLoggerConfig() error {
 	if _, err := ParseAsyncWaitStrategy(config.waitStrategy()); err != nil {
 		return fmt.Errorf("goark-log: asyncLogger: %w", err)
 	}
+	if err := validateAsyncWaitOptions(config.waitOptions()); err != nil {
+		return fmt.Errorf("goark-log: asyncLogger: %w", err)
+	}
 	return nil
 }
 
@@ -769,6 +783,15 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.WaitStrategyKebab, err = resolveStringLookup(lookups, c.WaitStrategyKebab); err != nil {
 		return fmt.Errorf("wait-strategy: %w", err)
+	}
+	if c.SleepTime, err = resolveStringLookup(lookups, c.SleepTime); err != nil {
+		return fmt.Errorf("sleepTime: %w", err)
+	}
+	if c.SleepTimeKebab, err = resolveStringLookup(lookups, c.SleepTimeKebab); err != nil {
+		return fmt.Errorf("sleep-time: %w", err)
+	}
+	if c.Timeout, err = resolveStringLookup(lookups, c.Timeout); err != nil {
+		return fmt.Errorf("timeout: %w", err)
 	}
 	if c.AppenderRefs, err = c.AppenderRefs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("appenderRefs: %w", err)
@@ -1176,6 +1199,15 @@ func (c *asyncLoggerConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.WaitStrategyKebab, err = resolveStringLookup(lookups, c.WaitStrategyKebab); err != nil {
 		return fmt.Errorf("wait-strategy: %w", err)
 	}
+	if c.SleepTime, err = resolveStringLookup(lookups, c.SleepTime); err != nil {
+		return fmt.Errorf("sleepTime: %w", err)
+	}
+	if c.SleepTimeKebab, err = resolveStringLookup(lookups, c.SleepTimeKebab); err != nil {
+		return fmt.Errorf("sleep-time: %w", err)
+	}
+	if c.Timeout, err = resolveStringLookup(lookups, c.Timeout); err != nil {
+		return fmt.Errorf("timeout: %w", err)
+	}
 	return nil
 }
 
@@ -1310,6 +1342,11 @@ func (c asyncLoggerConfig) empty() bool {
 		strings.TrimSpace(c.OverflowStrategyKebab) == "" &&
 		strings.TrimSpace(c.WaitStrategy) == "" &&
 		strings.TrimSpace(c.WaitStrategyKebab) == "" &&
+		c.WaitRetries == 0 &&
+		c.WaitRetriesKebab == 0 &&
+		strings.TrimSpace(c.SleepTime) == "" &&
+		strings.TrimSpace(c.SleepTimeKebab) == "" &&
+		strings.TrimSpace(c.Timeout) == "" &&
 		c.IncludeLocation == nil &&
 		c.IncludeLocationKebab == nil
 }
@@ -1324,6 +1361,7 @@ func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
 		BatchSize:        config.batchSize(),
 		OverflowStrategy: AsyncOverflowStrategy(config.overflowStrategy()),
 		WaitStrategy:     AsyncWaitStrategy(config.waitStrategy()),
+		WaitOptions:      config.waitOptions(),
 		IncludeLocation:  config.includeLocation(),
 	}
 	if config.Enabled != nil {
@@ -1361,6 +1399,14 @@ func (c asyncLoggerConfig) overflowStrategy() string {
 
 func (c asyncLoggerConfig) waitStrategy() string {
 	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
+}
+
+func (c asyncLoggerConfig) waitOptions() AsyncWaitOptions {
+	return AsyncWaitOptions{
+		Retries:   firstNonZero(c.WaitRetries, c.WaitRetriesKebab),
+		SleepTime: parseOptionalDuration(firstNonBlank(c.SleepTime, c.SleepTimeKebab)),
+		Timeout:   parseOptionalDuration(c.Timeout),
+	}
 }
 
 func (c asyncLoggerConfig) includeLocation() bool {
@@ -1566,6 +1612,14 @@ func (c appenderConfig) waitStrategy() string {
 	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
 }
 
+func (c appenderConfig) waitOptions() AsyncWaitOptions {
+	return AsyncWaitOptions{
+		Retries:   firstNonZero(c.WaitRetries, c.WaitRetriesKebab),
+		SleepTime: parseOptionalDuration(firstNonBlank(c.SleepTime, c.SleepTimeKebab)),
+		Timeout:   parseOptionalDuration(c.Timeout),
+	}
+}
+
 func (c appenderConfig) bufferSize() string {
 	return firstNonBlank(c.BufferSize, c.BufferSizeKebab)
 }
@@ -1594,6 +1648,7 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		QueueSize:        c.queueSize(),
 		OverflowStrategy: c.overflowStrategy(),
 		WaitStrategy:     c.waitStrategy(),
+		WaitOptions:      c.waitOptions(),
 		BufferSize:       c.bufferSize(),
 		FlushOnWrite:     c.flushOnWrite(),
 		Rolling: RollingBuildConfig{
@@ -2190,6 +2245,27 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstNonZero(values ...int) int {
+	for _, value := range values {
+		if value != 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func parseOptionalDuration(value string) time.Duration {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return 0
+	}
+	duration, err := time.ParseDuration(text)
+	if err != nil {
+		return -1
+	}
+	return duration
 }
 
 func sortedAppenderNames(appenders map[string]appenderConfig) []string {

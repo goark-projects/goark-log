@@ -123,6 +123,63 @@ loggers:
 	}
 }
 
+func TestLoadOptions_whenAsyncWaitOptionsConfigured_shouldPopulateRuntimeOptions(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, `
+asyncLogger:
+  enabled: true
+  queueSize: 16
+  batchSize: 4
+  waitStrategy: sleep
+  waitRetries: 17
+  sleepTime: 250us
+  timeout: 3ms
+appenders:
+  console:
+    type: console
+  async:
+    type: async
+    appenderRefs: [console]
+    waitStrategy: timeout
+    waitRetries: 9
+    sleepTime: 1ms
+    timeout: 5ms
+root:
+  level: info
+  appenderRefs: [async]
+`)
+	options, _, err := LoadOptions(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppenderList(options.Appenders)
+	if !options.Async.Enabled ||
+		options.Async.WaitStrategy != AsyncWaitSleep ||
+		options.Async.WaitOptions.Retries != 17 ||
+		options.Async.WaitOptions.SleepTime != 250*time.Microsecond ||
+		options.Async.WaitOptions.Timeout != 3*time.Millisecond {
+		t.Fatalf("async logger options = %+v", options.Async)
+	}
+	var asyncAppender *AsyncAppender
+	for _, appender := range options.Appenders {
+		if candidate, ok := appender.(*AsyncAppender); ok && candidate.Name() == "async" {
+			asyncAppender = candidate
+			break
+		}
+	}
+	if asyncAppender == nil {
+		t.Fatalf("async appender was not built: %+v", options.Appenders)
+	}
+	if asyncAppender.waitStrategy != AsyncWaitBlock ||
+		asyncAppender.waitOptions.Retries != 9 ||
+		asyncAppender.waitOptions.SleepTime != time.Millisecond ||
+		asyncAppender.waitOptions.Timeout != 5*time.Millisecond {
+		t.Fatalf("async appender wait options = strategy %s options %+v", asyncAppender.waitStrategy, asyncAppender.waitOptions)
+	}
+}
+
 func TestNewConfigured_whenLog4jStyleConfigurationWrapperUsed_shouldBuildGoYamlExperience(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

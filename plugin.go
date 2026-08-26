@@ -54,6 +54,7 @@ type AppenderBuildConfig struct {
 	QueueSize        int
 	OverflowStrategy string
 	WaitStrategy     string
+	WaitOptions      AsyncWaitOptions
 	BufferSize       string
 	FlushOnWrite     bool
 	Rolling          RollingBuildConfig
@@ -599,6 +600,10 @@ func buildAsyncPlugin(config AppenderBuildConfig) (Appender, error) {
 		WithAsyncName(config.Name),
 		WithAsyncOverflowStrategy(strategy),
 	}
+	if err := validateAsyncWaitOptions(config.WaitOptions); err != nil {
+		return nil, fmt.Errorf("goark-log: async appender %q: %w", config.Name, err)
+	}
+	options = append(options, WithAsyncWaitOptions(config.WaitOptions))
 	waitStrategy, err := ParseAsyncWaitStrategy(config.WaitStrategy)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: async appender %q: %w", config.Name, err)
