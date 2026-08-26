@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +24,8 @@ const (
 	DefaultRollingMaxSize int64 = 10 * 1024 * 1024
 	// DefaultRollingMaxBackups 是 RollingFileAppender 默认保留档案数量。
 	DefaultRollingMaxBackups = 7
+	// DefaultRollingActionQueueSize 是异步滚动动作队列默认长度。
+	DefaultRollingActionQueueSize = 32
 )
 
 // RollingFileAppender 支持按大小、按时间和启动时滚动的文件 appender。
@@ -35,10 +38,14 @@ type RollingFileAppender struct {
 	flushOnWrite      bool
 	maxSize           int64
 	interval          time.Duration
+	modulate          bool
 	rolloverOnStartup bool
 	maxBackups        int
 	maxAge            time.Duration
 	compress          bool
+	asyncActions      bool
+	actionQueueSize   int
+	deleteActions     []RollingDeleteAction
 	clock             func() time.Time
 
 	mu           sync.Mutex
@@ -48,10 +55,24 @@ type RollingFileAppender struct {
 	nextRollover time.Time
 	archiveIndex int
 	closed       bool
+
+	actionMu     sync.Mutex
+	actionQueue  chan func() error
+	actionClosed bool
+	actionErr    error
+	actionWG     sync.WaitGroup
 }
 
 // RollingFileOption 调整 RollingFileAppender。
 type RollingFileOption func(*RollingFileAppender)
+
+// RollingDeleteAction 描述滚动后执行的归档删除动作。
+type RollingDeleteAction struct {
+	BasePath string
+	MaxDepth int
+	Glob     string
+	MaxAge   time.Duration
+}
 
 // WithRollingFileName 设置 appender 名称。
 func WithRollingFileName(name string) RollingFileOption {
@@ -95,6 +116,13 @@ func WithRollingInterval(interval time.Duration) RollingFileOption {
 	}
 }
 
+// WithRollingTimeModulate 设置时间滚动是否对齐到时间边界。
+func WithRollingTimeModulate(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.modulate = enabled
+	}
+}
+
 // WithRollingFilePattern 设置滚动档案路径模式，支持 %d{layout} 和 %i。
 func WithRollingFilePattern(pattern string) RollingFileOption {
 	return func(appender *RollingFileAppender) {
@@ -130,6 +158,27 @@ func WithRollingGzip(enabled bool) RollingFileOption {
 	}
 }
 
+// WithRollingAsyncActions 设置压缩和清理动作是否由后台串行执行。
+func WithRollingAsyncActions(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.asyncActions = enabled
+	}
+}
+
+// WithRollingActionQueueSize 设置后台滚动动作队列长度。
+func WithRollingActionQueueSize(size int) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.actionQueueSize = size
+	}
+}
+
+// WithRollingDeleteActions 设置滚动后的归档删除动作。
+func WithRollingDeleteActions(actions ...RollingDeleteAction) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.deleteActions = append([]RollingDeleteAction(nil), actions...)
+	}
+}
+
 func withRollingClock(clock func() time.Time) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.clock = clock
@@ -149,6 +198,7 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		bufferSize: DefaultFileBufferSize,
 		maxSize:    DefaultRollingMaxSize,
 		maxBackups: DefaultRollingMaxBackups,
+		modulate:   true,
 		clock:      time.Now,
 	}
 	for _, option := range options {
@@ -159,7 +209,9 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 	if err := appender.validate(); err != nil {
 		return nil, err
 	}
+	appender.startActionWorker()
 	if err := appender.open(); err != nil {
+		_ = appender.closeActionWorker()
 		return nil, err
 	}
 	if appender.rolloverOnStartup && appender.size > 0 {
@@ -241,15 +293,16 @@ func (a *RollingFileAppender) Close() error {
 	a.closed = true
 	flushErr := a.flushLocked()
 	if a.file == nil {
-		return flushErr
+		return errors.Join(flushErr, a.closeActionWorker())
 	}
 	err := a.file.Close()
 	a.file = nil
 	a.writer = nil
+	actionErr := a.closeActionWorker()
 	if flushErr != nil {
-		return flushErr
+		return errors.Join(flushErr, actionErr)
 	}
-	return err
+	return errors.Join(err, actionErr)
 }
 
 func (a *RollingFileAppender) validate() error {
@@ -273,6 +326,19 @@ func (a *RollingFileAppender) validate() error {
 	}
 	if a.maxAge < 0 {
 		return fmt.Errorf("goark-log: rolling max age must be >= 0")
+	}
+	if a.actionQueueSize < 0 {
+		return fmt.Errorf("goark-log: rolling action queue size must be >= 0")
+	}
+	if a.actionQueueSize == 0 {
+		a.actionQueueSize = DefaultRollingActionQueueSize
+	}
+	for index, action := range a.deleteActions {
+		normalized, err := normalizeRollingDeleteAction(action)
+		if err != nil {
+			return fmt.Errorf("goark-log: rolling delete action %d: %w", index, err)
+		}
+		a.deleteActions[index] = normalized
 	}
 	if a.filePattern != "" {
 		if a.maxSize > 0 && !rollingPatternHasIndex(a.filePattern) {
@@ -313,7 +379,7 @@ func (a *RollingFileAppender) open() error {
 		a.writer = bufio.NewWriterSize(file, a.bufferSize)
 	}
 	a.size = info.Size()
-	a.nextRollover = nextRolloverAfter(a.now(), a.interval)
+	a.nextRollover = nextRolloverAfter(a.now(), a.interval, a.modulate)
 	if err := a.initArchiveIndex(); err != nil {
 		_ = file.Close()
 		a.file = nil
@@ -348,22 +414,11 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 	if err != nil {
 		return err
 	}
+	archiveIndex := a.archiveIndex - 1
 	if err := os.Rename(a.path, target); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("goark-log: rename log file %q to %q: %w", a.path, target, err)
 		}
-	}
-	if a.compress {
-		_, compressedTarget, err := a.archivePaths(now, a.archiveIndex-1)
-		if err != nil {
-			return err
-		}
-		if _, err := compressFileTo(target, compressedTarget); err != nil {
-			return err
-		}
-	}
-	if err := a.deleteExpiredArchives(now); err != nil {
-		return err
 	}
 	file, err := openLogFile(a.path)
 	if err != nil {
@@ -374,8 +429,8 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		a.writer = bufio.NewWriterSize(file, a.bufferSize)
 	}
 	a.size = 0
-	a.nextRollover = nextRolloverAfter(now, a.interval)
-	return nil
+	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
+	return a.runRolloverActions(now, target, archiveIndex)
 }
 
 func (a *RollingFileAppender) flushLocked() error {
@@ -794,15 +849,215 @@ type archiveFile struct {
 	name string
 }
 
-func nextRolloverAfter(now time.Time, interval time.Duration) time.Time {
+func nextRolloverAfter(now time.Time, interval time.Duration, modulate bool) time.Time {
 	if interval <= 0 {
 		return time.Time{}
+	}
+	if !modulate {
+		return now.Add(interval)
+	}
+	if interval == 24*time.Hour {
+		year, month, day := now.Date()
+		return time.Date(year, month, day+1, 0, 0, 0, 0, now.Location())
+	}
+	if interval == time.Hour {
+		return now.Truncate(time.Hour).Add(time.Hour)
+	}
+	if interval == time.Minute {
+		return now.Truncate(time.Minute).Add(time.Minute)
 	}
 	truncated := now.Truncate(interval)
 	if truncated.Equal(now) {
 		return now.Add(interval)
 	}
 	return truncated.Add(interval)
+}
+
+func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteAction, error) {
+	action.BasePath = strings.TrimSpace(action.BasePath)
+	if action.BasePath == "" {
+		return RollingDeleteAction{}, fmt.Errorf("basePath is empty")
+	}
+	action.BasePath = filepath.Clean(action.BasePath)
+	action.Glob = strings.TrimSpace(action.Glob)
+	if action.Glob == "" {
+		action.Glob = "*"
+	}
+	if _, err := filepath.Match(action.Glob, "probe"); err != nil {
+		return RollingDeleteAction{}, fmt.Errorf("glob %q is invalid: %w", action.Glob, err)
+	}
+	if action.MaxDepth < 0 {
+		return RollingDeleteAction{}, fmt.Errorf("maxDepth must be >= 0")
+	}
+	if action.MaxDepth == 0 {
+		action.MaxDepth = 1
+	}
+	if action.MaxAge < 0 {
+		return RollingDeleteAction{}, fmt.Errorf("maxAge must be >= 0")
+	}
+	return action, nil
+}
+
+func (a *RollingFileAppender) startActionWorker() {
+	if a == nil || !a.asyncActions {
+		return
+	}
+	a.actionQueue = make(chan func() error, a.actionQueueSize)
+	a.actionWG.Add(1)
+	go a.runActionWorker()
+}
+
+func (a *RollingFileAppender) runActionWorker() {
+	defer a.actionWG.Done()
+	for action := range a.actionQueue {
+		if action == nil {
+			continue
+		}
+		if err := action(); err != nil {
+			a.actionMu.Lock()
+			a.actionErr = errors.Join(a.actionErr, err)
+			a.actionMu.Unlock()
+		}
+	}
+}
+
+func (a *RollingFileAppender) closeActionWorker() error {
+	if a == nil {
+		return nil
+	}
+	a.actionMu.Lock()
+	queue := a.actionQueue
+	if queue == nil || a.actionClosed {
+		err := a.actionErr
+		a.actionMu.Unlock()
+		return err
+	}
+	a.actionClosed = true
+	close(queue)
+	a.actionMu.Unlock()
+	a.actionWG.Wait()
+	a.actionMu.Lock()
+	err := a.actionErr
+	a.actionMu.Unlock()
+	return err
+}
+
+func (a *RollingFileAppender) runRolloverActions(now time.Time, target string, archiveIndex int) error {
+	_, compressedTarget, err := a.archivePaths(now, archiveIndex)
+	if err != nil {
+		return err
+	}
+	action := func() error {
+		var joined error
+		if a.compress {
+			if _, err := compressFileTo(target, compressedTarget); err != nil {
+				joined = errors.Join(joined, err)
+			}
+		}
+		joined = errors.Join(joined, a.deleteExpiredArchives(now))
+		joined = errors.Join(joined, a.runDeleteActions(now))
+		return joined
+	}
+	if !a.asyncActions {
+		return action()
+	}
+	return a.enqueueRolloverAction(action)
+}
+
+func (a *RollingFileAppender) enqueueRolloverAction(action func() error) error {
+	a.actionMu.Lock()
+	queue := a.actionQueue
+	closed := a.actionClosed
+	a.actionMu.Unlock()
+	if queue == nil || closed {
+		return action()
+	}
+	select {
+	case queue <- action:
+		return nil
+	default:
+		return action()
+	}
+}
+
+func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
+	var joined error
+	for _, action := range a.deleteActions {
+		joined = errors.Join(joined, deleteArchivesByAction(now, action))
+	}
+	return joined
+}
+
+func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
+	info, err := os.Stat(action.BasePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("goark-log: stat rolling delete basePath %q: %w", action.BasePath, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("goark-log: rolling delete basePath %q is not a directory", action.BasePath)
+	}
+	cutoff := time.Time{}
+	if action.MaxAge > 0 {
+		cutoff = now.Add(-action.MaxAge)
+	}
+	return filepath.WalkDir(action.BasePath, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == action.BasePath {
+			return nil
+		}
+		depth := relativeDepth(action.BasePath, path)
+		if entry.IsDir() {
+			if depth > action.MaxDepth {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if depth > action.MaxDepth {
+			return nil
+		}
+		matched, err := rollingDeleteGlobMatch(action.Glob, action.BasePath, path)
+		if err != nil {
+			return err
+		}
+		if !matched {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !cutoff.IsZero() && !info.ModTime().Before(cutoff) {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
+}
+
+func relativeDepth(basePath string, path string) int {
+	relative, err := filepath.Rel(basePath, path)
+	if err != nil || relative == "." {
+		return 0
+	}
+	return strings.Count(filepath.ToSlash(relative), "/") + 1
+}
+
+func rollingDeleteGlobMatch(glob string, basePath string, path string) (bool, error) {
+	if matched, err := filepath.Match(glob, filepath.Base(path)); err != nil || matched {
+		return matched, err
+	}
+	relative, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return false, err
+	}
+	return filepath.Match(filepath.ToSlash(glob), filepath.ToSlash(relative))
 }
 
 func compressFile(path string) (string, error) {

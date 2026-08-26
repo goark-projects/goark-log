@@ -61,19 +61,103 @@ type layoutConfig struct {
 }
 
 type rollingConfig struct {
-	FilePattern      string `yaml:"filePattern"`
-	FilePatternKebab string `yaml:"file-pattern"`
-	MaxSize          string `yaml:"maxSize"`
-	MaxSizeKebab     string `yaml:"max-size"`
-	Interval         string `yaml:"interval"`
-	OnStartup        bool   `yaml:"onStartup"`
-	OnStartupKebab   bool   `yaml:"on-startup"`
-	MaxBackups       *int   `yaml:"maxBackups"`
-	MaxBackupsKebab  *int   `yaml:"max-backups"`
-	MaxAge           string `yaml:"maxAge"`
-	MaxAgeKebab      string `yaml:"max-age"`
-	Gzip             bool   `yaml:"gzip"`
-	Compress         bool   `yaml:"compress"`
+	FilePattern          string                `yaml:"filePattern"`
+	FilePatternKebab     string                `yaml:"file-pattern"`
+	MaxSize              string                `yaml:"maxSize"`
+	MaxSizeKebab         string                `yaml:"max-size"`
+	Interval             string                `yaml:"interval"`
+	OnStartup            bool                  `yaml:"onStartup"`
+	OnStartupKebab       bool                  `yaml:"on-startup"`
+	MaxBackups           *int                  `yaml:"maxBackups"`
+	MaxBackupsKebab      *int                  `yaml:"max-backups"`
+	MaxAge               string                `yaml:"maxAge"`
+	MaxAgeKebab          string                `yaml:"max-age"`
+	Gzip                 bool                  `yaml:"gzip"`
+	Compress             bool                  `yaml:"compress"`
+	AsyncActions         bool                  `yaml:"asyncActions"`
+	AsyncActionsKebab    bool                  `yaml:"async-actions"`
+	ActionQueueSize      int                   `yaml:"actionQueueSize"`
+	ActionQueueSizeKebab int                   `yaml:"action-queue-size"`
+	Policies             rollingPoliciesConfig `yaml:"policies"`
+	Strategy             rollingStrategyConfig `yaml:"strategy"`
+}
+
+type rollingPoliciesConfig struct {
+	Size                         rollingSizePolicyConfig    `yaml:"size"`
+	SizeKebab                    rollingSizePolicyConfig    `yaml:"size-based-triggering-policy"`
+	SizeBasedTriggeringPolicy    rollingSizePolicyConfig    `yaml:"sizeBasedTriggeringPolicy"`
+	SizeBasedTriggeringPolicyXML rollingSizePolicyConfig    `yaml:"SizeBasedTriggeringPolicy"`
+	Time                         rollingTimePolicyConfig    `yaml:"time"`
+	TimeKebab                    rollingTimePolicyConfig    `yaml:"time-based-triggering-policy"`
+	TimeBasedTriggeringPolicy    rollingTimePolicyConfig    `yaml:"timeBasedTriggeringPolicy"`
+	TimeBasedTriggeringPolicyXML rollingTimePolicyConfig    `yaml:"TimeBasedTriggeringPolicy"`
+	Startup                      rollingStartupPolicyConfig `yaml:"startup"`
+	StartupKebab                 rollingStartupPolicyConfig `yaml:"on-startup-triggering-policy"`
+	OnStartupTriggeringPolicy    rollingStartupPolicyConfig `yaml:"onStartupTriggeringPolicy"`
+	OnStartupTriggeringPolicyXML rollingStartupPolicyConfig `yaml:"OnStartupTriggeringPolicy"`
+}
+
+type rollingSizePolicyConfig struct {
+	Size         string `yaml:"size"`
+	MaxSize      string `yaml:"maxSize"`
+	MaxSizeKebab string `yaml:"max-size"`
+}
+
+type rollingTimePolicyConfig struct {
+	Interval string `yaml:"interval"`
+	Every    string `yaml:"every"`
+	Unit     string `yaml:"unit"`
+	Modulate *bool  `yaml:"modulate"`
+}
+
+type rollingStartupPolicyConfig struct {
+	Enabled *bool `yaml:"enabled"`
+}
+
+type rollingStrategyConfig struct {
+	Max                  *int                        `yaml:"max"`
+	MaxBackups           *int                        `yaml:"maxBackups"`
+	MaxBackupsKebab      *int                        `yaml:"max-backups"`
+	MaxAge               string                      `yaml:"maxAge"`
+	MaxAgeKebab          string                      `yaml:"max-age"`
+	FileIndex            string                      `yaml:"fileIndex"`
+	FileIndexKebab       string                      `yaml:"file-index"`
+	AsyncActions         bool                        `yaml:"asyncActions"`
+	AsyncActionsKebab    bool                        `yaml:"async-actions"`
+	ActionQueueSize      int                         `yaml:"actionQueueSize"`
+	ActionQueueSizeKebab int                         `yaml:"action-queue-size"`
+	Compression          rollingCompressionConfig    `yaml:"compression"`
+	Delete               rollingDeleteActionConfig   `yaml:"delete"`
+	DeleteActions        []rollingDeleteActionConfig `yaml:"deleteActions"`
+	DeleteActionsKebab   []rollingDeleteActionConfig `yaml:"delete-actions"`
+}
+
+type rollingCompressionConfig struct {
+	Gzip     bool `yaml:"gzip"`
+	Compress bool `yaml:"compress"`
+	Async    bool `yaml:"async"`
+}
+
+type rollingDeleteActionConfig struct {
+	BasePath            string                          `yaml:"basePath"`
+	BasePathKebab       string                          `yaml:"base-path"`
+	MaxDepth            *int                            `yaml:"maxDepth"`
+	MaxDepthKebab       *int                            `yaml:"max-depth"`
+	Glob                string                          `yaml:"glob"`
+	Age                 string                          `yaml:"age"`
+	Async               bool                            `yaml:"async"`
+	IfFileName          rollingDeleteFileNameConfig     `yaml:"ifFileName"`
+	IfFileNameKebab     rollingDeleteFileNameConfig     `yaml:"if-file-name"`
+	IfLastModified      rollingDeleteLastModifiedConfig `yaml:"ifLastModified"`
+	IfLastModifiedKebab rollingDeleteLastModifiedConfig `yaml:"if-last-modified"`
+}
+
+type rollingDeleteFileNameConfig struct {
+	Glob string `yaml:"glob"`
+}
+
+type rollingDeleteLastModifiedConfig struct {
+	Age string `yaml:"age"`
 }
 
 type asyncLoggerConfig struct {
@@ -450,6 +534,141 @@ func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.MaxAgeKebab, err = resolveStringLookup(lookups, c.MaxAgeKebab); err != nil {
 		return fmt.Errorf("max-age: %w", err)
+	}
+	if err := c.Policies.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("policies: %w", err)
+	}
+	if err := c.Strategy.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("strategy: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingPoliciesConfig) resolveLookups(lookups *LookupResolver) error {
+	policies := []*rollingSizePolicyConfig{
+		&c.Size,
+		&c.SizeKebab,
+		&c.SizeBasedTriggeringPolicy,
+		&c.SizeBasedTriggeringPolicyXML,
+	}
+	for _, policy := range policies {
+		if err := policy.resolveLookups(lookups); err != nil {
+			return err
+		}
+	}
+	timePolicies := []*rollingTimePolicyConfig{
+		&c.Time,
+		&c.TimeKebab,
+		&c.TimeBasedTriggeringPolicy,
+		&c.TimeBasedTriggeringPolicyXML,
+	}
+	for _, policy := range timePolicies {
+		if err := policy.resolveLookups(lookups); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *rollingSizePolicyConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Size, err = resolveStringLookup(lookups, c.Size); err != nil {
+		return fmt.Errorf("size: %w", err)
+	}
+	if c.MaxSize, err = resolveStringLookup(lookups, c.MaxSize); err != nil {
+		return fmt.Errorf("maxSize: %w", err)
+	}
+	if c.MaxSizeKebab, err = resolveStringLookup(lookups, c.MaxSizeKebab); err != nil {
+		return fmt.Errorf("max-size: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingTimePolicyConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Interval, err = resolveStringLookup(lookups, c.Interval); err != nil {
+		return fmt.Errorf("interval: %w", err)
+	}
+	if c.Every, err = resolveStringLookup(lookups, c.Every); err != nil {
+		return fmt.Errorf("every: %w", err)
+	}
+	if c.Unit, err = resolveStringLookup(lookups, c.Unit); err != nil {
+		return fmt.Errorf("unit: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingStrategyConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.MaxAge, err = resolveStringLookup(lookups, c.MaxAge); err != nil {
+		return fmt.Errorf("maxAge: %w", err)
+	}
+	if c.MaxAgeKebab, err = resolveStringLookup(lookups, c.MaxAgeKebab); err != nil {
+		return fmt.Errorf("max-age: %w", err)
+	}
+	if c.FileIndex, err = resolveStringLookup(lookups, c.FileIndex); err != nil {
+		return fmt.Errorf("fileIndex: %w", err)
+	}
+	if c.FileIndexKebab, err = resolveStringLookup(lookups, c.FileIndexKebab); err != nil {
+		return fmt.Errorf("file-index: %w", err)
+	}
+	if err := c.Delete.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
+	for index := range c.DeleteActions {
+		if err := c.DeleteActions[index].resolveLookups(lookups); err != nil {
+			return fmt.Errorf("deleteActions[%d]: %w", index, err)
+		}
+	}
+	for index := range c.DeleteActionsKebab {
+		if err := c.DeleteActionsKebab[index].resolveLookups(lookups); err != nil {
+			return fmt.Errorf("delete-actions[%d]: %w", index, err)
+		}
+	}
+	return nil
+}
+
+func (c *rollingDeleteActionConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.BasePath, err = resolveStringLookup(lookups, c.BasePath); err != nil {
+		return fmt.Errorf("basePath: %w", err)
+	}
+	if c.BasePathKebab, err = resolveStringLookup(lookups, c.BasePathKebab); err != nil {
+		return fmt.Errorf("base-path: %w", err)
+	}
+	if c.Glob, err = resolveStringLookup(lookups, c.Glob); err != nil {
+		return fmt.Errorf("glob: %w", err)
+	}
+	if c.Age, err = resolveStringLookup(lookups, c.Age); err != nil {
+		return fmt.Errorf("age: %w", err)
+	}
+	if err := c.IfFileName.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("ifFileName: %w", err)
+	}
+	if err := c.IfFileNameKebab.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("if-file-name: %w", err)
+	}
+	if err := c.IfLastModified.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("ifLastModified: %w", err)
+	}
+	if err := c.IfLastModifiedKebab.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("if-last-modified: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingDeleteFileNameConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Glob, err = resolveStringLookup(lookups, c.Glob); err != nil {
+		return fmt.Errorf("glob: %w", err)
+	}
+	return nil
+}
+
+func (c *rollingDeleteLastModifiedConfig) resolveLookups(lookups *LookupResolver) error {
+	var err error
+	if c.Age, err = resolveStringLookup(lookups, c.Age); err != nil {
+		return fmt.Errorf("age: %w", err)
 	}
 	return nil
 }
@@ -837,13 +1056,18 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		BufferSize:       c.bufferSize(),
 		FlushOnWrite:     c.flushOnWrite(),
 		Rolling: RollingBuildConfig{
-			FilePattern: c.Rolling.filePattern(),
-			MaxSize:     c.Rolling.maxSize(),
-			Interval:    c.Rolling.Interval,
-			OnStartup:   c.Rolling.onStartup(),
-			MaxBackups:  c.Rolling.maxBackupsPointer(),
-			MaxAge:      c.Rolling.maxAge(),
-			Gzip:        c.Rolling.gzipEnabled(),
+			FilePattern:     c.Rolling.filePattern(),
+			MaxSize:         c.Rolling.maxSize(),
+			Interval:        c.Rolling.interval(),
+			TimeModulate:    c.Rolling.timeModulate(),
+			OnStartup:       c.Rolling.onStartup(),
+			MaxBackups:      c.Rolling.maxBackupsPointer(),
+			MaxAge:          c.Rolling.maxAge(),
+			FileIndex:       c.Rolling.fileIndex(),
+			Gzip:            c.Rolling.gzipEnabled(),
+			AsyncActions:    c.Rolling.asyncActions(),
+			DeleteActions:   c.Rolling.deleteActions(c.fileName()),
+			ActionQueueSize: c.Rolling.actionQueueSize(),
 		},
 	}
 }
@@ -853,17 +1077,38 @@ func (c rollingConfig) filePattern() string {
 }
 
 func (c rollingConfig) maxSize() string {
+	if value := c.Policies.sizePolicy().size(); value != "" {
+		return value
+	}
 	if strings.TrimSpace(c.MaxSize) != "" {
 		return strings.TrimSpace(c.MaxSize)
 	}
 	return strings.TrimSpace(c.MaxSizeKebab)
 }
 
+func (c rollingConfig) interval() string {
+	if value := c.Policies.timePolicy().interval(); value != "" {
+		return value
+	}
+	return strings.TrimSpace(c.Interval)
+}
+
+func (c rollingConfig) timeModulate() *bool {
+	return c.Policies.timePolicy().Modulate
+}
+
 func (c rollingConfig) maxAge() string {
-	return firstNonBlank(c.MaxAge, c.MaxAgeKebab)
+	return firstNonBlank(c.Strategy.MaxAge, c.Strategy.MaxAgeKebab, c.MaxAge, c.MaxAgeKebab)
+}
+
+func (c rollingConfig) fileIndex() string {
+	return firstNonBlank(c.Strategy.FileIndex, c.Strategy.FileIndexKebab)
 }
 
 func (c rollingConfig) onStartup() bool {
+	if enabled := c.Policies.startupPolicy().Enabled; enabled != nil {
+		return *enabled
+	}
 	return c.OnStartup || c.OnStartupKebab
 }
 
@@ -878,6 +1123,18 @@ func (c rollingConfig) maxBackups() (int, bool) {
 }
 
 func (c rollingConfig) maxBackupsPointer() *int {
+	if c.Strategy.Max != nil {
+		value := *c.Strategy.Max
+		return &value
+	}
+	if c.Strategy.MaxBackups != nil {
+		value := *c.Strategy.MaxBackups
+		return &value
+	}
+	if c.Strategy.MaxBackupsKebab != nil {
+		value := *c.Strategy.MaxBackupsKebab
+		return &value
+	}
 	if c.MaxBackups != nil {
 		value := *c.MaxBackups
 		return &value
@@ -890,7 +1147,164 @@ func (c rollingConfig) maxBackupsPointer() *int {
 }
 
 func (c rollingConfig) gzipEnabled() bool {
-	return c.Gzip || c.Compress
+	return c.Gzip || c.Compress || c.Strategy.Compression.Gzip || c.Strategy.Compression.Compress
+}
+
+func (c rollingConfig) asyncActions() bool {
+	return c.AsyncActions || c.AsyncActionsKebab ||
+		c.Strategy.AsyncActions || c.Strategy.AsyncActionsKebab ||
+		c.Strategy.Compression.Async || c.Strategy.Delete.Async ||
+		containsAsyncDeleteAction(c.Strategy.DeleteActions) ||
+		containsAsyncDeleteAction(c.Strategy.DeleteActionsKebab)
+}
+
+func (c rollingConfig) actionQueueSize() int {
+	if c.ActionQueueSize > 0 {
+		return c.ActionQueueSize
+	}
+	if c.ActionQueueSizeKebab > 0 {
+		return c.ActionQueueSizeKebab
+	}
+	if c.Strategy.ActionQueueSize > 0 {
+		return c.Strategy.ActionQueueSize
+	}
+	return c.Strategy.ActionQueueSizeKebab
+}
+
+func (c rollingConfig) deleteActions(fileName string) []RollingDeleteBuildConfig {
+	defaultBase := c.defaultDeleteBasePath(fileName)
+	configs := make([]rollingDeleteActionConfig, 0, 1+len(c.Strategy.DeleteActions)+len(c.Strategy.DeleteActionsKebab))
+	if !c.Strategy.Delete.empty() {
+		configs = append(configs, c.Strategy.Delete)
+	}
+	for _, action := range c.Strategy.DeleteActions {
+		if !action.empty() {
+			configs = append(configs, action)
+		}
+	}
+	for _, action := range c.Strategy.DeleteActionsKebab {
+		if !action.empty() {
+			configs = append(configs, action)
+		}
+	}
+	if len(configs) == 0 {
+		return nil
+	}
+	actions := make([]RollingDeleteBuildConfig, 0, len(configs))
+	for _, config := range configs {
+		action := config.build(defaultBase)
+		actions = append(actions, action)
+	}
+	return actions
+}
+
+func (c rollingConfig) defaultDeleteBasePath(fileName string) string {
+	if pattern := c.filePattern(); pattern != "" {
+		return filepathDir(pattern)
+	}
+	if strings.TrimSpace(fileName) != "" {
+		return filepathDir(fileName)
+	}
+	return "."
+}
+
+func (c rollingPoliciesConfig) sizePolicy() rollingSizePolicyConfig {
+	for _, policy := range []rollingSizePolicyConfig{
+		c.Size,
+		c.SizeKebab,
+		c.SizeBasedTriggeringPolicy,
+		c.SizeBasedTriggeringPolicyXML,
+	} {
+		if !policy.empty() {
+			return policy
+		}
+	}
+	return rollingSizePolicyConfig{}
+}
+
+func (c rollingPoliciesConfig) timePolicy() rollingTimePolicyConfig {
+	for _, policy := range []rollingTimePolicyConfig{
+		c.Time,
+		c.TimeKebab,
+		c.TimeBasedTriggeringPolicy,
+		c.TimeBasedTriggeringPolicyXML,
+	} {
+		if !policy.empty() {
+			return policy
+		}
+	}
+	return rollingTimePolicyConfig{}
+}
+
+func (c rollingPoliciesConfig) startupPolicy() rollingStartupPolicyConfig {
+	for _, policy := range []rollingStartupPolicyConfig{
+		c.Startup,
+		c.StartupKebab,
+		c.OnStartupTriggeringPolicy,
+		c.OnStartupTriggeringPolicyXML,
+	} {
+		if policy.Enabled != nil {
+			return policy
+		}
+	}
+	return rollingStartupPolicyConfig{}
+}
+
+func (c rollingSizePolicyConfig) empty() bool {
+	return firstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab) == ""
+}
+
+func (c rollingSizePolicyConfig) size() string {
+	return firstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab)
+}
+
+func (c rollingTimePolicyConfig) empty() bool {
+	return firstNonBlank(c.Interval, c.Every, c.Unit) == "" && c.Modulate == nil
+}
+
+func (c rollingTimePolicyConfig) interval() string {
+	if strings.TrimSpace(c.Unit) == "" {
+		return firstNonBlank(c.Interval, c.Every)
+	}
+	return strings.TrimSpace(firstNonBlank(c.Interval, c.Every)) + strings.TrimSpace(c.Unit)
+}
+
+func (c rollingDeleteActionConfig) empty() bool {
+	return firstNonBlank(c.BasePath, c.BasePathKebab, c.Glob, c.Age,
+		c.IfFileName.Glob, c.IfFileNameKebab.Glob,
+		c.IfLastModified.Age, c.IfLastModifiedKebab.Age) == "" &&
+		c.MaxDepth == nil && c.MaxDepthKebab == nil
+}
+
+func (c rollingDeleteActionConfig) build(defaultBase string) RollingDeleteBuildConfig {
+	config := RollingDeleteBuildConfig{
+		BasePath: firstNonBlank(c.BasePath, c.BasePathKebab, defaultBase),
+		Glob:     firstNonBlank(c.Glob, c.IfFileName.Glob, c.IfFileNameKebab.Glob),
+		MaxAge:   firstNonBlank(c.Age, c.IfLastModified.Age, c.IfLastModifiedKebab.Age),
+	}
+	if c.MaxDepth != nil {
+		config.MaxDepth = *c.MaxDepth
+	} else if c.MaxDepthKebab != nil {
+		config.MaxDepth = *c.MaxDepthKebab
+	}
+	return config
+}
+
+func containsAsyncDeleteAction(actions []rollingDeleteActionConfig) bool {
+	for _, action := range actions {
+		if action.Async {
+			return true
+		}
+	}
+	return false
+}
+
+func filepathDir(path string) string {
+	index := strings.LastIndexAny(path, `/\`)
+	if index < 0 {
+		return "."
+	}
+	return path[:index]
 }
 
 func (c loggerConfig) refs() []string {

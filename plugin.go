@@ -34,13 +34,26 @@ type AppenderBuildConfig struct {
 
 // RollingBuildConfig 是滚动文件插件的构建输入。
 type RollingBuildConfig struct {
-	FilePattern string
-	MaxSize     string
-	Interval    string
-	OnStartup   bool
-	MaxBackups  *int
-	MaxAge      string
-	Gzip        bool
+	FilePattern     string
+	MaxSize         string
+	Interval        string
+	TimeModulate    *bool
+	OnStartup       bool
+	MaxBackups      *int
+	MaxAge          string
+	FileIndex       string
+	Gzip            bool
+	AsyncActions    bool
+	DeleteActions   []RollingDeleteBuildConfig
+	ActionQueueSize int
+}
+
+// RollingDeleteBuildConfig 是 YAML 删除动作的中间配置。
+type RollingDeleteBuildConfig struct {
+	BasePath string
+	MaxDepth int
+	Glob     string
+	MaxAge   string
 }
 
 // LayoutBuildConfig 是 layout 插件的构建输入。
@@ -296,6 +309,13 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	if strings.TrimSpace(config.Rolling.FilePattern) != "" {
 		options = append(options, WithRollingFilePattern(config.Rolling.FilePattern))
 	}
+	if value := strings.ToLower(strings.TrimSpace(config.Rolling.FileIndex)); value != "" {
+		switch value {
+		case "max", "nomax", "no-max", "none":
+		default:
+			return nil, fmt.Errorf("goark-log: appender %q rolling fileIndex %q is unsupported", config.Name, config.Rolling.FileIndex)
+		}
+	}
 	if value := config.Rolling.MaxSize; value != "" {
 		size, err := ParseByteSize(value)
 		if err != nil {
@@ -309,6 +329,9 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
 		}
 		options = append(options, WithRollingInterval(interval))
+	}
+	if config.Rolling.TimeModulate != nil {
+		options = append(options, WithRollingTimeModulate(*config.Rolling.TimeModulate))
 	}
 	if config.Rolling.OnStartup {
 		options = append(options, WithRolloverOnStartup(true))
@@ -326,7 +349,40 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 	if config.Rolling.Gzip {
 		options = append(options, WithRollingGzip(true))
 	}
+	if config.Rolling.AsyncActions {
+		options = append(options, WithRollingAsyncActions(true))
+	}
+	if config.Rolling.ActionQueueSize > 0 {
+		options = append(options, WithRollingActionQueueSize(config.Rolling.ActionQueueSize))
+	}
+	if len(config.Rolling.DeleteActions) > 0 {
+		actions := make([]RollingDeleteAction, 0, len(config.Rolling.DeleteActions))
+		for index, actionConfig := range config.Rolling.DeleteActions {
+			action, err := buildRollingDeleteAction(actionConfig)
+			if err != nil {
+				return nil, fmt.Errorf("goark-log: appender %q rolling delete action %d: %w", config.Name, index, err)
+			}
+			actions = append(actions, action)
+		}
+		options = append(options, WithRollingDeleteActions(actions...))
+	}
 	return NewRollingFileAppender(config.FileName, options...)
+}
+
+func buildRollingDeleteAction(config RollingDeleteBuildConfig) (RollingDeleteAction, error) {
+	action := RollingDeleteAction{
+		BasePath: config.BasePath,
+		MaxDepth: config.MaxDepth,
+		Glob:     config.Glob,
+	}
+	if strings.TrimSpace(config.MaxAge) != "" {
+		age, err := ParseRollingMaxAge(config.MaxAge)
+		if err != nil {
+			return RollingDeleteAction{}, err
+		}
+		action.MaxAge = age
+	}
+	return action, nil
 }
 
 func buildAsyncPlugin(config AppenderBuildConfig) (Appender, error) {

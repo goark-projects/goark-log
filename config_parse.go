@@ -61,6 +61,9 @@ func ParseRollingInterval(value string) (time.Duration, error) {
 	case "day", "daily":
 		return 24 * time.Hour, nil
 	default:
+		if interval, ok, err := parseRollingIntervalWithDayUnit(text); ok || err != nil {
+			return interval, err
+		}
 		interval, err := time.ParseDuration(text)
 		if err != nil {
 			return 0, fmt.Errorf("goark-log: invalid rolling interval %q", value)
@@ -70,6 +73,37 @@ func ParseRollingInterval(value string) (time.Duration, error) {
 		}
 		return interval, nil
 	}
+}
+
+func parseRollingIntervalWithDayUnit(text string) (time.Duration, bool, error) {
+	units := []struct {
+		suffix string
+		scale  time.Duration
+	}{
+		{suffix: "minutes", scale: time.Minute},
+		{suffix: "minute", scale: time.Minute},
+		{suffix: "mins", scale: time.Minute},
+		{suffix: "min", scale: time.Minute},
+		{suffix: "hours", scale: time.Hour},
+		{suffix: "hour", scale: time.Hour},
+		{suffix: "days", scale: 24 * time.Hour},
+		{suffix: "day", scale: 24 * time.Hour},
+	}
+	for _, unit := range units {
+		if !strings.HasSuffix(text, unit.suffix) {
+			continue
+		}
+		numberText := strings.TrimSpace(strings.TrimSuffix(text, unit.suffix))
+		if numberText == "" {
+			return 0, true, fmt.Errorf("goark-log: invalid rolling interval %q", text)
+		}
+		number, err := strconv.ParseFloat(numberText, 64)
+		if err != nil || number < 0 {
+			return 0, true, fmt.Errorf("goark-log: invalid rolling interval %q", text)
+		}
+		return time.Duration(number * float64(unit.scale)), true, nil
+	}
+	return 0, false, nil
 }
 
 // ParseRollingMaxAge 解析滚动档案最大保留时间。

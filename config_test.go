@@ -187,6 +187,83 @@ configuration:
 	}
 }
 
+func TestNewConfigured_whenRollingPoliciesAndStrategyUsed_shouldBuildLog4jStyleYaml(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logDir := filepath.ToSlash(filepath.Join(dir, "logs"))
+	archiveDir := filepath.Join(dir, "logs", "archive")
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	expired := filepath.Join(archiveDir, "expired.log.gz")
+	if err := os.WriteFile(expired, []byte("expired"), 0o644); err != nil {
+		t.Fatalf("WriteFile(expired) error = %v", err)
+	}
+	old := fixedTestTime().Add(-48 * 60 * 60 * 1e9)
+	if err := os.Chtimes(expired, old, old); err != nil {
+		t.Fatalf("Chtimes(expired) error = %v", err)
+	}
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+configuration:
+  properties:
+    LOG_DIR: %q
+  appenders:
+    rolling:
+      type: rollingFile
+      fileName: "${prop:LOG_DIR}/app.log"
+      layout:
+        type: text
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/app-%%d{yyyyMMdd}-%%i.log.gz"
+        policies:
+          size:
+            size: 120
+          time:
+            interval: daily
+            modulate: true
+          startup:
+            enabled: true
+        strategy:
+          max: 2
+          compression:
+            gzip: true
+            async: true
+          delete:
+            basePath: "${prop:LOG_DIR}/archive"
+            maxDepth: 1
+            ifFileName:
+              glob: "*.log.gz"
+            ifLastModified:
+              age: 24h
+            async: true
+  root:
+    level: info
+    appenderRefs: [rolling]
+`, logDir))
+
+	logger, handler, _, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	for index := 0; index < 3; index++ {
+		logger.Info("strategy " + strings.Repeat("x", 80))
+	}
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(expired); !os.IsNotExist(err) {
+		t.Fatalf("expired archive should be deleted by strategy action, stat error = %v", err)
+	}
+	archives, err := filepath.Glob(filepath.Join(archiveDir, "app-*.gz"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(archives) == 0 || len(archives) > 2 {
+		t.Fatalf("strategy retained archives = %d, want 1..2: %v", len(archives), archives)
+	}
+}
+
 func TestConfigReloader_whenConfigChanges_shouldSwapHandlerOptions(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -235,6 +312,27 @@ root:
 	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
 	if err == nil {
 		t.Fatalf("NewConfiguredHandler() should reject missing appender ref")
+	}
+}
+
+func TestNewConfigured_whenRollingFileIndexUnsupported_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.yml")
+	writeConfig(t, configPath, `
+appenders:
+  rolling:
+    type: rollingFile
+    fileName: app.log
+    rolling:
+      maxSize: 1MiB
+      strategy:
+        fileIndex: min
+root:
+  level: info
+  appenderRefs: [rolling]
+`)
+	_, _, err := NewConfiguredHandler(context.Background(), WithConfigPath(configPath))
+	if err == nil || !strings.Contains(err.Error(), "fileIndex") {
+		t.Fatalf("NewConfiguredHandler() error = %v, want fileIndex rejection", err)
 	}
 }
 

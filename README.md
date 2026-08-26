@@ -75,11 +75,28 @@ configuration:
         pattern: "${prop:LOG_PATTERN}"
       rolling:
         filePattern: "${prop:LOG_DIR}/archive/app-%d{yyyyMMdd}-%i.log.gz"
-        maxSize: 100MiB
-        interval: daily
-        onStartup: true
-        maxBackups: 30
-        maxAge: 30d
+        policies:
+          size:
+            size: 100MiB
+          time:
+            interval: daily
+            modulate: true
+          startup:
+            enabled: true
+        strategy:
+          max: 30
+          maxAge: 30d
+          compression:
+            gzip: true
+            async: true
+          delete:
+            basePath: "${prop:LOG_DIR}/archive"
+            maxDepth: 1
+            ifFileName:
+              glob: "*.log.gz"
+            ifLastModified:
+              age: 30d
+            async: true
   root:
     level: info
     appenderRefs: [console, rolling]
@@ -92,6 +109,10 @@ configuration:
 ```
 
 也可以使用顶层字段，或放在 `goark.log` 下方便与 boot 主配置合并。`configuration`、顶层字段、`goark.log` 三种形式只能选一种，避免配置歧义。
+
+`rolling.maxSize`、`rolling.interval`、`rolling.onStartup`、`rolling.maxBackups`、`rolling.maxAge`、`rolling.gzip` 这些第一版字段继续兼容。新配置建议使用
+`rolling.policies` 和 `rolling.strategy`：`policies` 组合大小、时间、启动触发策略，`strategy` 控制保留数量、保留时长、gzip 压缩和删除动作。`strategy.compression.async` 或
+`strategy.delete.async` 为 `true` 时，压缩和清理会进入后台串行动作队列，`Close` 会等待队列清空后返回。
 
 ```yaml
 goark:
