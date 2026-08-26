@@ -200,6 +200,41 @@ func BenchmarkNativeLoggerDirectJSON3(b *testing.B) {
 	}
 }
 
+func BenchmarkNativeLoggerDirectJSONFile3(b *testing.B) {
+	appender, err := NewJSONFileAppender(filepath.Join(b.TempDir(), "direct.json"),
+		WithJSONAppenderBufferSize(256*1024),
+	)
+	if err != nil {
+		b.Fatalf("NewJSONFileAppender() error = %v", err)
+	}
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{appender},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.LogAttrs3(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", i),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		); err != nil {
+			b.Fatalf("LogAttrs3() error = %v", err)
+		}
+	}
+	b.StopTimer()
+	if err := handler.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
 func BenchmarkNativeLoggerBuilder(b *testing.B) {
 	handler, err := NewHandler(Options{
 		Appenders: []Appender{NewConsoleAppender(WithConsoleWriter(io.Discard), WithConsoleLayout(TextLayout{}))},

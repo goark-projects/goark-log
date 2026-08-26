@@ -188,6 +188,29 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 		benchmarkGoarkNative(b, logger)
 	})
 
+	b.Run("goark-native-direct-file-json3", func(b *testing.B) {
+		appender, err := goarklog.NewJSONFileAppender(
+			filePath(b, "goark-direct-native.log"),
+			goarklog.WithJSONAppenderBufferSize(256*1024),
+		)
+		if err != nil {
+			b.Fatalf("NewJSONFileAppender() error = %v", err)
+		}
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{appender},
+			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNative3(b, logger)
+	})
+
 	b.Run("goark-rolling-json", func(b *testing.B) {
 		appender, err := goarklog.NewRollingFileAppender(
 			filePath(b, "goark-rolling.log"),

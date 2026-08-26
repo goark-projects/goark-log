@@ -507,6 +507,38 @@ root:
 	}
 }
 
+func TestNewConfigured_whenJsonAppenderFileConfigured_shouldUseDirectJSONWriter(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "direct.json")
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+appenders:
+  json:
+    type: json
+    fileName: %q
+    bufferSize: 64KiB
+    flushOnWrite: true
+root:
+  level: info
+  appenderRefs: [json]
+`, filepath.ToSlash(logPath)))
+
+	logger, handler, _, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	logger.Info("direct json config", slog.String("profile", "bench"))
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	content := readTextFile(t, logPath)
+	if !strings.Contains(content, `"msg":"direct json config"`) ||
+		!strings.Contains(content, `"profile":"bench"`) {
+		t.Fatalf("direct JSON config output is wrong: %q", content)
+	}
+}
+
 func TestNewConfigured_whenRollingPoliciesAndStrategyUsed_shouldBuildLog4jStyleYaml(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

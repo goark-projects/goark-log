@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,5 +88,49 @@ func TestJSONAppender_whenDirectAndLayoutPathsUsed_shouldProduceSameFields(t *te
 	}
 	if direct.String() != layout.String() {
 		t.Fatalf("direct JSON = %q, layout JSON = %q", direct.String(), layout.String())
+	}
+}
+
+func TestJSONFileAppender_whenBuffered_shouldFlushAndCloseFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "app.json")
+	appender, err := NewJSONFileAppender(path,
+		WithJSONAppenderName("jsonFile"),
+		WithJSONAppenderBufferSize(64*1024),
+	)
+	if err != nil {
+		t.Fatalf("NewJSONFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), Event{
+		Time:    fixedTestTime(),
+		Level:   slog.LevelInfo,
+		Logger:  "goark.json",
+		Message: "file direct",
+		Attrs:   []slog.Attr{slog.String("profile", "bench")},
+	}); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Flush(); err != nil {
+		t.Fatalf("Flush() error = %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !strings.Contains(string(content), `"logger":"goark.json"`) ||
+		!strings.Contains(string(content), `"profile":"bench"`) {
+		t.Fatalf("JSON file content is wrong: %q", string(content))
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() should be idempotent, got %v", err)
+	}
+}
+
+func TestJSONFileAppender_whenPathIsDirectory_shouldReject(t *testing.T) {
+	_, err := NewJSONFileAppender(t.TempDir())
+	if err == nil {
+		t.Fatalf("NewJSONFileAppender() should reject directory path")
 	}
 }

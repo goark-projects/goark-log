@@ -475,11 +475,29 @@ func buildFilePlugin(config AppenderBuildConfig) (Appender, error) {
 }
 
 func buildJSONPlugin(config AppenderBuildConfig) (Appender, error) {
+	if strings.TrimSpace(config.FileName) != "" {
+		options := []JSONAppenderOption{
+			WithJSONAppenderName(config.Name),
+		}
+		if strings.TrimSpace(config.BufferSize) != "" {
+			size, err := ParseByteSize(config.BufferSize)
+			if err != nil {
+				return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
+			}
+			options = append(options, WithJSONAppenderBufferSize(int(size)))
+		}
+		if config.FlushOnWrite {
+			options = append(options, WithJSONAppenderFlushOnWrite(true))
+		}
+		return NewJSONFileAppender(config.FileName, options...)
+	}
 	switch strings.ToLower(strings.TrimSpace(config.Target)) {
 	case "", "stderr":
 		return NewJSONAppender(WithJSONAppenderName(config.Name), WithJSONAppenderWriter(os.Stderr)), nil
 	case "stdout":
 		return NewJSONAppender(WithJSONAppenderName(config.Name), WithJSONAppenderWriter(os.Stdout)), nil
+	case "file":
+		return nil, fmt.Errorf("goark-log: appender %q JSON target file requires fileName", config.Name)
 	default:
 		return nil, fmt.Errorf("goark-log: appender %q JSON target %q is invalid", config.Name, config.Target)
 	}
