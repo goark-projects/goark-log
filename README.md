@@ -84,6 +84,7 @@ configuration:
       layout:
         type: pattern
         pattern: "${prop:LOG_PATTERN}"
+        disableAnsi: false
     rolling:
       type: rolling-file
       fileName: "${prop:LOG_DIR}/app.log"
@@ -168,11 +169,11 @@ ctx := goarklog.WithContextAttrs(context.Background(),
 logger.InfoContext(ctx, "request done")
 ```
 
-`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%sn`、`%replace{...}{...}{...}`、`%enc/%encode{...}{json|html|xml|crlf}`、`%equals{...}{...}{...}`、`%equalsIgnoreCase{...}{...}{...}`、`%maxLen{...}{n}`、`%repeat{...}{n}`、`%highlight{...}`、`%style{...}{red,bold}`、`%notEmpty{...}`。`highlight/style` 输出 ANSI SGR 样式。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
+`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%sn`、`%r/%relative`、`%host/%hostname`、`%throwable{none|short|full}`、`%replace{...}{...}{...}`、`%enc/%encode{...}{json|html|xml|crlf}`、`%equals{...}{...}{...}`、`%equalsIgnoreCase{...}{...}{...}`、`%maxLen{...}{n}`、`%repeat{...}{n}`、`%highlight{...}`、`%style{...}{red,bold}`、`%notEmpty{...}`。`highlight/style` 默认输出 ANSI SGR 样式；配置 `layout.disableAnsi: true` 或代码中使用 `NewPatternLayoutWithOptions(pattern, LayoutOptions{DisableANSI: true})` 可输出纯文本。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
 
 `JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`level.field` 支持 `name/value/severity`，`logger.precision` 支持名称精度截断，`mdc` 支持 `flatten: true` 和 `propertiesAsList` 列表形态，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
 
-核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。JSON、JSONTemplate、XML、CSV、GELF、YAML、HTML 支持通用 `LayoutOptions`：`compact`、`eventEol`、`complete`、`includeStacktrace`、`stacktraceAsString`、`propertiesAsList`、`includeNullDelimiter`、`header`、`footer`。
+核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。JSON、JSONTemplate、XML、CSV、GELF、YAML、HTML 支持通用 `LayoutOptions`：`compact`、`eventEol`、`complete`、`includeStacktrace`、`stacktraceAsString`、`propertiesAsList`、`includeNullDelimiter`、`header`、`footer`；PatternLayout 额外使用 `disableAnsi` 控制 ANSI 样式输出。
 
 ## 组合 Appender
 

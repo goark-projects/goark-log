@@ -13,7 +13,7 @@
 | AsyncLogger | 已支持核心语义 | 有界 ring buffer、批量消费、block/drop/drop-debug/sync-fallback、等待策略参数、消费者错误处理、`includeLocation`。 |
 | AsyncAppender | 已支持 | 异步包装本地或组合型 appender，关闭时 drain。 |
 | RollingFile | 已支持核心策略 | size/time/cron/startup、`%d/%i`、gzip、max/maxAge、delete action、后台动作队列。 |
-| PatternLayout | 已支持核心表达式 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常、caller、attrs/map、uuid、sequence、replace、encode、equals、maxLen、repeat、highlight/style ANSI、notEmpty。 |
+| PatternLayout | 已支持核心表达式 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常 none/short/full、caller、attrs/map、uuid、sequence、relative、host、replace、encode、equals、maxLen、repeat、highlight/style ANSI 和 `disableAnsi`、notEmpty。 |
 | JSON Template Layout | 已支持主要 resolver 和选项 | timestamp、level、logger、message、thread、marker、throwable/rootCause/stackTrace、source/process、contextStack、mdc、attr、endOfBatch、自定义 resolver；支持 layout 通用选项、level field、logger precision、MDC list。 |
 | 结构化布局 | 已支持核心参数矩阵 | JSON、XML、CSV、GELF、RFC5424/Syslog layout、YAML、HTML；JSON/XML/CSV/GELF/YAML/HTML 支持 compact、eventEol、complete、stacktraceAsString、propertiesAsList、null delimiter、header/footer。 |
 | Filters | 已支持主干 | Threshold、Level、LevelRange、Regex、Attr、Deny、Composite、Marker、NoMarker、Map、ThreadContextMap/Stack、StructuredData、Throwable、StringMatch、Time、Burst、DynamicThreshold；全局 filter 在 logger level 前执行，`ACCEPT` 可放行低级别事件，`DENY` 可提前短路。 |
@@ -40,7 +40,7 @@
 | P0 | JSON 热路径 | 已增加 JSON 直写 appender、固定三属性入口和 Sonic 复杂对象 fallback；默认 JSON/JSONTemplate 基础路径保持 `0 alloc/op`。 |
 | P0 | Disruptor 语义 | 已补等待策略参数、超时/睡眠重试、异步错误处理和 race 覆盖；仍保持 Go-native 内部实现。 |
 | P1 | Log4j2 级别和 filter 语义 | 已补 ALL/TRACE/FATAL/OFF、自定义级别配置、全局 filter 前置裁决、appenderRef filter/level 语义。 |
-| P1 | PatternLayout 表达式 converter | 已补 replace、encode、equals、equalsIgnoreCase、maxLen、repeat、sequenceNumber、throwable short、highlight/style ANSI。 |
+| P1 | PatternLayout 表达式 converter | 已补 replace、encode、equals、equalsIgnoreCase、maxLen、repeat、sequenceNumber、relative、host、throwable none/short/full、highlight/style ANSI 和 disableAnsi。 |
 | P1 | 结构化 Layout 参数矩阵 | 已补 JSON/JSONTemplate/XML/CSV/GELF/YAML/HTML 通用选项、生命周期 header/footer、配置格式映射和校验。 |
 | P1 | 组合 appender 配置体验 | 已补 Failover、Routing、Rewrite 的 YAML/JSON/XML/properties 配置；配置型复合 appender 不拥有子 appender 关闭权，避免重复关闭。 |
 | P2 | 外部插件体验 | 核心已提供 `PluginRegistrar`、`PluginSet`、包级 helper、`AppenderBuildConfig` 扩展字段和 `goark-log-plugin-gen` registrar 生成器；具体外部 appender 继续放独立仓库。 |
