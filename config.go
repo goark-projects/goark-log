@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -23,6 +24,8 @@ var (
 	defaultConfigPaths = []string{
 		filepath.Join("conf", "goark-log.yml"),
 		filepath.Join("conf", "goark-log.yaml"),
+		filepath.Join("conf", "goark-log.json"),
+		filepath.Join("conf", "goark-log.xml"),
 		filepath.Join("conf", "goark-log.toml"),
 		filepath.Join("conf", "goark-log.properties"),
 	}
@@ -54,8 +57,9 @@ const (
 
 // ConfigResult 描述配置解析结果。
 type ConfigResult struct {
-	Source ConfigSource
-	Path   string
+	Source          ConfigSource
+	Path            string
+	MonitorInterval time.Duration
 }
 
 // ConfigLoadOption 调整配置加载过程。
@@ -144,6 +148,11 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if err != nil {
 		return Options{}, nil, err
 	}
+	monitorInterval, err := fileConfig.monitorInterval()
+	if err != nil {
+		return Options{}, nil, err
+	}
+	result.MonitorInterval = monitorInterval
 	handlerOptions, err := fileConfig.options(settings.registry)
 	if err != nil {
 		return Options{}, nil, err

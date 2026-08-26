@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadOptions_whenMultipleSourcesAvailable_shouldUsePriority(t *testing.T) {
@@ -188,6 +189,113 @@ configuration:
 	}
 }
 
+func TestNewConfigured_whenJsonConfigurationUsed_shouldBuild(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "json.log")
+	configPath := filepath.Join(dir, "goark-log.json")
+	writeConfig(t, configPath, fmt.Sprintf(`{
+  "configuration": {
+    "monitorInterval": "0",
+    "appenders": {
+      "file": {
+        "type": "file",
+        "fileName": %q,
+        "flushOnWrite": true,
+        "layout": {"type": "text"}
+      }
+    },
+    "root": {
+      "level": "info",
+      "appenderRefs": ["file"]
+    }
+  }
+}`, filepath.ToSlash(logPath)))
+
+	logger, handler, result, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	if result.MonitorInterval != 0 {
+		t.Fatalf("MonitorInterval = %v, want disabled", result.MonitorInterval)
+	}
+	logger.Info("json config")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if content := readTextFile(t, logPath); !strings.Contains(content, "json config") {
+		t.Fatalf("json config output is wrong: %q", content)
+	}
+}
+
+func TestNewConfigured_whenXmlConfigurationUsed_shouldBuild(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "xml.log")
+	configPath := filepath.Join(dir, "goark-log.xml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+<Configuration status="warn" monitorInterval="0">
+  <Appenders>
+    <File name="file" fileName="%s" flushOnWrite="true">
+      <TextLayout/>
+    </File>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="file"/>
+    </Root>
+  </Loggers>
+</Configuration>
+`, filepath.ToSlash(logPath)))
+
+	logger, handler, result, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	if result.MonitorInterval != 0 {
+		t.Fatalf("MonitorInterval = %v, want disabled", result.MonitorInterval)
+	}
+	logger.Info("xml config")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if content := readTextFile(t, logPath); !strings.Contains(content, "xml config") {
+		t.Fatalf("xml config output is wrong: %q", content)
+	}
+}
+
+func TestNewConfigured_whenPropertiesConfigurationUsed_shouldBuild(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "properties.log")
+	configPath := filepath.Join(dir, "goark-log.properties")
+	writeConfig(t, configPath, fmt.Sprintf(`
+status = warn
+monitorInterval = 0
+appender.file.type = file
+appender.file.fileName = %s
+appender.file.flushOnWrite = true
+appender.file.layout.type = text
+rootLogger.level = info
+rootLogger.appenderRefs = file
+`, filepath.ToSlash(logPath)))
+
+	logger, handler, result, err := NewConfigured(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfigured() error = %v", err)
+	}
+	if result.MonitorInterval != 0 {
+		t.Fatalf("MonitorInterval = %v, want disabled", result.MonitorInterval)
+	}
+	logger.Info("properties config")
+	if err := handler.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if content := readTextFile(t, logPath); !strings.Contains(content, "properties config") {
+		t.Fatalf("properties config output is wrong: %q", content)
+	}
+}
+
 func TestNewConfigured_whenRollingPoliciesAndStrategyUsed_shouldBuildLog4jStyleYaml(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -298,6 +406,36 @@ func TestConfigReloader_whenConfigChanges_shouldSwapHandlerOptions(t *testing.T)
 	if strings.Contains(string(content), "hidden before reload") || !strings.Contains(string(content), "visible after reload") {
 		t.Fatalf("reload output is wrong: %q", string(content))
 	}
+}
+
+func TestLoggerContext_whenMonitorIntervalConfigured_shouldReloadChangedFile(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "logs", "monitor.log")
+	configPath := filepath.Join(dir, "goark-log.yml")
+	writeMonitoredFileConfig(t, configPath, logPath, "error")
+
+	context, result, err := NewConfiguredLoggerContext(ctx, WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("NewConfiguredLoggerContext() error = %v", err)
+	}
+	defer context.Close()
+	if result.MonitorInterval <= 0 {
+		t.Fatalf("MonitorInterval = %v, want enabled", result.MonitorInterval)
+	}
+	logger := context.Logger("goark.monitor")
+	logger.Debug("hidden before monitor reload")
+
+	writeMonitoredFileConfig(t, configPath, logPath, "debug")
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		logger.Debug("visible after monitor reload")
+		if strings.Contains(readTextFile(t, logPath), "visible after monitor reload") {
+			return
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	t.Fatalf("monitor reload did not make debug log visible, content=%q", readTextFile(t, logPath))
 }
 
 func TestNewConfigured_whenYamlAppenderRefControlsConfigured_shouldApplyPerAppender(t *testing.T) {
@@ -584,6 +722,23 @@ appenders:
   file:
     type: file
     fileName: %q
+    layout:
+      type: text
+root:
+  level: %s
+  appenderRefs: [file]
+`, filepath.ToSlash(logPath), level))
+}
+
+func writeMonitoredFileConfig(t *testing.T, configPath string, logPath string, level string) {
+	t.Helper()
+	writeConfig(t, configPath, fmt.Sprintf(`
+monitorInterval: 20ms
+appenders:
+  file:
+    type: file
+    fileName: %q
+    flushOnWrite: true
     layout:
       type: text
 root:

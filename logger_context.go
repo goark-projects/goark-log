@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 )
 
 // LoggerContext 管理一个可关闭、可重载的日志运行期。
 type LoggerContext struct {
-	handler *Handler
-	status  *StatusLogger
-	mu      sync.RWMutex
-	result  *ConfigResult
+	handler     *Handler
+	status      *StatusLogger
+	mu          sync.RWMutex
+	result      *ConfigResult
+	watchCancel context.CancelFunc
+	watchDone   <-chan struct{}
 }
 
 type loggerContextSettings struct {
@@ -60,6 +63,10 @@ func NewConfiguredLoggerContext(ctx context.Context, configOptions ...ConfigLoad
 	context.mu.Lock()
 	context.result = result
 	context.mu.Unlock()
+	if err := context.startConfigMonitor(result.MonitorInterval, configOptions...); err != nil {
+		_ = context.Close()
+		return nil, nil, err
+	}
 	status.Info(ctx, fmt.Sprintf("logger context config loaded from %s", result.Source))
 	return context, result, nil
 }
@@ -142,12 +149,83 @@ func (c *LoggerContext) Close() error {
 	if c == nil || c.handler == nil {
 		return nil
 	}
+	c.stopConfigMonitor()
 	if err := c.handler.Close(); err != nil {
 		c.status.Error(context.Background(), "close logger context failed", err)
 		return err
 	}
 	c.status.Info(context.Background(), "logger context closed")
 	return nil
+}
+
+func (c *LoggerContext) startConfigMonitor(interval time.Duration, options ...ConfigLoadOption) error {
+	if c == nil || c.handler == nil || interval <= 0 {
+		return nil
+	}
+	c.mu.RLock()
+	result := c.result
+	c.mu.RUnlock()
+	if result == nil || result.Path == "" {
+		return nil
+	}
+	reloader, err := NewConfigReloader(c.handler, options...)
+	if err != nil {
+		return err
+	}
+	if signature, err := reloader.currentSignature(); err == nil {
+		reloader.mu.Lock()
+		reloader.last = signature
+		reloader.mu.Unlock()
+	}
+	watchCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	c.mu.Lock()
+	c.watchCancel = cancel
+	c.watchDone = done
+	c.mu.Unlock()
+	go c.watchConfig(watchCtx, done, reloader, interval)
+	return nil
+}
+
+func (c *LoggerContext) watchConfig(ctx context.Context, done chan<- struct{}, reloader *ConfigReloader, interval time.Duration) {
+	defer close(done)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			changed, result, err := reloader.ReloadIfChanged(ctx)
+			if err != nil {
+				c.status.Error(ctx, "reload logger context config failed", err)
+				continue
+			}
+			if !changed {
+				continue
+			}
+			c.mu.Lock()
+			c.result = result
+			c.mu.Unlock()
+			c.status.Info(ctx, fmt.Sprintf("logger context config reloaded from %s", result.Source))
+		}
+	}
+}
+
+func (c *LoggerContext) stopConfigMonitor() {
+	c.mu.Lock()
+	cancel := c.watchCancel
+	done := c.watchDone
+	c.watchCancel = nil
+	c.watchDone = nil
+	c.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	if done != nil {
+		<-done
+	}
 }
 
 func newLoggerContextSettings(options ...LoggerContextOption) loggerContextSettings {

@@ -16,6 +16,8 @@ import (
 type fileConfig struct {
 	Configuration    *fileConfig               `yaml:"configuration"`
 	Status           string                    `yaml:"status"`
+	MonitorInterval  string                    `yaml:"monitorInterval"`
+	MonitorKebab     string                    `yaml:"monitor-interval"`
 	Properties       map[string]string         `yaml:"properties"`
 	Appenders        map[string]appenderConfig `yaml:"appenders"`
 	Filters          map[string]filterConfig   `yaml:"filters"`
@@ -348,22 +350,32 @@ func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (
 	if err != nil {
 		return nil, err
 	}
-	if format != "yaml" {
-		return nil, fmt.Errorf("goark-log: unsupported config format %q for %q", format, path)
-	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: open config file %q: %w", path, err)
 	}
 	defer file.Close()
-	config, err := decodeConfig(file, lookups)
+	config, err := decodeConfig(file, format, lookups)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: parse config file %q: %w", path, err)
 	}
 	return config, nil
 }
 
-func decodeConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
+func decodeConfig(reader io.Reader, format string, lookups *LookupResolver) (*fileConfig, error) {
+	switch format {
+	case "yaml", "json":
+		return decodeStructuredConfig(reader, lookups)
+	case "xml":
+		return decodeXMLConfig(reader, lookups)
+	case "properties":
+		return decodePropertiesConfig(reader, lookups)
+	default:
+		return nil, fmt.Errorf("goark-log: unsupported config format %q", format)
+	}
+}
+
+func decodeStructuredConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
 	var config fileConfig
 	decoder := yaml.NewDecoder(reader)
 	decoder.KnownFields(true)
@@ -373,9 +385,16 @@ func decodeConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error
 		}
 		return nil, err
 	}
+	return finalizeDecodedConfig(config, lookups)
+}
+
+func finalizeDecodedConfig(config fileConfig, lookups *LookupResolver) (*fileConfig, error) {
 	effective, err := config.effective()
 	if err != nil {
 		return nil, err
+	}
+	if lookups == nil {
+		lookups = NewLookupResolver()
 	}
 	if err := effective.resolveLookups(lookups.clone()); err != nil {
 		return nil, err
@@ -530,6 +549,12 @@ func (c *fileConfig) resolveLookups(lookups *LookupResolver) error {
 	var err error
 	if c.Status, err = resolveStringLookup(lookups, c.Status); err != nil {
 		return fmt.Errorf("goark-log: status: %w", err)
+	}
+	if c.MonitorInterval, err = resolveStringLookup(lookups, c.MonitorInterval); err != nil {
+		return fmt.Errorf("goark-log: monitorInterval: %w", err)
+	}
+	if c.MonitorKebab, err = resolveStringLookup(lookups, c.MonitorKebab); err != nil {
+		return fmt.Errorf("goark-log: monitor-interval: %w", err)
 	}
 	if err := c.resolveProperties(lookups); err != nil {
 		return err
@@ -949,6 +974,8 @@ func (c *fileConfig) withoutWrappers() *fileConfig {
 	}
 	return &fileConfig{
 		Status:           c.Status,
+		MonitorInterval:  c.MonitorInterval,
+		MonitorKebab:     c.MonitorKebab,
 		Properties:       c.Properties,
 		Appenders:        c.Appenders,
 		Filters:          c.Filters,
@@ -968,6 +995,8 @@ func (c *fileConfig) empty() bool {
 	}
 	return len(c.Appenders) == 0 &&
 		strings.TrimSpace(c.Status) == "" &&
+		strings.TrimSpace(c.MonitorInterval) == "" &&
+		strings.TrimSpace(c.MonitorKebab) == "" &&
 		len(c.Properties) == 0 &&
 		len(c.Filters) == 0 &&
 		len(c.FilterRefs) == 0 &&
@@ -1168,6 +1197,10 @@ func configFormat(path string) (string, error) {
 	switch strings.ToLower(strings.TrimPrefix(filepathExt(path), ".")) {
 	case "yml", "yaml":
 		return "yaml", nil
+	case "json":
+		return "json", nil
+	case "xml":
+		return "xml", nil
 	case "toml":
 		return "toml", nil
 	case "properties":

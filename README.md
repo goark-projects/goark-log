@@ -37,10 +37,10 @@ func main() {
 1. 显式路径：`goarklog.WithConfigPath(...)`
 2. 环境变量：默认 `GOARK_LOG_CONFIG`
 3. boot 配置：`goark.log.config`、`goark.logging.config`、`logging.config`
-4. 默认文件：`conf/goark-log.yml`、`conf/goark-log.yaml`、`conf/goark-log.toml`、`conf/goark-log.properties`
+4. 默认文件：`conf/goark-log.yml`、`conf/goark-log.yaml`、`conf/goark-log.json`、`conf/goark-log.xml`、`conf/goark-log.toml`、`conf/goark-log.properties`
 5. 内置默认：`stderr` console，`INFO`
 
-第一版只解析 YAML。发现 TOML 或 properties 会明确报错，避免误以为配置已生效。
+配置支持 YAML、JSON、XML 和 properties。TOML 仍会明确报错，避免误以为配置已生效。
 
 ## YAML 示例
 
@@ -136,6 +136,7 @@ _, err = reloader.Reload(context.Background())
 ```
 
 `Watch` 使用标准库轮询文件修改时间和大小，不依赖 `fsnotify`。
+在 `NewConfiguredLoggerContext` 中使用配置文件时，`monitorInterval` 大于 0 会自动启动轮询 reload；纯数字按 Log4j2 习惯表示秒，带单位值按 Go duration 解析。
 
 ## MDC 和调用位置
 
@@ -160,7 +161,7 @@ logger.InfoContext(ctx, "request done")
 - `examples/file`：普通文件 appender
 - `examples/rolling`：大小滚动、启动滚动和 gzip
 - `examples/async`：async 包装 rolling appender
-- `examples/reload`：YAML 配置 reload
+- `examples/reload`：配置 reload
 
 ```bash
 go test ./examples/...
