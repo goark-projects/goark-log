@@ -200,6 +200,54 @@ func BenchmarkNativeLoggerDirectJSON3(b *testing.B) {
 	}
 }
 
+func BenchmarkNativeLoggerDirectJSONAny(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	payload := benchmarkAnyPayload()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := logger.LogAttrs(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", i),
+			slog.Any("payload", payload),
+		); err != nil {
+			b.Fatalf("LogAttrs() error = %v", err)
+		}
+	}
+	b.StopTimer()
+	if err := handler.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
+func BenchmarkNativeLoggerDirectJSONParallel3(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	benchmarkNativeLoggerParallel3(b, logger)
+	if err := handler.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
 func BenchmarkNativeLoggerDirectJSONFile3(b *testing.B) {
 	appender, err := NewJSONFileAppender(filepath.Join(b.TempDir(), "direct.json"),
 		WithJSONAppenderBufferSize(256*1024),
@@ -230,6 +278,30 @@ func BenchmarkNativeLoggerDirectJSONFile3(b *testing.B) {
 		}
 	}
 	b.StopTimer()
+	if err := handler.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
+func BenchmarkNativeLoggerDirectJSONFileParallel3(b *testing.B) {
+	appender, err := NewJSONFileAppender(filepath.Join(b.TempDir(), "direct-parallel.json"),
+		WithJSONAppenderBufferSize(256*1024),
+	)
+	if err != nil {
+		b.Fatalf("NewJSONFileAppender() error = %v", err)
+	}
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{appender},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	benchmarkNativeLoggerParallel3(b, logger)
 	if err := handler.Close(); err != nil {
 		b.Fatalf("Close() error = %v", err)
 	}
@@ -315,6 +387,30 @@ func BenchmarkAsyncAppender(b *testing.B) {
 	}
 }
 
+func BenchmarkAsyncLoggerParallel3(b *testing.B) {
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		Async: AsyncLoggerOptions{
+			Enabled:          true,
+			QueueSize:        8192,
+			BatchSize:        256,
+			OverflowStrategy: AsyncOverflowBlock,
+		},
+	})
+	if err != nil {
+		b.Fatalf("NewHandler() error = %v", err)
+	}
+	logger, err := NewNativeLogger(handler, "goark.bench")
+	if err != nil {
+		b.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	benchmarkNativeLoggerParallel3(b, logger)
+	if err := handler.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
 func BenchmarkAsyncAppenderOverflow(b *testing.B) {
 	strategies := []AsyncOverflowStrategy{
 		AsyncOverflowDrop,
@@ -359,6 +455,30 @@ func BenchmarkAsyncAppenderOverflow(b *testing.B) {
 	}
 }
 
+func BenchmarkFileAppenderParallel(b *testing.B) {
+	appender, err := NewFileAppender(filepath.Join(b.TempDir(), "parallel.log"),
+		WithFileLayout(TextLayout{}),
+		WithFileBufferSize(256*1024),
+	)
+	if err != nil {
+		b.Fatalf("NewFileAppender() error = %v", err)
+	}
+	event := benchmarkEvent()
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if err := appender.Append(context.Background(), event); err != nil {
+				b.Fatalf("Append() error = %v", err)
+			}
+		}
+	})
+	b.StopTimer()
+	if err := appender.Close(); err != nil {
+		b.Fatalf("Close() error = %v", err)
+	}
+}
+
 func benchmarkAppender(b *testing.B, appender Appender) {
 	event := benchmarkEvent()
 	b.ReportAllocs()
@@ -368,6 +488,25 @@ func benchmarkAppender(b *testing.B, appender Appender) {
 			b.Fatalf("Append() error = %v", err)
 		}
 	}
+}
+
+func benchmarkNativeLoggerParallel3(b *testing.B, logger *Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		index := 0
+		for pb.Next() {
+			index++
+			if err := logger.LogAttrs3(context.Background(), slog.LevelInfo, "event",
+				slog.String("profile", "bench"),
+				slog.Int("index", index),
+				slog.Duration("elapsed", 10*time.Millisecond),
+			); err != nil {
+				b.Fatalf("LogAttrs3() error = %v", err)
+			}
+		}
+	})
+	b.StopTimer()
 }
 
 func benchmarkEvent() Event {
@@ -380,6 +519,19 @@ func benchmarkEvent() Event {
 			slog.String("profile", "bench"),
 			slog.Int("index", 42),
 			slog.Duration("elapsed", 10*time.Millisecond),
+		},
+	}
+}
+
+func benchmarkAnyPayload() map[string]any {
+	return map[string]any{
+		"traceId": "abc-123",
+		"attempt": 3,
+		"ok":      true,
+		"tags":    []string{"core", "json", "sonic"},
+		"nested": map[string]any{
+			"latency": 12.5,
+			"status":  "ready",
 		},
 	}
 }

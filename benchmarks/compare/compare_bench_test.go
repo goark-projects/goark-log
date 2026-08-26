@@ -251,6 +251,41 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 	})
 }
 
+func BenchmarkCompareParallelDiscard(b *testing.B) {
+	b.Run("goark-native-direct-json3", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNativeParallel3(b, logger)
+		if err := handler.Close(); err != nil {
+			b.Fatalf("Close() error = %v", err)
+		}
+	})
+
+	b.Run("zap-json", func(b *testing.B) {
+		logger := newZapLogger(io.Discard)
+		benchmarkZapParallel(b, logger)
+		if err := logger.Sync(); err != nil {
+			b.Fatalf("Sync() error = %v", err)
+		}
+	})
+
+	b.Run("zerolog-json", func(b *testing.B) {
+		logger := zerolog.New(io.Discard)
+		benchmarkZerologParallel(b, logger)
+	})
+}
+
 func benchmarkGoarkLogAttrs(b *testing.B, logger *slog.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -291,6 +326,25 @@ func benchmarkGoarkNative3(b *testing.B, logger *goarklog.Logger) {
 	}
 }
 
+func benchmarkGoarkNativeParallel3(b *testing.B, logger *goarklog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		index := 0
+		for pb.Next() {
+			index++
+			if err := logger.LogAttrs3(context.Background(), slog.LevelInfo, "event",
+				slog.String("profile", "bench"),
+				slog.Int("index", index),
+				slog.Duration("elapsed", 10*time.Millisecond),
+			); err != nil {
+				b.Fatalf("LogAttrs3() error = %v", err)
+			}
+		}
+	})
+	b.StopTimer()
+}
+
 func benchmarkGoarkBuilder(b *testing.B, logger *goarklog.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -329,6 +383,23 @@ func benchmarkZap(b *testing.B, logger *zap.Logger) {
 	}
 }
 
+func benchmarkZapParallel(b *testing.B, logger *zap.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		index := 0
+		for pb.Next() {
+			index++
+			logger.Info("event",
+				zap.String("profile", "bench"),
+				zap.Int("index", index),
+				zap.Duration("elapsed", 10*time.Millisecond),
+			)
+		}
+	})
+	b.StopTimer()
+}
+
 func benchmarkZerolog(b *testing.B, logger zerolog.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -339,6 +410,23 @@ func benchmarkZerolog(b *testing.B, logger zerolog.Logger) {
 			Dur("elapsed", 10*time.Millisecond).
 			Msg("event")
 	}
+}
+
+func benchmarkZerologParallel(b *testing.B, logger zerolog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		index := 0
+		for pb.Next() {
+			index++
+			logger.Info().
+				Str("profile", "bench").
+				Int("index", index).
+				Dur("elapsed", 10*time.Millisecond).
+				Msg("event")
+		}
+	})
+	b.StopTimer()
 }
 
 func newZapLogger(writer io.Writer) *zap.Logger {
