@@ -168,7 +168,7 @@ ctx := goarklog.WithContextAttrs(context.Background(),
 logger.InfoContext(ctx, "request done")
 ```
 
-`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%sn`、`%replace{...}{...}{...}`、`%enc/%encode{...}{json|html|xml|crlf}`、`%equals{...}{...}{...}`、`%equalsIgnoreCase{...}{...}{...}`、`%maxLen{...}{n}`、`%repeat{...}{n}`、`%highlight{...}`、`%style{...}{...}`、`%notEmpty{...}`。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
+`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%sn`、`%replace{...}{...}{...}`、`%enc/%encode{...}{json|html|xml|crlf}`、`%equals{...}{...}{...}`、`%equalsIgnoreCase{...}{...}{...}`、`%maxLen{...}{n}`、`%repeat{...}{n}`、`%highlight{...}`、`%style{...}{red,bold}`、`%notEmpty{...}`。`highlight/style` 输出 ANSI SGR 样式。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
 
 `JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`level.field` 支持 `name/value/severity`，`logger.precision` 支持名称精度截断，`mdc` 支持 `flatten: true` 和 `propertiesAsList` 列表形态，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
 

@@ -13,7 +13,7 @@
 | AsyncLogger | 已支持核心语义 | 有界 ring buffer、批量消费、block/drop/drop-debug/sync-fallback、等待策略参数、消费者错误处理、`includeLocation`。 |
 | AsyncAppender | 已支持 | 异步包装本地或组合型 appender，关闭时 drain。 |
 | RollingFile | 已支持核心策略 | size/time/cron/startup、`%d/%i`、gzip、max/maxAge、delete action、后台动作队列。 |
-| PatternLayout | 已支持核心表达式 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常、caller、attrs/map、uuid、sequence、replace、encode、equals、maxLen、repeat、highlight/style 透传、notEmpty。 |
+| PatternLayout | 已支持核心表达式 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常、caller、attrs/map、uuid、sequence、replace、encode、equals、maxLen、repeat、highlight/style ANSI、notEmpty。 |
 | JSON Template Layout | 已支持主要 resolver 和选项 | timestamp、level、logger、message、thread、marker、throwable/rootCause/stackTrace、source/process、contextStack、mdc、attr、endOfBatch、自定义 resolver；支持 layout 通用选项、level field、logger precision、MDC list。 |
 | 结构化布局 | 已支持核心参数矩阵 | JSON、XML、CSV、GELF、RFC5424/Syslog layout、YAML、HTML；JSON/XML/CSV/GELF/YAML/HTML 支持 compact、eventEol、complete、stacktraceAsString、propertiesAsList、null delimiter、header/footer。 |
 | Filters | 已支持主干 | Threshold、Level、LevelRange、Regex、Attr、Deny、Composite、Marker、NoMarker、Map、ThreadContextMap/Stack、StructuredData、Throwable、StringMatch、Time、Burst、DynamicThreshold。 |

@@ -138,6 +138,34 @@ func TestPatternLayout_whenExpressionConvertersUsed_shouldRenderLog4jStyleOutput
 	}
 }
 
+func TestPatternLayout_whenAnsiStyleConvertersUsed_shouldRenderEscapeSequences(t *testing.T) {
+	styleLayout, err := NewPatternLayout("%style{%m}{red,bold}%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout(style) error = %v", err)
+	}
+	event := testEvent("styled", fixedTestTime())
+	var styled bytes.Buffer
+	if err := styleLayout.Format(&styled, event); err != nil {
+		t.Fatalf("Format(style) error = %v", err)
+	}
+	if styled.String() != "\x1b[31;1mstyled\x1b[0m\n" {
+		t.Fatalf("style output = %q, want ANSI red bold", styled.String())
+	}
+
+	highlightLayout, err := NewPatternLayout("%highlight{%p}%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout(highlight) error = %v", err)
+	}
+	event.Level = slog.LevelWarn
+	var highlighted bytes.Buffer
+	if err := highlightLayout.Format(&highlighted, event); err != nil {
+		t.Fatalf("Format(highlight) error = %v", err)
+	}
+	if highlighted.String() != "\x1b[33mWARN\x1b[0m\n" {
+		t.Fatalf("highlight output = %q, want ANSI warning color", highlighted.String())
+	}
+}
+
 func TestPatternLayout_whenCallerTokensUsed_shouldRenderGoLocation(t *testing.T) {
 	pc := callerProgramCounter(t, "TestPatternLayout_whenCallerTokensUsed")
 	layout, err := NewPatternLayout("%class|%method|%file|%line|%location|%marker%n")
