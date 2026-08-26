@@ -26,7 +26,7 @@ type AsyncLoggerOptions struct {
 
 type asyncLogger struct {
 	handler *Handler
-	queue   chan asyncLoggerEntry
+	queue   *asyncRingBuffer
 	closing chan struct{}
 	done    chan struct{}
 	options AsyncLoggerOptions
@@ -57,7 +57,7 @@ func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger,
 	}
 	async := &asyncLogger{
 		handler:   handler,
-		queue:     make(chan asyncLoggerEntry, normalized.QueueSize),
+		queue:     newAsyncRingBuffer(normalized.QueueSize),
 		closing:   make(chan struct{}),
 		done:      make(chan struct{}),
 		options:   normalized,
@@ -157,13 +157,17 @@ func (a *asyncLogger) beginAppend() bool {
 }
 
 func (a *asyncLogger) enqueueBlocking(ctx context.Context, entry asyncLoggerEntry) error {
-	select {
-	case a.queue <- entry:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-a.closing:
-		return fmt.Errorf("goark-log: async logger is closed")
+	for {
+		if a.queue.tryPush(entry) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-a.closing:
+			return fmt.Errorf("goark-log: async logger is closed")
+		case <-a.queue.writableSignal():
+		}
 	}
 }
 
@@ -171,8 +175,10 @@ func (a *asyncLogger) enqueueOrDrop(entry asyncLoggerEntry) error {
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
-	case a.queue <- entry:
 	default:
+		if a.queue.tryPush(entry) {
+			return nil
+		}
 		a.dropped.Add(1)
 	}
 	return nil
@@ -182,9 +188,10 @@ func (a *asyncLogger) enqueueDropDebug(ctx context.Context, entry asyncLoggerEnt
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
-	case a.queue <- entry:
-		return nil
 	default:
+		if a.queue.tryPush(entry) {
+			return nil
+		}
 		if entry.event.Level <= slog.LevelDebug {
 			a.dropped.Add(1)
 			return nil
@@ -197,9 +204,10 @@ func (a *asyncLogger) enqueueOrSync(ctx context.Context, entry asyncLoggerEntry)
 	select {
 	case <-a.closing:
 		return fmt.Errorf("goark-log: async logger is closed")
-	case a.queue <- entry:
-		return nil
 	default:
+		if a.queue.tryPush(entry) {
+			return nil
+		}
 		return a.handler.dispatch(ctx, entry.event)
 	}
 }
@@ -208,12 +216,13 @@ func (a *asyncLogger) run() {
 	defer a.workers.Done()
 	batch := make([]asyncLoggerEntry, 0, a.batchSize)
 	for {
-		select {
-		case entry := <-a.queue:
-			batch = append(batch, entry)
-			a.drainBatch(&batch)
+		if a.queue.popBatch(&batch, a.batchSize) {
 			a.flushBatch(batch)
 			batch = batch[:0]
+			continue
+		}
+		select {
+		case <-a.queue.readableSignal():
 		case <-a.done:
 			a.drainAll(&batch)
 			a.flushBatch(batch)
@@ -222,28 +231,14 @@ func (a *asyncLogger) run() {
 	}
 }
 
-func (a *asyncLogger) drainBatch(batch *[]asyncLoggerEntry) {
-	for len(*batch) < a.batchSize {
-		select {
-		case entry := <-a.queue:
-			*batch = append(*batch, entry)
-		default:
-			return
-		}
-	}
-}
-
 func (a *asyncLogger) drainAll(batch *[]asyncLoggerEntry) {
 	for {
-		select {
-		case entry := <-a.queue:
-			*batch = append(*batch, entry)
-			if len(*batch) >= a.batchSize {
-				a.flushBatch(*batch)
-				*batch = (*batch)[:0]
-			}
-		default:
+		if !a.queue.popBatch(batch, a.batchSize) {
 			return
+		}
+		if len(*batch) >= a.batchSize {
+			a.flushBatch(*batch)
+			*batch = (*batch)[:0]
 		}
 	}
 }
