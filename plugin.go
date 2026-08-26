@@ -290,6 +290,36 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterLayout("csvLayout", func(_ LayoutBuildConfig) (Layout, error) {
 		return CSVLayout{}, nil
 	})
+	_ = registry.RegisterLayout("gelf", func(_ LayoutBuildConfig) (Layout, error) {
+		return GELFLayout{}, nil
+	})
+	_ = registry.RegisterLayout("gelfLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return GELFLayout{}, nil
+	})
+	_ = registry.RegisterLayout("rfc5424", func(_ LayoutBuildConfig) (Layout, error) {
+		return RFC5424Layout{}, nil
+	})
+	_ = registry.RegisterLayout("rfc5424Layout", func(_ LayoutBuildConfig) (Layout, error) {
+		return RFC5424Layout{}, nil
+	})
+	_ = registry.RegisterLayout("syslog", func(_ LayoutBuildConfig) (Layout, error) {
+		return SyslogLayout{}, nil
+	})
+	_ = registry.RegisterLayout("syslogLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return SyslogLayout{}, nil
+	})
+	_ = registry.RegisterLayout("yaml", func(_ LayoutBuildConfig) (Layout, error) {
+		return YAMLLayout{}, nil
+	})
+	_ = registry.RegisterLayout("yamlLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return YAMLLayout{}, nil
+	})
+	_ = registry.RegisterLayout("html", func(_ LayoutBuildConfig) (Layout, error) {
+		return HTMLLayout{}, nil
+	})
+	_ = registry.RegisterLayout("htmlLayout", func(_ LayoutBuildConfig) (Layout, error) {
+		return HTMLLayout{}, nil
+	})
 
 	_ = registry.RegisterFilter("threshold", buildThresholdFilterPlugin)
 	_ = registry.RegisterFilter("thresholdFilter", buildThresholdFilterPlugin)
