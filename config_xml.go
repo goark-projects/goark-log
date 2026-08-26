@@ -42,6 +42,9 @@ type xmlAppenders struct {
 	File        []xmlAppender `xml:"File"`
 	RollingFile []xmlAppender `xml:"RollingFile"`
 	Async       []xmlAppender `xml:"Async"`
+	Failover    []xmlAppender `xml:"Failover"`
+	Routing     []xmlAppender `xml:"Routing"`
+	Rewrite     []xmlAppender `xml:"Rewrite"`
 	HTTP        []xmlAppender `xml:"Http"`
 	Socket      []xmlAppender `xml:"Socket"`
 	Syslog      []xmlAppender `xml:"Syslog"`
@@ -62,6 +65,9 @@ type xmlAppender struct {
 	WriteTimeout     string             `xml:"writeTimeout,attr"`
 	FileName         string             `xml:"fileName,attr"`
 	FilePattern      string             `xml:"filePattern,attr"`
+	Primary          string             `xml:"primary,attr"`
+	RouteKey         string             `xml:"routeKey,attr"`
+	DefaultRoute     string             `xml:"defaultRoute,attr"`
 	QueueSize        string             `xml:"queueSize,attr"`
 	OverflowStrategy string             `xml:"overflowStrategy,attr"`
 	WaitStrategy     string             `xml:"waitStrategy,attr"`
@@ -90,6 +96,10 @@ type xmlAppender struct {
 	HTMLLayout       xmlLayout          `xml:"HTMLLayout"`
 	Layout           xmlLayout          `xml:"Layout"`
 	AppenderRefs     []xmlAppenderRef   `xml:"AppenderRef"`
+	Failovers        []xmlAppenderRef   `xml:"Failovers>AppenderRef"`
+	Routes           []xmlRoute         `xml:"Route"`
+	KeyValuePair     []xmlKeyValuePair  `xml:"KeyValuePair"`
+	Remove           []xmlRemoveAttr    `xml:"Remove"`
 	FilterRefs       []xmlFilterRef     `xml:"FilterRef"`
 	Policies         xmlRollingPolicies `xml:"Policies"`
 	Strategy         xmlRollingStrategy `xml:"DefaultRolloverStrategy"`
@@ -121,6 +131,17 @@ type xmlAppenderRef struct {
 
 type xmlFilterRef struct {
 	Ref string `xml:"ref,attr"`
+}
+
+type xmlRoute struct {
+	Key         string         `xml:"key,attr"`
+	Ref         string         `xml:"ref,attr"`
+	AppenderRef xmlAppenderRef `xml:"AppenderRef"`
+}
+
+type xmlRemoveAttr struct {
+	Key  string `xml:"key,attr"`
+	Name string `xml:"name,attr"`
 }
 
 type xmlRollingPolicies struct {
@@ -340,6 +361,9 @@ func (c xmlConfig) appenders(file *fileConfig) error {
 		c.Appenders.File,
 		c.Appenders.RollingFile,
 		c.Appenders.Async,
+		c.Appenders.Failover,
+		c.Appenders.Routing,
+		c.Appenders.Rewrite,
 		c.Appenders.HTTP,
 		c.Appenders.Socket,
 		c.Appenders.Syslog,
@@ -439,19 +463,28 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	}
 	strategy := a.effectiveStrategy()
 	config := appenderConfig{
-		Type:             xmlAppenderType(a.XMLName.Local, a.Type),
-		Target:           xmlConsoleTarget(a.Target),
-		URL:              a.URL,
-		Method:           a.Method,
-		Address:          a.Address,
-		Network:          a.Network,
-		Facility:         a.Facility,
-		AppName:          a.AppName,
-		ConnectTimeout:   a.ConnectTimeout,
-		WriteTimeout:     a.WriteTimeout,
-		FileName:         a.FileName,
-		Layout:           layout,
-		AppenderRefs:     xmlAppenderRefs(a.AppenderRefs),
+		Type:           xmlAppenderType(a.XMLName.Local, a.Type),
+		Target:         xmlConsoleTarget(a.Target),
+		URL:            a.URL,
+		Method:         a.Method,
+		Address:        a.Address,
+		Network:        a.Network,
+		Facility:       a.Facility,
+		AppName:        a.AppName,
+		ConnectTimeout: a.ConnectTimeout,
+		WriteTimeout:   a.WriteTimeout,
+		FileName:       a.FileName,
+		Layout:         layout,
+		AppenderRefs:   xmlAppenderRefs(a.AppenderRefs),
+		Primary:        a.Primary,
+		Failovers:      xmlFilterRefsFromAppenderRefs(a.Failovers),
+		RouteKey:       a.RouteKey,
+		DefaultRoute:   a.DefaultRoute,
+		Routes:         xmlRoutes(a.Routes),
+		Rewrite: rewriteBuildConfig{
+			Attrs:  xmlKeyValuePairMap(a.KeyValuePair),
+			Remove: xmlRemoveAttrs(a.Remove),
+		},
 		QueueSize:        queueSize,
 		OverflowStrategy: a.OverflowStrategy,
 		WaitStrategy:     a.WaitStrategy,
@@ -784,10 +817,53 @@ func xmlAppenderRefs(refs []xmlAppenderRef) appenderRefs {
 	return out
 }
 
+func xmlFilterRefsFromAppenderRefs(refs []xmlAppenderRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, strings.TrimSpace(ref.Ref))
+	}
+	return out
+}
+
+func xmlRoutes(routes []xmlRoute) map[string]string {
+	if len(routes) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(routes))
+	for _, route := range routes {
+		key := strings.TrimSpace(route.Key)
+		if key == "" {
+			continue
+		}
+		out[key] = firstNonBlank(route.Ref, route.AppenderRef.Ref)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func xmlFilterRefs(refs []xmlFilterRef) []string {
 	out := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		out = append(out, strings.TrimSpace(ref.Ref))
+	}
+	return out
+}
+
+func xmlKeyValuePairMap(pairs []xmlKeyValuePair) map[string]string {
+	if len(pairs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		key := strings.TrimSpace(pair.Key)
+		if key != "" {
+			out[key] = pair.Value
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -799,6 +875,19 @@ func xmlKeyValuePairs(pairs []xmlKeyValuePair) []keyValuePairConfig {
 			Key:   pair.Key,
 			Value: pair.Value,
 		})
+	}
+	return out
+}
+
+func xmlRemoveAttrs(values []xmlRemoveAttr) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if key := firstNonBlank(value.Key, value.Name); key != "" {
+			out = append(out, key)
+		}
 	}
 	return out
 }

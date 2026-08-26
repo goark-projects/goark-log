@@ -51,6 +51,9 @@ type AppenderBuildConfig struct {
 	Layout           Layout
 	AppenderRefs     []string
 	Delegates        []Appender
+	Routes           map[string]Appender
+	DefaultRoute     Appender
+	RouteKey         string
 	QueueSize        int
 	OverflowStrategy string
 	WaitStrategy     string
@@ -58,6 +61,13 @@ type AppenderBuildConfig struct {
 	BufferSize       string
 	FlushOnWrite     bool
 	Rolling          RollingBuildConfig
+	Rewrite          RewriteBuildConfig
+}
+
+// RewriteBuildConfig 是 rewrite appender 的内置重写策略配置。
+type RewriteBuildConfig struct {
+	Attrs       map[string]string
+	RemoveAttrs []string
 }
 
 // RollingBuildConfig 是滚动文件插件的构建输入。
@@ -336,6 +346,12 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterAppender("rolling", buildRollingPlugin)
 	_ = registry.RegisterAppender("rollingFile", buildRollingPlugin)
 	_ = registry.RegisterAppender("async", buildAsyncPlugin)
+	_ = registry.RegisterAppender("failover", buildFailoverPlugin)
+	_ = registry.RegisterAppender("failoverAppender", buildFailoverPlugin)
+	_ = registry.RegisterAppender("routing", buildRoutingPlugin)
+	_ = registry.RegisterAppender("routingAppender", buildRoutingPlugin)
+	_ = registry.RegisterAppender("rewrite", buildRewritePlugin)
+	_ = registry.RegisterAppender("rewriteAppender", buildRewritePlugin)
 
 	_ = registry.RegisterLayout("pattern", func(config LayoutBuildConfig) (Layout, error) {
 		return NewPatternLayout(config.Pattern)
@@ -644,6 +660,40 @@ func buildAsyncPlugin(config AppenderBuildConfig) (Appender, error) {
 		options = append(options, WithAsyncQueueSize(config.QueueSize))
 	}
 	return NewAsyncAppender(config.Delegates, options...)
+}
+
+func buildFailoverPlugin(config AppenderBuildConfig) (Appender, error) {
+	if len(config.Delegates) < 2 {
+		return nil, fmt.Errorf("goark-log: failover appender %q requires primary and failovers", config.Name)
+	}
+	return NewFailoverAppender(config.Delegates[0], config.Delegates[1:],
+		WithFailoverName(config.Name),
+		WithFailoverCloseChildren(false),
+	)
+}
+
+func buildRoutingPlugin(config AppenderBuildConfig) (Appender, error) {
+	options := []RoutingOption{
+		WithRoutingName(config.Name),
+		WithRoutingCloseChildren(false),
+	}
+	if strings.TrimSpace(config.RouteKey) != "" {
+		options = append(options, WithRoutingAttrKey(config.RouteKey))
+	}
+	if config.DefaultRoute != nil {
+		options = append(options, WithRoutingDefault(config.DefaultRoute))
+	}
+	return NewRoutingAppender(config.Routes, options...)
+}
+
+func buildRewritePlugin(config AppenderBuildConfig) (Appender, error) {
+	if len(config.Delegates) != 1 {
+		return nil, fmt.Errorf("goark-log: rewrite appender %q requires exactly one appenderRef", config.Name)
+	}
+	return NewRewriteAppender(config.Delegates[0], newAttributeRewritePolicy(config.Rewrite),
+		WithRewriteName(config.Name),
+		WithRewriteCloseDelegate(false),
+	)
 }
 
 func buildThresholdFilterPlugin(config FilterBuildConfig) (Filter, error) {

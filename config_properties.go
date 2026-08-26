@@ -226,6 +226,25 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		config.Appenders[id] = appender
 		return nil
 	}
+	if strings.HasPrefix(field, "routes.") {
+		routeKey := strings.TrimSpace(strings.TrimPrefix(field, "routes."))
+		if routeKey == "" {
+			return fmt.Errorf("goark-log: properties appender.%s.%s has empty route key", id, field)
+		}
+		if appender.Routes == nil {
+			appender.Routes = make(map[string]string)
+		}
+		appender.Routes[routeKey] = value
+		config.Appenders[id] = appender
+		return nil
+	}
+	if strings.HasPrefix(field, "rewrite.") {
+		if err := applyRewriteProperty(&appender.Rewrite, strings.TrimPrefix(field, "rewrite."), value); err != nil {
+			return err
+		}
+		config.Appenders[id] = appender
+		return nil
+	}
 	switch field {
 	case "name":
 		return nil
@@ -253,6 +272,14 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.FileName = value
 	case "appenderRefs", "appender-refs", "refs":
 		appender.AppenderRefs = propertyAppenderRefs(value)
+	case "primary", "primary-ref":
+		appender.Primary = value
+	case "failovers", "failover-refs":
+		appender.Failovers = propertyList(value)
+	case "routeKey", "route-key", "attrKey", "attr-key":
+		appender.RouteKey = value
+	case "defaultRoute", "default-route":
+		appender.DefaultRoute = value
 	case "queueSize", "queue-size":
 		parsed, err := parsePropertyInt(value, key)
 		if err != nil {
@@ -319,6 +346,41 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Rolling.DirectWrite = parsed
 	}
 	config.Appenders[id] = appender
+	return nil
+}
+
+func applyRewriteProperty(config *rewriteBuildConfig, key string, value string) error {
+	switch {
+	case strings.HasPrefix(key, "attrs."):
+		attrKey := strings.TrimSpace(strings.TrimPrefix(key, "attrs."))
+		if attrKey == "" {
+			return fmt.Errorf("goark-log: properties rewrite attr key is empty")
+		}
+		if config.Attrs == nil {
+			config.Attrs = make(map[string]string)
+		}
+		config.Attrs[attrKey] = value
+	case strings.HasPrefix(key, "attributes."):
+		attrKey := strings.TrimSpace(strings.TrimPrefix(key, "attributes."))
+		if attrKey == "" {
+			return fmt.Errorf("goark-log: properties rewrite attribute key is empty")
+		}
+		if config.Attributes == nil {
+			config.Attributes = make(map[string]string)
+		}
+		config.Attributes[attrKey] = value
+	case strings.HasPrefix(key, "properties."):
+		attrKey := strings.TrimSpace(strings.TrimPrefix(key, "properties."))
+		if attrKey == "" {
+			return fmt.Errorf("goark-log: properties rewrite property key is empty")
+		}
+		if config.Properties == nil {
+			config.Properties = make(map[string]string)
+		}
+		config.Properties[attrKey] = value
+	case key == "remove" || key == "removeAttrs" || key == "remove-attrs":
+		config.Remove = propertyList(value)
+	}
 	return nil
 }
 

@@ -9,9 +9,10 @@ import (
 
 // FailoverAppender 在主 appender 写入失败时按顺序尝试备用 appender。
 type FailoverAppender struct {
-	name      string
-	primary   Appender
-	failovers []Appender
+	name          string
+	primary       Appender
+	failovers     []Appender
+	closeChildren bool
 }
 
 // FailoverOption 调整 FailoverAppender。
@@ -24,12 +25,20 @@ func WithFailoverName(name string) FailoverOption {
 	}
 }
 
+// WithFailoverCloseChildren 设置关闭 failover 时是否关闭下游 appender。
+func WithFailoverCloseChildren(enabled bool) FailoverOption {
+	return func(appender *FailoverAppender) {
+		appender.closeChildren = enabled
+	}
+}
+
 // NewFailoverAppender 创建失败转移 appender。
 func NewFailoverAppender(primary Appender, failovers []Appender, options ...FailoverOption) (*FailoverAppender, error) {
 	appender := &FailoverAppender{
-		name:      "failover",
-		primary:   primary,
-		failovers: append([]Appender(nil), failovers...),
+		name:          "failover",
+		primary:       primary,
+		failovers:     append([]Appender(nil), failovers...),
+		closeChildren: true,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -80,7 +89,7 @@ func (a *FailoverAppender) Append(ctx context.Context, event Event) error {
 }
 
 func (a *FailoverAppender) Close() error {
-	if a == nil {
+	if a == nil || !a.closeChildren {
 		return nil
 	}
 	return closeUniqueAppenders(append([]Appender{a.primary}, a.failovers...))
@@ -223,9 +232,10 @@ type RewritePolicy func(ctx context.Context, event Event) (Event, error)
 
 // RewriteAppender 在写出前执行事件重写。
 type RewriteAppender struct {
-	name     string
-	delegate Appender
-	policy   RewritePolicy
+	name          string
+	delegate      Appender
+	policy        RewritePolicy
+	closeDelegate bool
 }
 
 // RewriteOption 调整 RewriteAppender。
@@ -238,12 +248,20 @@ func WithRewriteName(name string) RewriteOption {
 	}
 }
 
+// WithRewriteCloseDelegate 设置关闭 rewrite 时是否关闭下游 appender。
+func WithRewriteCloseDelegate(enabled bool) RewriteOption {
+	return func(appender *RewriteAppender) {
+		appender.closeDelegate = enabled
+	}
+}
+
 // NewRewriteAppender 创建事件重写 appender。
 func NewRewriteAppender(delegate Appender, policy RewritePolicy, options ...RewriteOption) (*RewriteAppender, error) {
 	appender := &RewriteAppender{
-		name:     "rewrite",
-		delegate: delegate,
-		policy:   policy,
+		name:          "rewrite",
+		delegate:      delegate,
+		policy:        policy,
+		closeDelegate: true,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -281,7 +299,7 @@ func (a *RewriteAppender) Append(ctx context.Context, event Event) error {
 }
 
 func (a *RewriteAppender) Close() error {
-	if a == nil || a.delegate == nil {
+	if a == nil || a.delegate == nil || !a.closeDelegate {
 		return nil
 	}
 	return a.delegate.Close()

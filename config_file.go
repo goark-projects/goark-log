@@ -38,45 +38,55 @@ type fileConfig struct {
 }
 
 type appenderConfig struct {
-	Type                  string        `yaml:"type"`
-	Target                string        `yaml:"target"`
-	URL                   string        `yaml:"url"`
-	Method                string        `yaml:"method"`
-	Address               string        `yaml:"address"`
-	Network               string        `yaml:"network"`
-	Facility              string        `yaml:"facility"`
-	AppName               string        `yaml:"appName"`
-	AppNameKebab          string        `yaml:"app-name"`
-	ConnectTimeout        string        `yaml:"connectTimeout"`
-	ConnectTimeoutKebab   string        `yaml:"connect-timeout"`
-	WriteTimeout          string        `yaml:"writeTimeout"`
-	WriteTimeoutKebab     string        `yaml:"write-timeout"`
-	FileName              string        `yaml:"fileName"`
-	FileNameKebab         string        `yaml:"file-name"`
-	Path                  string        `yaml:"path"`
-	Layout                layoutConfig  `yaml:"layout"`
-	Rolling               rollingConfig `yaml:"rolling"`
-	AppenderRefs          appenderRefs  `yaml:"appenderRefs"`
-	AppenderRefsKebab     appenderRefs  `yaml:"appender-refs"`
-	Refs                  appenderRefs  `yaml:"refs"`
-	QueueSize             int           `yaml:"queueSize"`
-	QueueSizeKebab        int           `yaml:"queue-size"`
-	OverflowStrategy      string        `yaml:"overflowStrategy"`
-	OverflowStrategyKebab string        `yaml:"overflow-strategy"`
-	WaitStrategy          string        `yaml:"waitStrategy"`
-	WaitStrategyKebab     string        `yaml:"wait-strategy"`
-	WaitRetries           int           `yaml:"waitRetries"`
-	WaitRetriesKebab      int           `yaml:"wait-retries"`
-	SleepTime             string        `yaml:"sleepTime"`
-	SleepTimeKebab        string        `yaml:"sleep-time"`
-	Timeout               string        `yaml:"timeout"`
-	BufferSize            string        `yaml:"bufferSize"`
-	BufferSizeKebab       string        `yaml:"buffer-size"`
-	FlushOnWrite          bool          `yaml:"flushOnWrite"`
-	FlushOnWriteKebab     bool          `yaml:"flush-on-write"`
-	Filters               []string      `yaml:"filters"`
-	FilterRefs            []string      `yaml:"filterRefs"`
-	FilterRefsKebab       []string      `yaml:"filter-refs"`
+	Type                  string             `yaml:"type"`
+	Target                string             `yaml:"target"`
+	URL                   string             `yaml:"url"`
+	Method                string             `yaml:"method"`
+	Address               string             `yaml:"address"`
+	Network               string             `yaml:"network"`
+	Facility              string             `yaml:"facility"`
+	AppName               string             `yaml:"appName"`
+	AppNameKebab          string             `yaml:"app-name"`
+	ConnectTimeout        string             `yaml:"connectTimeout"`
+	ConnectTimeoutKebab   string             `yaml:"connect-timeout"`
+	WriteTimeout          string             `yaml:"writeTimeout"`
+	WriteTimeoutKebab     string             `yaml:"write-timeout"`
+	FileName              string             `yaml:"fileName"`
+	FileNameKebab         string             `yaml:"file-name"`
+	Path                  string             `yaml:"path"`
+	Layout                layoutConfig       `yaml:"layout"`
+	Rolling               rollingConfig      `yaml:"rolling"`
+	AppenderRefs          appenderRefs       `yaml:"appenderRefs"`
+	AppenderRefsKebab     appenderRefs       `yaml:"appender-refs"`
+	Refs                  appenderRefs       `yaml:"refs"`
+	Primary               string             `yaml:"primary"`
+	PrimaryKebab          string             `yaml:"primary-ref"`
+	Failovers             []string           `yaml:"failovers"`
+	FailoversKebab        []string           `yaml:"failover-refs"`
+	RouteKey              string             `yaml:"routeKey"`
+	RouteKeyKebab         string             `yaml:"route-key"`
+	DefaultRoute          string             `yaml:"defaultRoute"`
+	DefaultRouteKebab     string             `yaml:"default-route"`
+	Routes                map[string]string  `yaml:"routes"`
+	Rewrite               rewriteBuildConfig `yaml:"rewrite"`
+	QueueSize             int                `yaml:"queueSize"`
+	QueueSizeKebab        int                `yaml:"queue-size"`
+	OverflowStrategy      string             `yaml:"overflowStrategy"`
+	OverflowStrategyKebab string             `yaml:"overflow-strategy"`
+	WaitStrategy          string             `yaml:"waitStrategy"`
+	WaitStrategyKebab     string             `yaml:"wait-strategy"`
+	WaitRetries           int                `yaml:"waitRetries"`
+	WaitRetriesKebab      int                `yaml:"wait-retries"`
+	SleepTime             string             `yaml:"sleepTime"`
+	SleepTimeKebab        string             `yaml:"sleep-time"`
+	Timeout               string             `yaml:"timeout"`
+	BufferSize            string             `yaml:"bufferSize"`
+	BufferSizeKebab       string             `yaml:"buffer-size"`
+	FlushOnWrite          bool               `yaml:"flushOnWrite"`
+	FlushOnWriteKebab     bool               `yaml:"flush-on-write"`
+	Filters               []string           `yaml:"filters"`
+	FilterRefs            []string           `yaml:"filterRefs"`
+	FilterRefsKebab       []string           `yaml:"filter-refs"`
 }
 
 type layoutConfig struct {
@@ -830,6 +840,36 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.Refs, err = c.Refs.resolveLookups(lookups); err != nil {
 		return fmt.Errorf("refs: %w", err)
 	}
+	if c.Primary, err = resolveStringLookup(lookups, c.Primary); err != nil {
+		return fmt.Errorf("primary: %w", err)
+	}
+	if c.PrimaryKebab, err = resolveStringLookup(lookups, c.PrimaryKebab); err != nil {
+		return fmt.Errorf("primary-ref: %w", err)
+	}
+	if c.Failovers, err = resolveStringListLookups(lookups, c.Failovers); err != nil {
+		return fmt.Errorf("failovers: %w", err)
+	}
+	if c.FailoversKebab, err = resolveStringListLookups(lookups, c.FailoversKebab); err != nil {
+		return fmt.Errorf("failover-refs: %w", err)
+	}
+	if c.RouteKey, err = resolveStringLookup(lookups, c.RouteKey); err != nil {
+		return fmt.Errorf("routeKey: %w", err)
+	}
+	if c.RouteKeyKebab, err = resolveStringLookup(lookups, c.RouteKeyKebab); err != nil {
+		return fmt.Errorf("route-key: %w", err)
+	}
+	if c.DefaultRoute, err = resolveStringLookup(lookups, c.DefaultRoute); err != nil {
+		return fmt.Errorf("defaultRoute: %w", err)
+	}
+	if c.DefaultRouteKebab, err = resolveStringLookup(lookups, c.DefaultRouteKebab); err != nil {
+		return fmt.Errorf("default-route: %w", err)
+	}
+	if c.Routes, err = resolveStringMapLookups(lookups, c.Routes); err != nil {
+		return fmt.Errorf("routes: %w", err)
+	}
+	if err := c.Rewrite.resolveLookups(lookups); err != nil {
+		return fmt.Errorf("rewrite: %w", err)
+	}
 	if c.Filters, err = resolveStringListLookups(lookups, c.Filters); err != nil {
 		return fmt.Errorf("filters: %w", err)
 	}
@@ -1503,11 +1543,11 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginR
 	appenderNames := sortedAppenderNames(c.Appenders)
 	built := make(map[string]Appender, len(c.Appenders))
 	appenders := make([]Appender, 0, len(c.Appenders))
-	asyncNames := make([]string, 0)
+	compositeNames := make([]string, 0)
 	for _, name := range appenderNames {
 		spec := c.Appenders[name]
-		if normalizeKind(spec.Type) == "async" {
-			asyncNames = append(asyncNames, name)
+		if isCompositeAppenderKind(spec.Type) {
+			compositeNames = append(compositeNames, name)
 			continue
 		}
 		appender, err := buildConcreteAppender(name, spec, filters, registry)
@@ -1518,14 +1558,28 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginR
 		built[name] = appender
 		appenders = append(appenders, appender)
 	}
-	for _, name := range asyncNames {
-		appender, err := buildAsyncAppender(name, c.Appenders[name], built, filters, registry)
-		if err != nil {
-			_ = closeAppenderList(appenders)
-			return nil, err
+	for len(compositeNames) > 0 {
+		progress := false
+		remaining := compositeNames[:0]
+		for _, name := range compositeNames {
+			appender, waiting, err := buildCompositeAppender(name, c.Appenders[name], c.Appenders, built, filters, registry)
+			if err != nil {
+				_ = closeAppenderList(appenders)
+				return nil, err
+			}
+			if waiting {
+				remaining = append(remaining, name)
+				continue
+			}
+			built[name] = appender
+			appenders = append(appenders, appender)
+			progress = true
 		}
-		built[name] = appender
-		appenders = append(appenders, appender)
+		if !progress {
+			_ = closeAppenderList(appenders)
+			return nil, fmt.Errorf("goark-log: appender dependencies are unresolved: %s", strings.Join(remaining, ", "))
+		}
+		compositeNames = remaining
 	}
 	return appenders, nil
 }
@@ -1543,7 +1597,7 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
-	appender, err := factory(spec.appenderBuildConfig(name, layout, nil))
+	appender, err := factory(spec.appenderBuildConfig(name, layout, nil, nil, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -1555,48 +1609,175 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 	return wrapped, nil
 }
 
-func buildAsyncAppender(name string, spec appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
+func buildCompositeAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
+	switch normalizeKind(spec.Type) {
+	case "async":
+		appender, waiting, err := buildAsyncAppender(name, spec, specs, built, filters, registry)
+		return appender, waiting, err
+	case "failover", "failoverappender":
+		return buildFailoverAppender(name, spec, specs, built, registry)
+	case "routing", "routingappender":
+		return buildRoutingAppender(name, spec, specs, built, registry)
+	case "rewrite", "rewriteappender":
+		return buildRewriteAppender(name, spec, specs, built, registry)
+	default:
+		return nil, false, fmt.Errorf("goark-log: unsupported composite appender %q type %q", name, spec.Type)
+	}
+}
+
+func buildAsyncAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
 	refs := spec.refs()
 	controls, err := spec.appenderRefControls(filters)
 	if err != nil {
-		return nil, fmt.Errorf("goark-log: async appender %q: %w", name, err)
+		return nil, false, fmt.Errorf("goark-log: async appender %q: %w", name, err)
 	}
 	if len(refs) == 0 && len(controls) == 0 {
-		return nil, fmt.Errorf("goark-log: async appender %q requires appenderRefs", name)
+		return nil, false, fmt.Errorf("goark-log: async appender %q requires appenderRefs", name)
 	}
 	delegates := make([]Appender, 0, len(refs)+len(controls))
 	for _, ref := range refs {
-		ref = strings.TrimSpace(ref)
-		if ref == "" {
-			return nil, fmt.Errorf("goark-log: async appender %q appender ref is empty", name)
-		}
-		appender, ok := built[ref]
-		if !ok {
-			return nil, fmt.Errorf("goark-log: async appender %q references unknown or async appender %q", name, ref)
+		appender, waiting, err := resolveCompositeAppenderRef("async appender", name, ref, specs, built)
+		if err != nil || waiting {
+			return nil, waiting, err
 		}
 		delegates = append(delegates, appender)
 	}
 	for _, ref := range controls {
+		if _, waiting, err := resolveCompositeAppenderRef("async appender", name, ref.Ref, specs, built); err != nil || waiting {
+			return nil, waiting, err
+		}
 		control, err := newAppenderControl(built, ref)
 		if err != nil {
-			return nil, fmt.Errorf("goark-log: async appender %q: %w", name, err)
+			return nil, false, fmt.Errorf("goark-log: async appender %q: %w", name, err)
 		}
 		delegates = append(delegates, controlledAppender{control: control})
 	}
 	factory, ok := registry.appenderFactory(spec.Type)
 	if !ok {
-		return nil, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
+		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
-	appender, err := factory(spec.appenderBuildConfig(name, nil, delegates))
+	appender, err := factory(spec.appenderBuildConfig(name, nil, delegates, nil, nil))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	wrapped, err := wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
 	if err != nil {
 		_ = appender.Close()
-		return nil, err
+		return nil, false, err
 	}
-	return wrapped, nil
+	return wrapped, false, nil
+}
+
+func buildFailoverAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, registry *PluginRegistry) (Appender, bool, error) {
+	refs := spec.failoverRefs()
+	if len(refs) < 2 {
+		return nil, false, fmt.Errorf("goark-log: failover appender %q requires primary and failovers", name)
+	}
+	delegates, waiting, err := resolveCompositeAppenderRefs("failover appender", name, refs, specs, built)
+	if err != nil || waiting {
+		return nil, waiting, err
+	}
+	factory, ok := registry.appenderFactory(spec.Type)
+	if !ok {
+		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
+	}
+	appender, err := factory(spec.appenderBuildConfig(name, nil, delegates, nil, nil))
+	return appender, false, err
+}
+
+func buildRoutingAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, registry *PluginRegistry) (Appender, bool, error) {
+	routes, waiting, err := resolveRoutingRoutes("routing appender", name, spec.routes(), specs, built)
+	if err != nil || waiting {
+		return nil, waiting, err
+	}
+	defaultRoute, waiting, err := resolveOptionalCompositeAppenderRef("routing appender", name, spec.defaultRoute(), specs, built)
+	if err != nil || waiting {
+		return nil, waiting, err
+	}
+	factory, ok := registry.appenderFactory(spec.Type)
+	if !ok {
+		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
+	}
+	appender, err := factory(spec.appenderBuildConfig(name, nil, nil, routes, defaultRoute))
+	return appender, false, err
+}
+
+func buildRewriteAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, registry *PluginRegistry) (Appender, bool, error) {
+	refs := spec.refs()
+	if len(refs) != 1 {
+		return nil, false, fmt.Errorf("goark-log: rewrite appender %q requires exactly one appenderRef", name)
+	}
+	delegates, waiting, err := resolveCompositeAppenderRefs("rewrite appender", name, refs, specs, built)
+	if err != nil || waiting {
+		return nil, waiting, err
+	}
+	factory, ok := registry.appenderFactory(spec.Type)
+	if !ok {
+		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
+	}
+	appender, err := factory(spec.appenderBuildConfig(name, nil, delegates, nil, nil))
+	return appender, false, err
+}
+
+func resolveCompositeAppenderRefs(ownerKind string, owner string, refs []string, specs map[string]appenderConfig, built map[string]Appender) ([]Appender, bool, error) {
+	appenders := make([]Appender, 0, len(refs))
+	for _, ref := range refs {
+		appender, waiting, err := resolveCompositeAppenderRef(ownerKind, owner, ref, specs, built)
+		if err != nil || waiting {
+			return nil, waiting, err
+		}
+		appenders = append(appenders, appender)
+	}
+	return appenders, false, nil
+}
+
+func resolveOptionalCompositeAppenderRef(ownerKind string, owner string, ref string, specs map[string]appenderConfig, built map[string]Appender) (Appender, bool, error) {
+	if strings.TrimSpace(ref) == "" {
+		return nil, false, nil
+	}
+	return resolveCompositeAppenderRef(ownerKind, owner, ref, specs, built)
+}
+
+func resolveCompositeAppenderRef(ownerKind string, owner string, ref string, specs map[string]appenderConfig, built map[string]Appender) (Appender, bool, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return nil, false, fmt.Errorf("goark-log: %s %q appender ref is empty", ownerKind, owner)
+	}
+	if appender, ok := built[ref]; ok {
+		return appender, false, nil
+	}
+	if _, ok := specs[ref]; ok {
+		return nil, true, nil
+	}
+	return nil, false, fmt.Errorf("goark-log: %s %q references unknown appender %q", ownerKind, owner, ref)
+}
+
+func resolveRoutingRoutes(ownerKind string, owner string, routeRefs map[string]string, specs map[string]appenderConfig, built map[string]Appender) (map[string]Appender, bool, error) {
+	if len(routeRefs) == 0 {
+		return nil, false, nil
+	}
+	routes := make(map[string]Appender, len(routeRefs))
+	for key, ref := range routeRefs {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, false, fmt.Errorf("goark-log: %s %q route key is empty", ownerKind, owner)
+		}
+		appender, waiting, err := resolveCompositeAppenderRef(ownerKind, owner, ref, specs, built)
+		if err != nil || waiting {
+			return nil, waiting, err
+		}
+		routes[key] = appender
+	}
+	return routes, false, nil
+}
+
+func isCompositeAppenderKind(value string) bool {
+	switch normalizeKind(value) {
+	case "async", "failover", "failoverappender", "routing", "routingappender", "rewrite", "rewriteappender":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) {
@@ -1674,6 +1855,18 @@ func (c appenderConfig) refs() []string {
 	return c.appenderRefs().strings()
 }
 
+func (c appenderConfig) failoverRefs() []string {
+	primary := firstNonBlank(c.Primary, c.PrimaryKebab)
+	failovers := firstStringRefs(c.Failovers, c.FailoversKebab)
+	if primary == "" && len(failovers) == 0 {
+		return c.refs()
+	}
+	refs := make([]string, 0, 1+len(failovers))
+	refs = append(refs, primary)
+	refs = append(refs, failovers...)
+	return refs
+}
+
 func (c appenderConfig) appenderRefs() appenderRefs {
 	return firstAppenderRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
 }
@@ -1720,7 +1913,26 @@ func (c appenderConfig) flushOnWrite() bool {
 	return c.FlushOnWrite || c.FlushOnWriteKebab
 }
 
-func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegates []Appender) AppenderBuildConfig {
+func (c appenderConfig) routeKey() string {
+	return firstNonBlank(c.RouteKey, c.RouteKeyKebab)
+}
+
+func (c appenderConfig) defaultRoute() string {
+	return firstNonBlank(c.DefaultRoute, c.DefaultRouteKebab)
+}
+
+func (c appenderConfig) routes() map[string]string {
+	return copyStringMap(c.Routes)
+}
+
+func (c appenderConfig) rewriteConfig() RewriteBuildConfig {
+	return RewriteBuildConfig{
+		Attrs:       c.Rewrite.attrs(),
+		RemoveAttrs: c.Rewrite.removeKeys(),
+	}
+}
+
+func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegates []Appender, routes map[string]Appender, defaultRoute Appender) AppenderBuildConfig {
 	return AppenderBuildConfig{
 		Name:             name,
 		Type:             c.Type,
@@ -1737,6 +1949,9 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		Layout:           layout,
 		AppenderRefs:     c.refs(),
 		Delegates:        append([]Appender(nil), delegates...),
+		Routes:           copyAppenderMap(routes),
+		DefaultRoute:     defaultRoute,
+		RouteKey:         c.routeKey(),
 		QueueSize:        c.queueSize(),
 		OverflowStrategy: c.overflowStrategy(),
 		WaitStrategy:     c.waitStrategy(),
@@ -1759,7 +1974,19 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 			DeleteActions:   c.Rolling.deleteActions(c.fileName()),
 			ActionQueueSize: c.Rolling.actionQueueSize(),
 		},
+		Rewrite: c.rewriteConfig(),
 	}
+}
+
+func copyAppenderMap(values map[string]Appender) map[string]Appender {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]Appender, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }
 
 func (c rollingConfig) filePattern() string {
