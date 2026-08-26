@@ -269,6 +269,8 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 		filter.Start = value
 	case field == "end":
 		filter.End = value
+	case field == "timezone":
+		filter.Timezone = value
 	case field == "rate":
 		filter.Rate = value
 	case field == "maxBurst" || field == "max-burst":

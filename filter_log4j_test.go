@@ -111,6 +111,22 @@ func TestTimeFilter_whenRangeCrossesMidnight_shouldMatchBothSides(t *testing.T) 
 	}
 }
 
+func TestTimeFilter_whenLocationConfigured_shouldCompareInConfiguredLocation(t *testing.T) {
+	location := time.FixedZone("UTC+8", 8*60*60)
+	filter, err := NewTimeFilterInLocation("10:00", "11:00", location,
+		WithFilterOnMatch(FilterAccept),
+		WithFilterOnMismatch(FilterDeny),
+	)
+	if err != nil {
+		t.Fatalf("NewTimeFilterInLocation() error = %v", err)
+	}
+	event := testEvent("morning", time.Date(2026, 8, 25, 2, 30, 0, 0, time.UTC))
+
+	if decision := filter.Decide(context.Background(), event); decision != FilterAccept {
+		t.Fatalf("Decide() = %v, want %v", decision, FilterAccept)
+	}
+}
+
 func TestBurstFilter_whenBurstExhausted_shouldDenyLowPriorityOnly(t *testing.T) {
 	filter, err := NewBurstFilter(slog.LevelWarn, 0.000001, 2,
 		WithFilterOnMatch(FilterNeutral),
@@ -189,6 +205,7 @@ filters:
     type: TimeFilter
     start: "10:00"
     end: "11:00"
+    timezone: "UTC"
     onMatch: accept
     onMismatch: deny
   dynamic:

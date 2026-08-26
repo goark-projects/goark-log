@@ -234,13 +234,26 @@ func (f *StringMatchFilter) Decide(_ context.Context, event Event) FilterDecisio
 
 // TimeFilter 按一天内的时间区间匹配事件。
 type TimeFilter struct {
-	start   time.Duration
-	end     time.Duration
-	outcome filterOutcome
+	start    time.Duration
+	end      time.Duration
+	location *time.Location
+	outcome  filterOutcome
 }
 
 // NewTimeFilter 创建时间区间过滤器。
 func NewTimeFilter(start string, end string, options ...FilterOption) (*TimeFilter, error) {
+	return newTimeFilter(start, end, nil, options...)
+}
+
+// NewTimeFilterInLocation 创建固定时区的时间区间过滤器。
+func NewTimeFilterInLocation(start string, end string, location *time.Location, options ...FilterOption) (*TimeFilter, error) {
+	if location == nil {
+		return nil, fmt.Errorf("goark-log: time filter location is nil")
+	}
+	return newTimeFilter(start, end, location, options...)
+}
+
+func newTimeFilter(start string, end string, location *time.Location, options ...FilterOption) (*TimeFilter, error) {
 	startTime, err := parseTimeOfDay(start)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: time filter start: %w", err)
@@ -250,7 +263,7 @@ func NewTimeFilter(start string, end string, options ...FilterOption) (*TimeFilt
 		return nil, fmt.Errorf("goark-log: time filter end: %w", err)
 	}
 	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
-	return &TimeFilter{start: startTime, end: endTime, outcome: settings.outcome}, nil
+	return &TimeFilter{start: startTime, end: endTime, location: location, outcome: settings.outcome}, nil
 }
 
 func (f *TimeFilter) Decide(_ context.Context, event Event) FilterDecision {
@@ -260,6 +273,9 @@ func (f *TimeFilter) Decide(_ context.Context, event Event) FilterDecision {
 	when := event.Time
 	if when.IsZero() {
 		when = time.Now()
+	}
+	if f.location != nil {
+		when = when.In(f.location)
 	}
 	value := time.Duration(when.Hour())*time.Hour +
 		time.Duration(when.Minute())*time.Minute +

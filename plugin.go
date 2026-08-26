@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // AppenderFactory 从配置构建 Appender。
@@ -85,6 +86,7 @@ type FilterBuildConfig struct {
 	Operator         string
 	Start            string
 	End              string
+	Timezone         string
 	Rate             string
 	MaxBurst         int
 	Field            string
@@ -579,7 +581,16 @@ func buildTimeFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewTimeFilter(firstNonBlank(config.Start, "00:00:00"), firstNonBlank(config.End, "23:59:59.999999999"), options...)
+	start := firstNonBlank(config.Start, "00:00:00")
+	end := firstNonBlank(config.End, "23:59:59.999999999")
+	if strings.TrimSpace(config.Timezone) == "" {
+		return NewTimeFilter(start, end, options...)
+	}
+	location, err := time.LoadLocation(strings.TrimSpace(config.Timezone))
+	if err != nil {
+		return nil, fmt.Errorf("goark-log: filter %q timezone %q is invalid", config.Name, config.Timezone)
+	}
+	return NewTimeFilterInLocation(start, end, location, options...)
 }
 
 func buildBurstFilterPlugin(config FilterBuildConfig) (Filter, error) {

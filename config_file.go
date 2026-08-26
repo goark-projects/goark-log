@@ -347,6 +347,7 @@ type filterConfig struct {
 	Operator           string               `yaml:"operator"`
 	Start              string               `yaml:"start"`
 	End                string               `yaml:"end"`
+	Timezone           string               `yaml:"timezone"`
 	Rate               string               `yaml:"rate"`
 	MaxBurst           int                  `yaml:"maxBurst"`
 	MaxBurstKebab      int                  `yaml:"max-burst"`
@@ -988,6 +989,9 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.End, err = resolveStringLookup(lookups, c.End); err != nil {
 		return fmt.Errorf("end: %w", err)
+	}
+	if c.Timezone, err = resolveStringLookup(lookups, c.Timezone); err != nil {
+		return fmt.Errorf("timezone: %w", err)
 	}
 	if c.Rate, err = resolveStringLookup(lookups, c.Rate); err != nil {
 		return fmt.Errorf("rate: %w", err)
@@ -1845,6 +1849,7 @@ func (c filterConfig) filterBuildConfig(name string) FilterBuildConfig {
 		Operator:         c.Operator,
 		Start:            c.Start,
 		End:              c.End,
+		Timezone:         c.Timezone,
 		Rate:             c.Rate,
 		MaxBurst:         c.maxBurst(),
 		Field:            c.Field,

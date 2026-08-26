@@ -137,6 +137,7 @@ type xmlFilter struct {
 	Operator         string            `xml:"operator,attr"`
 	Start            string            `xml:"start,attr"`
 	End              string            `xml:"end,attr"`
+	Timezone         string            `xml:"timezone,attr"`
 	Rate             string            `xml:"rate,attr"`
 	MaxBurst         string            `xml:"maxBurst,attr"`
 	Field            string            `xml:"field,attr"`
@@ -413,6 +414,7 @@ func (f xmlFilter) config(kind string) (filterConfig, error) {
 		Operator:         f.Operator,
 		Start:            f.Start,
 		End:              f.End,
+		Timezone:         f.Timezone,
 		Rate:             f.Rate,
 		MaxBurst:         maxBurst,
 		Field:            f.Field,
