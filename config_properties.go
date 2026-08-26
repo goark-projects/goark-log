@@ -206,6 +206,8 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 		appender.Layout.Pattern = value
 	case "layout.eventTemplate", "layout.event-template":
 		appender.Layout.EventTemplate = value
+	case "layout.eventTemplateUri", "layout.event-template-uri", "layout.eventTemplatePath", "layout.event-template-path":
+		appender.Layout.EventTemplateURI = value
 	case "rolling.filePattern", "rolling.file-pattern":
 		appender.Rolling.FilePattern = value
 	case "rolling.maxSize", "rolling.max-size":

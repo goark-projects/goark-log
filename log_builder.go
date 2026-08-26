@@ -150,6 +150,14 @@ func (b LogBuilder) WithThrowable(err error) LogBuilder {
 	return b.WithError(err)
 }
 
+// WithErrorStack 设置事件异常快照并采集当前调用栈。
+func (b LogBuilder) WithErrorStack(err error) LogBuilder {
+	if err == nil {
+		return b
+	}
+	return b.WithAttr(ThrowableWithStackAttr(err))
+}
+
 // Log 写出字符串消息。
 func (b LogBuilder) Log(message string) error {
 	return b.LogMessage(SimpleMessage(message))

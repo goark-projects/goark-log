@@ -72,9 +72,11 @@ type RollingDeleteBuildConfig struct {
 
 // LayoutBuildConfig 是 layout 插件的构建输入。
 type LayoutBuildConfig struct {
-	Type          string
-	Pattern       string
-	EventTemplate string
+	Type             string
+	Pattern          string
+	EventTemplate    string
+	EventTemplateURI string
+	Registry         *PluginRegistry
 }
 
 // FilterBuildConfig 是 filter 插件的构建输入。
@@ -110,6 +112,7 @@ type PluginRegistry struct {
 	layouts   map[string]LayoutFactory
 	filters   map[string]FilterFactory
 	lookups   map[string]LookupFunc
+	resolvers map[string]JSONTemplateResolverFactory
 }
 
 var (
@@ -124,6 +127,7 @@ func NewPluginRegistry() *PluginRegistry {
 		layouts:   make(map[string]LayoutFactory),
 		filters:   make(map[string]FilterFactory),
 		lookups:   make(map[string]LookupFunc),
+		resolvers: make(map[string]JSONTemplateResolverFactory),
 	}
 	registerBuiltInPlugins(registry)
 	return registry
@@ -212,6 +216,24 @@ func (r *PluginRegistry) RegisterLookup(namespace string, lookup LookupFunc) err
 	return nil
 }
 
+// RegisterJSONTemplateResolver 注册 JSON Template resolver 插件。
+func (r *PluginRegistry) RegisterJSONTemplateResolver(kind string, factory JSONTemplateResolverFactory) error {
+	if r == nil {
+		return fmt.Errorf("goark-log: plugin registry is nil")
+	}
+	if factory == nil {
+		return fmt.Errorf("goark-log: JSON template resolver factory is nil")
+	}
+	kind = normalizeKind(kind)
+	if kind == "" {
+		return fmt.Errorf("goark-log: JSON template resolver kind is empty")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.resolvers[kind] = factory
+	return nil
+}
+
 func (r *PluginRegistry) lookupResolver() *LookupResolver {
 	resolver := NewLookupResolver()
 	if r == nil {
@@ -259,6 +281,16 @@ func (r *PluginRegistry) filterFactory(kind string) (FilterFactory, bool) {
 	return factory, ok
 }
 
+func (r *PluginRegistry) jsonTemplateResolverFactory(kind string) (JSONTemplateResolverFactory, bool) {
+	if r == nil {
+		r = DefaultPluginRegistry()
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	factory, ok := r.resolvers[normalizeKind(kind)]
+	return factory, ok
+}
+
 func registerBuiltInPlugins(registry *PluginRegistry) {
 	_ = registry.RegisterAppender("console", buildConsolePlugin)
 	_ = registry.RegisterAppender("file", buildFilePlugin)
@@ -276,7 +308,11 @@ func registerBuiltInPlugins(registry *PluginRegistry) {
 		return JSONLayout{}, nil
 	})
 	_ = registry.RegisterLayout("jsonTemplate", func(config LayoutBuildConfig) (Layout, error) {
-		return NewJSONTemplateLayout(config.EventTemplate)
+		options := []JSONTemplateLayoutOption{WithJSONTemplateResolverRegistry(config.Registry)}
+		if strings.TrimSpace(config.EventTemplateURI) != "" {
+			return NewJSONTemplateLayoutFromFile(config.EventTemplateURI, options...)
+		}
+		return NewJSONTemplateLayout(config.EventTemplate, options...)
 	})
 	_ = registry.RegisterLayout("xml", func(_ LayoutBuildConfig) (Layout, error) {
 		return XMLLayout{}, nil

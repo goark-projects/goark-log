@@ -72,10 +72,11 @@ type xmlAppender struct {
 }
 
 type xmlLayout struct {
-	XMLName  xml.Name
-	Type     string `xml:"type,attr"`
-	Pattern  string `xml:"pattern,attr"`
-	Template string `xml:"eventTemplate,attr"`
+	XMLName     xml.Name
+	Type        string `xml:"type,attr"`
+	Pattern     string `xml:"pattern,attr"`
+	Template    string `xml:"eventTemplate,attr"`
+	TemplateURI string `xml:"eventTemplateUri,attr"`
 }
 
 type xmlAppenderRef struct {
@@ -420,7 +421,8 @@ func (a xmlAppender) layout() layoutConfig {
 		if layout.XMLName.Local == "" &&
 			strings.TrimSpace(layout.Type) == "" &&
 			strings.TrimSpace(layout.Pattern) == "" &&
-			strings.TrimSpace(layout.Template) == "" {
+			strings.TrimSpace(layout.Template) == "" &&
+			strings.TrimSpace(layout.TemplateURI) == "" {
 			continue
 		}
 		return layout.config()
@@ -443,10 +445,20 @@ func (l xmlLayout) config() layoutConfig {
 		kind = "xml"
 	case "csvlayout", "csv":
 		kind = "csv"
+	case "gelflayout", "gelf":
+		kind = "gelf"
+	case "rfc5424layout", "rfc5424":
+		kind = "rfc5424"
+	case "sysloglayout", "syslog":
+		kind = "syslog"
+	case "yamllayout", "yaml":
+		kind = "yaml"
+	case "htmllayout", "html":
+		kind = "html"
 	default:
 		kind = l.Type
 	}
-	return layoutConfig{Type: kind, Pattern: l.Pattern, EventTemplate: l.Template}
+	return layoutConfig{Type: kind, Pattern: l.Pattern, EventTemplate: l.Template, EventTemplateURI: l.TemplateURI}
 }
 
 func (f xmlFilter) config(kind string) (filterConfig, error) {

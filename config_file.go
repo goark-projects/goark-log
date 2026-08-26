@@ -71,10 +71,14 @@ type appenderConfig struct {
 }
 
 type layoutConfig struct {
-	Type               string `yaml:"type"`
-	Pattern            string `yaml:"pattern"`
-	EventTemplate      string `yaml:"eventTemplate"`
-	EventTemplateKebab string `yaml:"event-template"`
+	Type                   string `yaml:"type"`
+	Pattern                string `yaml:"pattern"`
+	EventTemplate          string `yaml:"eventTemplate"`
+	EventTemplateKebab     string `yaml:"event-template"`
+	EventTemplateURI       string `yaml:"eventTemplateUri"`
+	EventTemplateURIKebab  string `yaml:"event-template-uri"`
+	EventTemplatePath      string `yaml:"eventTemplatePath"`
+	EventTemplatePathKebab string `yaml:"event-template-path"`
 }
 
 type rollingConfig struct {
@@ -796,6 +800,18 @@ func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.EventTemplateKebab, err = resolveStringLookup(lookups, c.EventTemplateKebab); err != nil {
 		return fmt.Errorf("event-template: %w", err)
 	}
+	if c.EventTemplateURI, err = resolveStringLookup(lookups, c.EventTemplateURI); err != nil {
+		return fmt.Errorf("eventTemplateUri: %w", err)
+	}
+	if c.EventTemplateURIKebab, err = resolveStringLookup(lookups, c.EventTemplateURIKebab); err != nil {
+		return fmt.Errorf("event-template-uri: %w", err)
+	}
+	if c.EventTemplatePath, err = resolveStringLookup(lookups, c.EventTemplatePath); err != nil {
+		return fmt.Errorf("eventTemplatePath: %w", err)
+	}
+	if c.EventTemplatePathKebab, err = resolveStringLookup(lookups, c.EventTemplatePathKebab); err != nil {
+		return fmt.Errorf("event-template-path: %w", err)
+	}
 	return nil
 }
 
@@ -1439,14 +1455,20 @@ func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) 
 		return nil, fmt.Errorf("unsupported layout type %q", config.Type)
 	}
 	return factory(LayoutBuildConfig{
-		Type:          config.Type,
-		Pattern:       config.Pattern,
-		EventTemplate: config.eventTemplate(),
+		Type:             config.Type,
+		Pattern:          config.Pattern,
+		EventTemplate:    config.eventTemplate(),
+		EventTemplateURI: config.eventTemplateURI(),
+		Registry:         registry,
 	})
 }
 
 func (c layoutConfig) eventTemplate() string {
 	return firstNonBlank(c.EventTemplate, c.EventTemplateKebab)
+}
+
+func (c layoutConfig) eventTemplateURI() string {
+	return firstNonBlank(c.EventTemplateURI, c.EventTemplateURIKebab, c.EventTemplatePath, c.EventTemplatePathKebab)
 }
 
 func configFormat(path string) (string, error) {
