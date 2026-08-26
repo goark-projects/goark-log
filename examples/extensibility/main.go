@@ -3,17 +3,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 
 	goarklog "goark.dev/log"
 )
 
 func main() {
 	registry := goarklog.NewPluginRegistry()
-	if err := registry.RegisterPlugins(exampleRegistrar{}); err != nil {
+	if err := registry.RegisterPlugins(goarklog.NewPluginSet(
+		goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+	)); err != nil {
 		panic(err)
 	}
 
@@ -51,21 +53,21 @@ func main() {
 		Logf("factory keeps this literal")
 }
 
-type exampleRegistrar struct{}
-
-func (exampleRegistrar) RegisterLogPlugins(registry *goarklog.PluginRegistry) error {
-	return registry.RegisterJSONTemplateResolver("constant", func(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
-		raw := config.Options["value"]
-		value, err := strconv.Unquote(string(raw))
-		if err != nil {
-			return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
-		}
-		return constantResolver(value), nil
-	})
+func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
+	var value string
+	if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
+	}
+	return constantResolver(value), nil
 }
 
 type constantResolver string
 
 func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
-	buf.WriteString(strconv.Quote(string(r)))
+	data, err := json.Marshal(string(r))
+	if err != nil {
+		buf.WriteString("null")
+		return
+	}
+	buf.Write(data)
 }

@@ -10,15 +10,15 @@
 | Fluent API | 已支持 | `Logger.AtInfo()/AtDebug()/AtWarn()/AtError()/AtTrace()`。 |
 | Message | 已支持 | `SimpleMessage`、`ParameterizedMessage`、`MapMessage`、`StructuredDataMessage`、`MessageFactory`。 |
 | 自定义级别 | 已支持 | `RegisterLevel` 和 `LevelRegistry`，内置级别热路径无锁。 |
-| AsyncLogger | 已支持核心语义 | 有界 ring buffer、批量消费、block/drop/drop-debug/sync-fallback、等待策略、`includeLocation`。 |
+| AsyncLogger | 已支持核心语义 | 有界 ring buffer、批量消费、block/drop/drop-debug/sync-fallback、等待策略参数、消费者错误处理、`includeLocation`。 |
 | AsyncAppender | 已支持 | 异步包装本地或组合型 appender，关闭时 drain。 |
 | RollingFile | 已支持核心策略 | size/time/cron/startup、`%d/%i`、gzip、max/maxAge、delete action、后台动作队列。 |
-| PatternLayout | 部分支持 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常、caller、attrs/map、uuid、highlight/style 透传、notEmpty。 |
-| JSON Template Layout | 已支持主要 resolver | timestamp、level、logger、message、thread、marker、throwable/rootCause/stackTrace、source/process、contextStack、mdc、attr、endOfBatch、自定义 resolver。 |
-| 结构化布局 | 已支持 | JSON、XML、CSV、GELF、RFC5424/Syslog layout、YAML、HTML。 |
+| PatternLayout | 已支持核心表达式 | 时间、级别、logger 精度、message、MDC、NDC、marker、异常、caller、attrs/map、uuid、sequence、replace、encode、equals、maxLen、repeat、highlight/style 透传、notEmpty。 |
+| JSON Template Layout | 已支持主要 resolver 和选项 | timestamp、level、logger、message、thread、marker、throwable/rootCause/stackTrace、source/process、contextStack、mdc、attr、endOfBatch、自定义 resolver；支持 layout 通用选项、level field、logger precision、MDC list。 |
+| 结构化布局 | 已支持核心参数矩阵 | JSON、XML、CSV、GELF、RFC5424/Syslog layout、YAML、HTML；JSON/XML/CSV/GELF/YAML/HTML 支持 compact、eventEol、complete、stacktraceAsString、propertiesAsList、null delimiter、header/footer。 |
 | Filters | 已支持主干 | Threshold、Level、LevelRange、Regex、Attr、Deny、Composite、Marker、NoMarker、Map、ThreadContextMap/Stack、StructuredData、Throwable、StringMatch、Time、Burst、DynamicThreshold。 |
 | Lookups | 已支持安全子集 | env、sys、go、date、property；jndi/ldap/rmi 被安全拒绝。 |
-| Plugins | 已支持 Go-native 注册 | `PluginRegistry`、包级 helper、`PluginRegistrar`；外部模块显式注册。 |
+| Plugins | 已支持 Go-native 注册 | `PluginRegistry`、包级 helper、`PluginRegistrar`、`PluginSet` 和 registrar 生成器；外部模块显式注册。 |
 | 配置格式 | 已支持 | YAML、JSON、XML、properties；TOML 明确拒绝。 |
 | Reload | 已支持 | 文件轮询 reload；异步队列结构不允许热替换。 |
 
@@ -32,15 +32,15 @@
 | CI/workflow | 当前按本地命令验证，不在核心仓库新增 CI。 | 后续统一工程化方案。 |
 | JNDI/LDAP/RMI lookup | 安全边界，不复刻高风险历史能力。 | 不提供。 |
 
-## 仍需持续增强
+## P0/P1/P2 完成状态
 
-| 优先级 | 缺口 | 建议 |
+| 优先级 | 范围 | 状态 |
 | --- | --- | --- |
-| P0 | 完整 JSON 链路仍慢于 zerolog/zap | 继续优化 appender/layout 直写路径，减少 `Event.Attrs` 跨接口逃逸。 |
-| P0 | Disruptor 语义仍是 Go-native 核心子集 | 后续可补消费者异常策略矩阵和更细的 wait strategy 参数。 |
-| P1 | PatternLayout 仍未完整覆盖 `%replace/%enc/%equals` 等表达式 converter | 需要独立 expression/converter 解析器，不建议塞进单文件分支。 |
-| P1 | 普通 JSON/XML/YAML/CSV layout 参数矩阵仍较薄 | 在不破坏默认输出的前提下补 compact、eventEol、stacktraceAsString 等配置。 |
-| P2 | 外部 appender 仓库矩阵 | 按 `PluginRegistrar` 和 `AppenderBuildConfig` 落独立仓库。 |
+| P0 | JSON 热路径 | 已增加 JSON 直写 appender、固定三属性入口和 Sonic 复杂对象 fallback；默认 JSON/JSONTemplate 基础路径保持 `0 alloc/op`。 |
+| P0 | Disruptor 语义 | 已补等待策略参数、超时/睡眠重试、异步错误处理和 race 覆盖；仍保持 Go-native 内部实现。 |
+| P1 | PatternLayout 表达式 converter | 已补 replace、encode、equals、equalsIgnoreCase、maxLen、repeat、sequenceNumber 和 throwable short。 |
+| P1 | 结构化 Layout 参数矩阵 | 已补 JSON/JSONTemplate/XML/CSV/GELF/YAML/HTML 通用选项、生命周期 header/footer、配置格式映射和校验。 |
+| P2 | 外部插件体验 | 核心已提供 `PluginRegistrar`、`PluginSet`、包级 helper、`AppenderBuildConfig` 扩展字段和 `goark-log-plugin-gen` registrar 生成器；具体外部 appender 继续放独立仓库。 |
 
 ## 外部 Appender 结构
 

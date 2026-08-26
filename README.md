@@ -168,11 +168,11 @@ ctx := goarklog.WithContextAttrs(context.Background(),
 logger.InfoContext(ctx, "request done")
 ```
 
-`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%highlight{...}`、`%style{...}{...}`、`%notEmpty{...}`。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
+`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`、`%logger{2}`、`%map`、`%uuid`、`%sn`、`%replace{...}{...}{...}`、`%enc/%encode{...}{json|html|xml|crlf}`、`%equals{...}{...}{...}`、`%equalsIgnoreCase{...}{...}{...}`、`%maxLen{...}{n}`、`%repeat{...}{n}`、`%highlight{...}`、`%style{...}{...}`、`%notEmpty{...}`。调用位置来自 `slog.Record.PC` 或 `NewNativeLogger(..., WithLoggerCaller(true))`；异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
 
-`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`mdc` 支持 `flatten: true` 把 group 展平成点分 key，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
+`JSONTemplateLayout` 可通过 `layout.type: jsonTemplate` 启用，支持 `$resolver` 风格字段：`timestamp`、`level`、`logger`、`message`、`thread`、`threadName`、`marker`、`throwable`、`rootCause`、`stackTrace`、`source`、`location`、`process`、`contextStack`、`mdc`、`attr`、`endOfBatch`。模板可以内联写在 `eventTemplate`，也可以用 `eventTemplateUri`/`eventTemplatePath` 指向本地文件；核心库拒绝远程模板 URI。`level.field` 支持 `name/value/severity`，`logger.precision` 支持名称精度截断，`mdc` 支持 `flatten: true` 和 `propertiesAsList` 列表形态，自定义 resolver 通过 `RegisterJSONTemplateResolver` 注册。
 
-核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。
+核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。JSON、JSONTemplate、XML、CSV、GELF、YAML、HTML 支持通用 `LayoutOptions`：`compact`、`eventEol`、`complete`、`includeStacktrace`、`stacktraceAsString`、`propertiesAsList`、`includeNullDelimiter`、`header`、`footer`。
 
 ## 过滤器
 
@@ -203,7 +203,22 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 
 核心包保留 `AppenderBuildConfig` 中的 URL、Address、Network、Timeout 等字段，用于独立外部模块读取配置；这些字段不是核心库自带外部 appender 的承诺。核心包自身只提供 `ConsoleAppender`、`FileAppender`、`RollingFileAppender`、`AsyncAppender`、`FailoverAppender`、`RoutingAppender`、`RewriteAppender` 等本地和组合型 appender。
 
-外部包如果只扩展默认注册表，可以直接使用包级 helper：`RegisterAppender`、`RegisterLayout`、`RegisterFilter`、`RegisterLookup`、`RegisterJSONTemplateResolver`、`RegisterPlugins`。需要隔离测试或多套配置时，继续使用 `NewPluginRegistry()` 显式传入。独立外部模块推荐暴露 `PluginRegistrar`，核心库只负责调用 registrar，不负责发现或加载外部包。
+外部包如果只扩展默认注册表，可以直接使用包级 helper：`RegisterAppender`、`RegisterLayout`、`RegisterFilter`、`RegisterLookup`、`RegisterJSONTemplateResolver`、`RegisterPlugins`。需要隔离测试或多套配置时，继续使用 `NewPluginRegistry()` 显式传入。独立外部模块推荐暴露 `PluginRegistrar`，也可以用 `NewPluginSet` 声明注册项；核心库只负责调用 registrar，不负责发现或加载外部包。
+
+```go
+func Registrar() goarklog.PluginRegistrar {
+	return goarklog.NewPluginSet(
+		goarklog.WithPluginAppender("http", buildHTTPAppender),
+		goarklog.WithPluginJSONTemplateResolver("trace", buildTraceResolver),
+	)
+}
+```
+
+外部仓库可以用生成器生成 registrar 样板，factory 函数仍由外部仓库自己实现：
+
+```go
+//go:generate go run goark.dev/log/cmd/goark-log-plugin-gen -package httpappender -appender http=buildHTTPAppender -out zz_generated_plugins.go
+```
 
 ## Examples
 
