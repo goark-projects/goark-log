@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -16,9 +17,10 @@ var defaultLevelRegistry = newDefaultLevelRegistry()
 
 // LevelRegistry 保存日志级别名称和数值的双向映射。
 type LevelRegistry struct {
-	mu      sync.RWMutex
-	byName  map[string]slog.Level
-	byValue map[slog.Level]string
+	mu         sync.RWMutex
+	byName     map[string]slog.Level
+	byValue    map[slog.Level]string
+	customized atomic.Bool
 }
 
 // NewLevelRegistry 创建包含内置级别的注册表。
@@ -66,6 +68,9 @@ func (r *LevelRegistry) Register(name string, level slog.Level) error {
 	}
 	r.byName[normalized] = level
 	r.byValue[level] = normalized
+	if !isBuiltInLevel(normalized, level) {
+		r.customized.Store(true)
+	}
 	return nil
 }
 
@@ -97,7 +102,7 @@ func (r *LevelRegistry) Parse(value string) (slog.Level, error) {
 
 // Name 返回注册表中的精确名称，未注册时按标准区间降级。
 func (r *LevelRegistry) Name(level slog.Level) string {
-	if r != nil {
+	if r != nil && r.customized.Load() {
 		r.mu.RLock()
 		name, ok := r.byValue[level]
 		r.mu.RUnlock()
@@ -105,6 +110,10 @@ func (r *LevelRegistry) Name(level slog.Level) string {
 			return name
 		}
 	}
+	return defaultLevelName(level)
+}
+
+func defaultLevelName(level slog.Level) string {
 	switch {
 	case level <= LevelTrace:
 		return "TRACE"
@@ -116,6 +125,23 @@ func (r *LevelRegistry) Name(level slog.Level) string {
 		return "WARN"
 	default:
 		return "ERROR"
+	}
+}
+
+func isBuiltInLevel(name string, level slog.Level) bool {
+	switch name {
+	case "TRACE":
+		return level == LevelTrace
+	case "DEBUG":
+		return level == slog.LevelDebug
+	case "INFO":
+		return level == slog.LevelInfo
+	case "WARN":
+		return level == slog.LevelWarn
+	case "ERROR":
+		return level == slog.LevelError
+	default:
+		return false
 	}
 }
 

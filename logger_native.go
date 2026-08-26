@@ -112,54 +112,58 @@ func (l *Logger) WithGroup(name string) *Logger {
 
 // LogAttrs 使用 slog.Attr 直写日志事件。
 func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, message string, attrs ...slog.Attr) error {
+	return l.logAttrs(ctx, level, message, attrs, 2)
+}
+
+func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string, attrs []slog.Attr, callerSkip int) error {
 	if l == nil || l.handler == nil {
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
 	if l.includeCaller {
-		pc = callerPC(2)
+		pc = callerPC(callerSkip)
 	}
 	return l.handler.logAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)
 }
 
 // Debug 写出 DEBUG 级别日志。
 func (l *Logger) Debug(message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(context.Background(), slog.LevelDebug, message, attrs...)
+	return l.logAttrs(context.Background(), slog.LevelDebug, message, attrs, 2)
 }
 
 // DebugContext 写出带 context 的 DEBUG 级别日志。
 func (l *Logger) DebugContext(ctx context.Context, message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(ctx, slog.LevelDebug, message, attrs...)
+	return l.logAttrs(ctx, slog.LevelDebug, message, attrs, 2)
 }
 
 // Info 写出 INFO 级别日志。
 func (l *Logger) Info(message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(context.Background(), slog.LevelInfo, message, attrs...)
+	return l.logAttrs(context.Background(), slog.LevelInfo, message, attrs, 2)
 }
 
 // InfoContext 写出带 context 的 INFO 级别日志。
 func (l *Logger) InfoContext(ctx context.Context, message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(ctx, slog.LevelInfo, message, attrs...)
+	return l.logAttrs(ctx, slog.LevelInfo, message, attrs, 2)
 }
 
 // Warn 写出 WARN 级别日志。
 func (l *Logger) Warn(message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(context.Background(), slog.LevelWarn, message, attrs...)
+	return l.logAttrs(context.Background(), slog.LevelWarn, message, attrs, 2)
 }
 
 // WarnContext 写出带 context 的 WARN 级别日志。
 func (l *Logger) WarnContext(ctx context.Context, message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(ctx, slog.LevelWarn, message, attrs...)
+	return l.logAttrs(ctx, slog.LevelWarn, message, attrs, 2)
 }
 
 // Error 写出 ERROR 级别日志。
 func (l *Logger) Error(message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(context.Background(), slog.LevelError, message, attrs...)
+	return l.logAttrs(context.Background(), slog.LevelError, message, attrs, 2)
 }
 
 // ErrorContext 写出带 context 的 ERROR 级别日志。
 func (l *Logger) ErrorContext(ctx context.Context, message string, attrs ...slog.Attr) error {
-	return l.LogAttrs(ctx, slog.LevelError, message, attrs...)
+	return l.logAttrs(ctx, slog.LevelError, message, attrs, 2)
 }
 
 func (l *Logger) clone() *Logger {

@@ -187,5 +187,5 @@ func (b LogBuilder) LogMessage(message Message) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return b.logger.LogAttrs(ctx, b.level, message.String(), attrs...)
+	return b.logger.logAttrs(ctx, b.level, message.String(), attrs, 3)
 }

@@ -35,6 +35,27 @@ func BenchmarkCompareDiscard(b *testing.B) {
 		benchmarkGoarkLogAttrs(b, logger)
 	})
 
+	b.Run("goark-native-json", func(b *testing.B) {
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{
+				goarklog.NewConsoleAppender(
+					goarklog.WithConsoleWriter(io.Discard),
+					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+				),
+			},
+			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNative(b, logger)
+	})
+
 	b.Run("goark-info-json", func(b *testing.B) {
 		handler, err := goarklog.NewHandler(goarklog.Options{
 			Appenders: []goarklog.Appender{
@@ -88,6 +109,31 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 		benchmarkGoarkLogAttrs(b, logger)
 	})
 
+	b.Run("goark-native-file-json", func(b *testing.B) {
+		appender, err := goarklog.NewFileAppender(
+			filePath(b, "goark-native.log"),
+			goarklog.WithFileLayout(goarklog.JSONLayout{}),
+			goarklog.WithFileBufferSize(256*1024),
+		)
+		if err != nil {
+			b.Fatalf("NewFileAppender() error = %v", err)
+		}
+		defer appender.Close()
+		handler, err := goarklog.NewHandler(goarklog.Options{
+			Appenders: []goarklog.Appender{appender},
+			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
+		})
+		if err != nil {
+			b.Fatalf("NewHandler() error = %v", err)
+		}
+		defer handler.Close()
+		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		if err != nil {
+			b.Fatalf("NewNativeLogger() error = %v", err)
+		}
+		benchmarkGoarkNative(b, logger)
+	})
+
 	b.Run("goark-rolling-json", func(b *testing.B) {
 		appender, err := goarklog.NewRollingFileAppender(
 			filePath(b, "goark-rolling.log"),
@@ -137,6 +183,20 @@ func benchmarkGoarkLogAttrs(b *testing.B, logger *slog.Logger) {
 			slog.Int("index", index),
 			slog.Duration("elapsed", 10*time.Millisecond),
 		)
+	}
+}
+
+func benchmarkGoarkNative(b *testing.B, logger *goarklog.Logger) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		if err := logger.LogAttrs(context.Background(), slog.LevelInfo, "event",
+			slog.String("profile", "bench"),
+			slog.Int("index", index),
+			slog.Duration("elapsed", 10*time.Millisecond),
+		); err != nil {
+			b.Fatalf("LogAttrs() error = %v", err)
+		}
 	}
 }
 
