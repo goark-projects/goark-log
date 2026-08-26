@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +101,40 @@ func TestPatternLayout_whenExtendedConvertersUsed_shouldRenderLog4jStyleOutput(t
 	uuid := strings.TrimSpace(parts[len(parts)-1])
 	if len(uuid) != 36 || uuid[8] != '-' || uuid[13] != '-' || uuid[18] != '-' || uuid[23] != '-' {
 		t.Fatalf("uuid = %q, want RFC4122 text form", uuid)
+	}
+}
+
+func TestPatternLayout_whenExpressionConvertersUsed_shouldRenderLog4jStyleOutput(t *testing.T) {
+	layout, err := NewPatternLayout("%replace{%m}{secret}{***}|%enc{%m}{json}|%equals{%X{tenant}}{root}{system}|%equalsIgnoreCase{%X{mode}}{debug}{dbg}|%maxLen{%logger}{8}|%repeat{%p}{2}|%sn|%throwable{short}%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	event := testEvent("secret\nline", fixedTestTime())
+	event.Logger = "goark.service.audit"
+	event.Attrs = []slog.Attr{
+		slog.String("tenant", "root"),
+		slog.String("mode", "DEBUG"),
+	}
+	event.Throwable = NewThrowable(fmt.Errorf("outer: %w", fmt.Errorf("inner")))
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	fields := strings.Split(strings.TrimSpace(buf.String()), "|")
+	if len(fields) != 8 {
+		t.Fatalf("fields = %v, want 8 from %q", fields, buf.String())
+	}
+	if fields[0] != "***\nline" ||
+		fields[1] != `secret\nline` ||
+		fields[2] != "system" ||
+		fields[3] != "dbg" ||
+		fields[4] != "goark.se" ||
+		fields[5] != "INFOINFO" ||
+		fields[7] != "outer: inner" {
+		t.Fatalf("formatted fields = %#v", fields)
+	}
+	if _, err := strconv.ParseUint(fields[6], 10, 64); err != nil {
+		t.Fatalf("sequence number = %q, want integer", fields[6])
 	}
 }
 

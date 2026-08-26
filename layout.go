@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"html"
 	"log/slog"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"goark.dev/log/internal/jsoncodec"
@@ -21,6 +24,7 @@ const (
 )
 
 var processIDString = strconv.Itoa(os.Getpid())
+var patternSequence atomic.Uint64
 
 // Layout 把日志事件编码为字节。
 type Layout interface {
@@ -95,9 +99,14 @@ type patternToken struct {
 	minWidth  int
 	maxWidth  int
 	precision int
+	repeat    int
 	leftAlign bool
 	timeUnix  timeUnixMode
 	child     *PatternLayout
+	regex     *regexp.Regexp
+	value     string
+	repl      string
+	ignore    bool
 }
 
 type patternTokenKind int
@@ -124,6 +133,12 @@ const (
 	tokenUUID
 	tokenSubPattern
 	tokenNotEmpty
+	tokenReplace
+	tokenEncode
+	tokenEquals
+	tokenMaxLen
+	tokenRepeat
+	tokenSequence
 )
 
 type timeUnixMode uint8
@@ -287,6 +302,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.key = strings.TrimSpace(option)
 	case normalized == "ex" || normalized == "throwable" || normalized == "exception":
 		token.kind = tokenError
+		token.key = strings.ToLower(strings.TrimSpace(option))
 	case normalized == "marker":
 		token.kind = tokenMarker
 	case normalized == "ndc" || normalized == "x":
@@ -295,6 +311,8 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.kind = tokenNewline
 	case normalized == "uuid":
 		token.kind = tokenUUID
+	case normalized == "sequencenumber" || normalized == "sn":
+		token.kind = tokenSequence
 	case normalized == "highlight" || normalized == "style":
 		child, err := NewPatternLayout(option)
 		if err != nil {
@@ -309,6 +327,73 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		}
 		token.kind = tokenNotEmpty
 		token.child = child
+	case normalized == "replace":
+		if len(options) < 3 {
+			return fmt.Errorf("goark-log: replace pattern converter requires pattern, regex and replacement")
+		}
+		child, err := NewPatternLayout(options[0])
+		if err != nil {
+			return err
+		}
+		expression, err := regexp.Compile(options[1])
+		if err != nil {
+			return fmt.Errorf("goark-log: replace pattern regex %q is invalid: %w", options[1], err)
+		}
+		token.kind = tokenReplace
+		token.child = child
+		token.regex = expression
+		token.repl = options[2]
+	case normalized == "enc" || normalized == "encode":
+		child, err := NewPatternLayout(option)
+		if err != nil {
+			return err
+		}
+		token.kind = tokenEncode
+		token.child = child
+		token.value = strings.ToLower(strings.TrimSpace(patternOption(options, 1)))
+	case normalized == "equals" || normalized == "equalsignorecase":
+		if len(options) < 3 {
+			return fmt.Errorf("goark-log: %s pattern converter requires pattern, test and substitution", converter)
+		}
+		child, err := NewPatternLayout(options[0])
+		if err != nil {
+			return err
+		}
+		token.kind = tokenEquals
+		token.child = child
+		token.value = options[1]
+		token.repl = options[2]
+		token.ignore = normalized == "equalsignorecase"
+	case normalized == "maxlen" || normalized == "maxlength":
+		if len(options) < 2 {
+			return fmt.Errorf("goark-log: maxLen pattern converter requires pattern and length")
+		}
+		child, err := NewPatternLayout(options[0])
+		if err != nil {
+			return err
+		}
+		limit, err := strconv.Atoi(strings.TrimSpace(options[1]))
+		if err != nil || limit < 0 {
+			return fmt.Errorf("goark-log: maxLen pattern length %q is invalid", options[1])
+		}
+		token.kind = tokenMaxLen
+		token.child = child
+		token.repeat = limit
+	case normalized == "repeat":
+		if len(options) < 2 {
+			return fmt.Errorf("goark-log: repeat pattern converter requires pattern and count")
+		}
+		child, err := NewPatternLayout(options[0])
+		if err != nil {
+			return err
+		}
+		count, err := strconv.Atoi(strings.TrimSpace(options[1]))
+		if err != nil || count < 0 {
+			return fmt.Errorf("goark-log: repeat pattern count %q is invalid", options[1])
+		}
+		token.kind = tokenRepeat
+		token.child = child
+		token.repeat = count
 	default:
 		return fmt.Errorf("goark-log: unsupported pattern converter %q", converter)
 	}
@@ -399,7 +484,7 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 		appendPatternAttrs(&attrBuf, event.Attrs)
 		return attrBuf.String()
 	case tokenError:
-		return eventErrorString(event)
+		return eventErrorStringWithOption(event, token.key)
 	case tokenNewline:
 		return "\n"
 	case tokenMarker:
@@ -422,6 +507,8 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 		return caller.resolve(event).location()
 	case tokenUUID:
 		return newPatternUUID()
+	case tokenSequence:
+		return strconv.FormatUint(patternSequence.Add(1), 10)
 	case tokenSubPattern:
 		return formatChildPattern(token.child, event)
 	case tokenNotEmpty:
@@ -430,16 +517,38 @@ func patternTokenString(token patternToken, event Event, caller *callerCache) st
 			return ""
 		}
 		return value
+	case tokenReplace:
+		return token.regex.ReplaceAllString(formatChildPattern(token.child, event), token.repl)
+	case tokenEncode:
+		return encodePatternValue(formatChildPattern(token.child, event), token.value)
+	case tokenEquals:
+		value := formatChildPattern(token.child, event)
+		matched := value == token.value
+		if token.ignore {
+			matched = strings.EqualFold(value, token.value)
+		}
+		if matched {
+			return token.repl
+		}
+		return value
+	case tokenMaxLen:
+		return maxPatternLength(formatChildPattern(token.child, event), token.repeat)
+	case tokenRepeat:
+		return strings.Repeat(formatChildPattern(token.child, event), token.repeat)
 	default:
 		return ""
 	}
 }
 
 func firstPatternOption(options []string) string {
-	if len(options) == 0 {
+	return patternOption(options, 0)
+}
+
+func patternOption(options []string, index int) string {
+	if index < 0 || index >= len(options) {
 		return ""
 	}
-	return options[0]
+	return options[index]
 }
 
 func parsePatternPrecision(option string) int {
@@ -619,7 +728,14 @@ func javaDatePatternToGo(format string) string {
 }
 
 func eventErrorString(event Event) string {
+	return eventErrorStringWithOption(event, "")
+}
+
+func eventErrorStringWithOption(event Event, option string) string {
 	if event.Throwable != nil {
+		if option == "short" {
+			return event.Throwable.Message
+		}
 		return event.Throwable.String()
 	}
 	for _, key := range []string{"error", "err"} {
@@ -629,6 +745,34 @@ func eventErrorString(event Event) string {
 		}
 	}
 	return ""
+}
+
+func encodePatternValue(value string, mode string) string {
+	switch mode {
+	case "", "json":
+		quoted := strconv.Quote(value)
+		return strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`)
+	case "html":
+		return html.EscapeString(value)
+	case "xml":
+		return html.EscapeString(value)
+	case "crlf":
+		value = strings.ReplaceAll(value, "\r", `\r`)
+		return strings.ReplaceAll(value, "\n", `\n`)
+	default:
+		return value
+	}
+}
+
+func maxPatternLength(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
 
 func eventMarkerString(event Event) string {
