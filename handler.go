@@ -85,7 +85,11 @@ func (h *Handler) enabled(name string, level slog.Level) bool {
 	if h == nil || h.router == nil {
 		return level >= slog.LevelInfo
 	}
-	return level >= h.router.route(name).Level
+	plan := h.router.plan(name)
+	if len(plan.globalFilters) > 0 {
+		return true
+	}
+	return level >= plan.route.Level
 }
 
 func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
@@ -95,23 +99,37 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	route := h.router.route(h.name)
-	if record.Level < route.Level {
-		return nil
+	plan := h.router.plan(h.name)
+	if len(plan.globalFilters) == 0 {
+		if record.Level < plan.route.Level {
+			return nil
+		}
+		event := newEvent(ctx, h.name, h.attrs, h.groups, record)
+		if h.async != nil {
+			return h.async.append(ctx, event, false)
+		}
+		return h.dispatchRoute(ctx, plan.route, event)
 	}
 	event := newEvent(ctx, h.name, h.attrs, h.groups, record)
-	if h.async != nil {
-		return h.async.append(ctx, event)
-	}
-	return h.dispatchRoute(ctx, route, event)
-}
-
-func (h *Handler) dispatch(ctx context.Context, event Event) error {
-	route := h.router.route(event.Logger)
-	if event.Level < route.Level {
+	levelAccepted, denied := applyGlobalFilters(ctx, plan.globalFilters, event)
+	if denied {
 		return nil
 	}
-	return h.dispatchRoute(ctx, route, event)
+	if !levelAccepted && record.Level < plan.route.Level {
+		return nil
+	}
+	if h.async != nil {
+		return h.async.append(ctx, event, levelAccepted)
+	}
+	return h.dispatchRoute(ctx, plan.route, event)
+}
+
+func (h *Handler) dispatch(ctx context.Context, event Event, levelAccepted bool) error {
+	plan := h.router.plan(event.Logger)
+	if !levelAccepted && event.Level < plan.route.Level {
+		return nil
+	}
+	return h.dispatchRoute(ctx, plan.route, event)
 }
 
 func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error {
@@ -121,20 +139,29 @@ func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []sl
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	route := h.router.route(logger)
-	if level < route.Level {
-		return nil
-	}
-	if h.async == nil && pc == 0 {
-		if handled, err := h.dispatchAttrsFast(ctx, route, logger, when, level, message, attrs); handled {
-			return err
+	plan := h.router.plan(logger)
+	if len(plan.globalFilters) == 0 {
+		if level < plan.route.Level {
+			return nil
+		}
+		if h.async == nil && pc == 0 {
+			if handled, err := h.dispatchAttrsFast(ctx, plan.route, logger, when, level, message, attrs); handled {
+				return err
+			}
 		}
 	}
 	event := newEventFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, h.async != nil)
-	if h.async != nil {
-		return h.async.append(ctx, event)
+	levelAccepted, denied := applyGlobalFilters(ctx, plan.globalFilters, event)
+	if denied {
+		return nil
 	}
-	return h.dispatchRoute(ctx, route, event)
+	if !levelAccepted && level < plan.route.Level {
+		return nil
+	}
+	if h.async != nil {
+		return h.async.append(ctx, event, levelAccepted)
+	}
+	return h.dispatchRoute(ctx, plan.route, event)
 }
 
 func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
@@ -144,17 +171,30 @@ func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []s
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	route := h.router.route(logger)
-	if level < route.Level {
-		return nil
-	}
-	if h.async == nil && pc == 0 {
-		if handled, err := h.dispatchFixedAttrsFast(ctx, route, logger, when, level, message, attr0, attr1, attr2); handled {
-			return err
+	plan := h.router.plan(logger)
+	if len(plan.globalFilters) == 0 {
+		if level < plan.route.Level {
+			return nil
+		}
+		if h.async == nil && pc == 0 {
+			if handled, err := h.dispatchFixedAttrsFast(ctx, plan.route, logger, when, level, message, attr0, attr1, attr2); handled {
+				return err
+			}
 		}
 	}
 	attrs := []slog.Attr{attr0, attr1, attr2}
 	return h.logAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs)
+}
+
+func applyGlobalFilters(ctx context.Context, filters []Filter, event Event) (levelAccepted bool, denied bool) {
+	switch applyFilters(ctx, filters, event) {
+	case FilterDeny:
+		return false, true
+	case FilterAccept:
+		return true, false
+	default:
+		return false, false
+	}
 }
 
 func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) error {
@@ -288,9 +328,10 @@ type router struct {
 }
 
 type runtimeConfig struct {
-	root    route
-	loggers []loggerRuntime
-	all     []Appender
+	root          route
+	loggers       []loggerRuntime
+	globalFilters []Filter
+	all           []Appender
 }
 
 type loggerRuntime struct {
@@ -305,6 +346,11 @@ type route struct {
 	Filters   []Filter
 }
 
+type routePlan struct {
+	route         route
+	globalFilters []Filter
+}
+
 func newRouter(options Options) (*router, error) {
 	config, err := buildRuntimeConfig(options)
 	if err != nil {
@@ -316,21 +362,25 @@ func newRouter(options Options) (*router, error) {
 }
 
 func (r *router) route(name string) route {
+	return r.plan(name).route
+}
+
+func (r *router) plan(name string) routePlan {
 	if r == nil {
-		return route{Level: slog.LevelInfo}
+		return routePlan{route: route{Level: slog.LevelInfo}}
 	}
 	config := r.current.Load()
 	if config == nil {
-		return route{Level: slog.LevelInfo}
+		return routePlan{route: route{Level: slog.LevelInfo}}
 	}
 	name = strings.TrimSpace(name)
 	for _, logger := range config.loggers {
 		if !loggerMatches(name, logger.name) {
 			continue
 		}
-		return logger.route
+		return routePlan{route: logger.route, globalFilters: config.globalFilters}
 	}
-	return config.root
+	return routePlan{route: config.root, globalFilters: config.globalFilters}
 }
 
 func (r *router) Close() error {
@@ -420,14 +470,14 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	rootFilters := appendFilters(append([]Filter(nil), globalFilters...), configRootFilters)
 	config := &runtimeConfig{
 		root: route{
 			Level:     options.Root.Level,
 			Appenders: rootAppenders,
-			Filters:   rootFilters,
+			Filters:   configRootFilters,
 		},
-		all: all,
+		globalFilters: globalFilters,
+		all:           all,
 	}
 	for _, rule := range options.Loggers {
 		name := strings.TrimSpace(rule.Name)
@@ -449,7 +499,7 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-		effectiveFilters := appendFilters(append([]Filter(nil), globalFilters...), filters)
+		effectiveFilters := append([]Filter(nil), filters...)
 		if additivity {
 			appenders = appendUniqueAppenderControls(appenders, config.root.Appenders)
 			effectiveFilters = appendFilters(effectiveFilters, configRootFilters)

@@ -52,7 +52,8 @@ type asyncLogger struct {
 }
 
 type asyncLoggerEntry struct {
-	event Event
+	event         Event
+	levelAccepted bool
 }
 
 func newAsyncLogger(handler *Handler, options AsyncLoggerOptions) (*asyncLogger, error) {
@@ -136,7 +137,7 @@ func sameAsyncLoggerRuntimeOptions(left AsyncLoggerOptions, right AsyncLoggerOpt
 		left.IncludeLocation == right.IncludeLocation
 }
 
-func (a *asyncLogger) append(ctx context.Context, event Event) error {
+func (a *asyncLogger) append(ctx context.Context, event Event, levelAccepted bool) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: async logger is nil")
 	}
@@ -146,7 +147,7 @@ func (a *asyncLogger) append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	entry := asyncLoggerEntry{event: event}
+	entry := asyncLoggerEntry{event: event, levelAccepted: levelAccepted}
 	if !a.beginAppend() {
 		return fmt.Errorf("goark-log: async logger is closed")
 	}
@@ -248,7 +249,7 @@ func (a *asyncLogger) enqueueOrSync(ctx context.Context, entry asyncLoggerEntry)
 		}
 		event := entry.event
 		event.EndOfBatch = true
-		return a.handler.dispatch(ctx, event)
+		return a.handler.dispatch(ctx, event, entry.levelAccepted)
 	}
 }
 
@@ -287,7 +288,7 @@ func (a *asyncLogger) flushBatch(batch []asyncLoggerEntry) {
 	for index, entry := range batch {
 		event := entry.event
 		event.EndOfBatch = index == len(batch)-1
-		if err := a.handler.dispatch(context.Background(), event); err != nil {
+		if err := a.handler.dispatch(context.Background(), event, entry.levelAccepted); err != nil {
 			joined = errors.Join(joined, err)
 			a.handleAsyncError(context.Background(), err, event)
 		}
