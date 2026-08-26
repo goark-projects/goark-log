@@ -97,6 +97,18 @@ func (r *LookupResolver) Resolve(text string) (string, error) {
 }
 
 func (r *LookupResolver) resolveExpr(expr string) (string, error) {
+	if key, fallback, hasFallback, ok, err := splitPropertyShorthandExpr(expr); ok || err != nil {
+		if err != nil {
+			return "", err
+		}
+		if value, ok := r.propertyLookup(key); ok {
+			return value, nil
+		}
+		if hasFallback {
+			return fallback, nil
+		}
+		return "", fmt.Errorf("goark-log: property lookup %q has no value", key)
+	}
 	namespace, key, fallback, hasFallback, err := splitLookupExpr(expr)
 	if err != nil {
 		return "", err
@@ -112,6 +124,39 @@ func (r *LookupResolver) resolveExpr(expr string) (string, error) {
 		return fallback, nil
 	}
 	return "", fmt.Errorf("goark-log: lookup %q has no value", expr)
+}
+
+func (r *LookupResolver) propertyLookup(key string) (string, bool) {
+	for _, namespace := range []string{"prop", "property"} {
+		lookup, ok := r.lookups[namespace]
+		if !ok {
+			continue
+		}
+		if value, ok := lookup(key); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func splitPropertyShorthandExpr(expr string) (key string, fallback string, hasFallback bool, ok bool, err error) {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return "", "", false, true, fmt.Errorf("goark-log: lookup expression is empty")
+	}
+	key = trimmed
+	if before, after, hasDefault := strings.Cut(trimmed, ":-"); hasDefault {
+		key = strings.TrimSpace(before)
+		fallback = after
+		hasFallback = true
+	}
+	if strings.Contains(key, ":") {
+		return "", "", false, false, nil
+	}
+	if key == "" {
+		return "", "", false, true, fmt.Errorf("goark-log: lookup expression %q key is empty", expr)
+	}
+	return key, fallback, hasFallback, true, nil
 }
 
 func splitLookupExpr(expr string) (namespace string, key string, fallback string, hasFallback bool, err error) {

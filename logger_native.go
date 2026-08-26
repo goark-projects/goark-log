@@ -132,7 +132,7 @@ func (l *Logger) LogAttrs3(ctx context.Context, level slog.Level, message string
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
-	if l.includeCaller || l.handler.asyncIncludeLocation() {
+	if l.includeCaller || l.handler.asyncIncludeLocation() || l.handler.routeIncludeLocation(l.Name()) {
 		pc = callerPC(2)
 	}
 	return l.handler.log3Attrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attr0, attr1, attr2)
@@ -143,7 +143,7 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string,
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
-	if l.includeCaller || l.handler.asyncIncludeLocation() {
+	if l.includeCaller || l.handler.asyncIncludeLocation() || l.handler.routeIncludeLocation(l.Name()) {
 		pc = callerPC(callerSkip)
 	}
 	return l.handler.logAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)

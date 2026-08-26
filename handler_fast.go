@@ -73,7 +73,7 @@ func (h *Handler) dispatchFixedAttrsFast(ctx context.Context, route route, logge
 }
 
 func canDispatchAttrsFast(ctx context.Context, route route, handlerAttrs []slog.Attr, groups []string, attrs []slog.Attr) bool {
-	if len(route.Filters) != 0 || len(route.Appenders) == 0 {
+	if route.IncludeLocation || len(route.Filters) != 0 || len(route.Appenders) == 0 {
 		return false
 	}
 	if len(handlerAttrs) != 0 || len(groups) != 0 || !contextLogStateEmpty(ctx) {
@@ -94,7 +94,7 @@ func canDispatchAttrsFast(ctx context.Context, route route, handlerAttrs []slog.
 }
 
 func canDispatchFixedAttrsFast(ctx context.Context, route route, handlerAttrs []slog.Attr, groups []string, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) bool {
-	if len(route.Filters) != 0 || len(route.Appenders) == 0 {
+	if route.IncludeLocation || len(route.Filters) != 0 || len(route.Appenders) == 0 {
 		return false
 	}
 	if len(handlerAttrs) != 0 || len(groups) != 0 || !contextLogStateEmpty(ctx) {

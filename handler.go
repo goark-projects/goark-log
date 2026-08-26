@@ -26,6 +26,7 @@ type RootLogger struct {
 	AppenderRefs        []string
 	AppenderRefControls []AppenderRef
 	Filters             []Filter
+	IncludeLocation     bool
 }
 
 // LoggerRule 描述命名 logger 的级别和输出路由。
@@ -37,6 +38,7 @@ type LoggerRule struct {
 	Filters             []Filter
 	Additivity          bool
 	AdditivitySet       bool
+	IncludeLocation     *bool
 }
 
 // Handler 是 goark-log 的 slog.Handler 实现。
@@ -304,6 +306,17 @@ func (h *Handler) asyncIncludeLocation() bool {
 	return h != nil && h.async != nil && h.async.includeLocation()
 }
 
+func (h *Handler) routeIncludeLocation(name string) bool {
+	if h == nil || h.router == nil {
+		return false
+	}
+	config := h.router.current.Load()
+	if config == nil || !config.includeLocation {
+		return false
+	}
+	return routePlanFromConfig(config, name).route.IncludeLocation
+}
+
 func (h *Handler) clone() *Handler {
 	next := *h
 	next.attrs = append([]slog.Attr(nil), h.attrs...)
@@ -328,10 +341,11 @@ type router struct {
 }
 
 type runtimeConfig struct {
-	root          route
-	loggers       []loggerRuntime
-	globalFilters []Filter
-	all           []Appender
+	root            route
+	loggers         []loggerRuntime
+	globalFilters   []Filter
+	all             []Appender
+	includeLocation bool
 }
 
 type loggerRuntime struct {
@@ -341,9 +355,10 @@ type loggerRuntime struct {
 
 // route 是一次 logger 匹配后的最终输出计划。
 type route struct {
-	Level     slog.Level
-	Appenders []appenderControl
-	Filters   []Filter
+	Level           slog.Level
+	Appenders       []appenderControl
+	Filters         []Filter
+	IncludeLocation bool
 }
 
 type routePlan struct {
@@ -373,6 +388,10 @@ func (r *router) plan(name string) routePlan {
 	if config == nil {
 		return routePlan{route: route{Level: slog.LevelInfo}}
 	}
+	return routePlanFromConfig(config, name)
+}
+
+func routePlanFromConfig(config *runtimeConfig, name string) routePlan {
 	name = strings.TrimSpace(name)
 	for _, logger := range config.loggers {
 		if !loggerMatches(name, logger.name) {
@@ -472,13 +491,15 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	}
 	config := &runtimeConfig{
 		root: route{
-			Level:     options.Root.Level,
-			Appenders: rootAppenders,
-			Filters:   configRootFilters,
+			Level:           options.Root.Level,
+			Appenders:       rootAppenders,
+			Filters:         configRootFilters,
+			IncludeLocation: routeRequiresLocation(options.Root.IncludeLocation, rootAppenders),
 		},
 		globalFilters: globalFilters,
 		all:           all,
 	}
+	config.includeLocation = config.root.IncludeLocation
 	for _, rule := range options.Loggers {
 		name := strings.TrimSpace(rule.Name)
 		if name == "" {
@@ -504,13 +525,22 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 			appenders = appendUniqueAppenderControls(appenders, config.root.Appenders)
 			effectiveFilters = appendFilters(effectiveFilters, configRootFilters)
 		}
+		includeLocation := options.Root.IncludeLocation
+		if rule.IncludeLocation != nil {
+			includeLocation = *rule.IncludeLocation
+		}
+		loggerRoute := route{
+			Level:           loggerLevel(options.Root.Level, rule.Level),
+			Appenders:       appenders,
+			Filters:         effectiveFilters,
+			IncludeLocation: routeRequiresLocation(includeLocation, appenders),
+		}
+		if loggerRoute.IncludeLocation {
+			config.includeLocation = true
+		}
 		config.loggers = append(config.loggers, loggerRuntime{
-			name: name,
-			route: route{
-				Level:     loggerLevel(options.Root.Level, rule.Level),
-				Appenders: appenders,
-				Filters:   effectiveFilters,
-			},
+			name:  name,
+			route: loggerRoute,
 		})
 	}
 	sort.Slice(config.loggers, func(i, j int) bool {
@@ -532,4 +562,16 @@ func loggerLevel(root slog.Level, level *slog.Level) slog.Level {
 		return root
 	}
 	return *level
+}
+
+func routeRequiresLocation(includeLocation bool, appenders []appenderControl) bool {
+	if includeLocation {
+		return true
+	}
+	for _, appender := range appenders {
+		if appender.requiresLocation() {
+			return true
+		}
+	}
+	return false
 }

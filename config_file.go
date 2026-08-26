@@ -270,24 +270,29 @@ type asyncLoggerConfig struct {
 }
 
 type loggerConfig struct {
-	Level             string       `yaml:"level"`
-	AppenderRefs      appenderRefs `yaml:"appenderRefs"`
-	AppenderRefsKebab appenderRefs `yaml:"appender-refs"`
-	Refs              appenderRefs `yaml:"refs"`
-	Filters           []string     `yaml:"filters"`
-	FilterRefs        []string     `yaml:"filterRefs"`
-	FilterRefsKebab   []string     `yaml:"filter-refs"`
-	Additivity        *bool        `yaml:"additivity"`
+	Level                string       `yaml:"level"`
+	AppenderRefs         appenderRefs `yaml:"appenderRefs"`
+	AppenderRefsKebab    appenderRefs `yaml:"appender-refs"`
+	Refs                 appenderRefs `yaml:"refs"`
+	Filters              []string     `yaml:"filters"`
+	FilterRefs           []string     `yaml:"filterRefs"`
+	FilterRefsKebab      []string     `yaml:"filter-refs"`
+	Additivity           *bool        `yaml:"additivity"`
+	IncludeLocation      *bool        `yaml:"includeLocation"`
+	IncludeLocationKebab *bool        `yaml:"include-location"`
 }
 
 type appenderRefs []appenderRefConfig
 
 type appenderRefConfig struct {
-	Ref             string   `yaml:"ref"`
-	Level           string   `yaml:"level"`
-	Filters         []string `yaml:"filters"`
-	FilterRefs      []string `yaml:"filterRefs"`
-	FilterRefsKebab []string `yaml:"filter-refs"`
+	ID                   string   `yaml:"-"`
+	Ref                  string   `yaml:"ref"`
+	Level                string   `yaml:"level"`
+	IncludeLocation      *bool    `yaml:"includeLocation"`
+	IncludeLocationKebab *bool    `yaml:"include-location"`
+	Filters              []string `yaml:"filters"`
+	FilterRefs           []string `yaml:"filterRefs"`
+	FilterRefsKebab      []string `yaml:"filter-refs"`
 }
 
 func (r *appenderRefs) UnmarshalYAML(node *yaml.Node) error {
@@ -369,6 +374,8 @@ func (r appenderRefs) resolveLookups(lookups *LookupResolver) (appenderRefs, err
 
 func (c appenderRefConfig) hasControls() bool {
 	return strings.TrimSpace(c.Level) != "" ||
+		c.IncludeLocation != nil ||
+		c.IncludeLocationKebab != nil ||
 		len(c.Filters) > 0 ||
 		len(c.FilterRefs) > 0 ||
 		len(c.FilterRefsKebab) > 0
@@ -387,12 +394,28 @@ func (c appenderRefConfig) build(filters map[string]Filter) (AppenderRef, error)
 		}
 		ref.Level = &level
 	}
+	if includeLocation := c.includeLocationPointer(); includeLocation != nil {
+		value := *includeLocation
+		ref.IncludeLocation = &value
+	}
 	resolved, err := resolveFilters(filters, c.filterRefs())
 	if err != nil {
 		return AppenderRef{}, err
 	}
 	ref.Filters = resolved
 	return ref, nil
+}
+
+func (c appenderRefConfig) includeLocationPointer() *bool {
+	if c.IncludeLocation != nil {
+		value := *c.IncludeLocation
+		return &value
+	}
+	if c.IncludeLocationKebab != nil {
+		value := *c.IncludeLocationKebab
+		return &value
+	}
+	return nil
 }
 
 func (c appenderRefConfig) resolveLookups(lookups *LookupResolver) (appenderRefConfig, error) {
@@ -560,9 +583,10 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 		Filters:   globalFilters,
 		Async:     c.asyncLoggerOptions(),
 		Root: RootLogger{
-			Level:        rootLevel,
-			AppenderRefs: c.Root.refs(),
-			Filters:      rootFilters,
+			Level:           rootLevel,
+			AppenderRefs:    c.Root.refs(),
+			Filters:         rootFilters,
+			IncludeLocation: c.Root.includeLocation(),
 		},
 	}
 	options.Root.AppenderRefControls, err = c.Root.appenderRefControls(filters)
@@ -583,9 +607,10 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 			level = &parsed
 		}
 		rule := LoggerRule{
-			Name:         name,
-			Level:        level,
-			AppenderRefs: loggerConfig.refs(),
+			Name:            name,
+			Level:           level,
+			AppenderRefs:    loggerConfig.refs(),
+			IncludeLocation: loggerConfig.includeLocationPointer(),
 		}
 		rule.AppenderRefControls, err = loggerConfig.appenderRefControls(filters)
 		if err != nil {
@@ -878,6 +903,25 @@ func (c *appenderConfig) resolveLookups(lookups *LookupResolver) error {
 	}
 	if c.FilterRefsKebab, err = resolveStringListLookups(lookups, c.FilterRefsKebab); err != nil {
 		return fmt.Errorf("filter-refs: %w", err)
+	}
+	return nil
+}
+
+func (c loggerConfig) includeLocation() bool {
+	if includeLocation := c.includeLocationPointer(); includeLocation != nil {
+		return *includeLocation
+	}
+	return false
+}
+
+func (c loggerConfig) includeLocationPointer() *bool {
+	if c.IncludeLocation != nil {
+		value := *c.IncludeLocation
+		return &value
+	}
+	if c.IncludeLocationKebab != nil {
+		value := *c.IncludeLocationKebab
+		return &value
 	}
 	return nil
 }
@@ -1446,7 +1490,9 @@ func (c loggerConfig) empty() bool {
 		len(c.Filters) == 0 &&
 		len(c.FilterRefs) == 0 &&
 		len(c.FilterRefsKebab) == 0 &&
-		c.Additivity == nil
+		c.Additivity == nil &&
+		c.IncludeLocation == nil &&
+		c.IncludeLocationKebab == nil
 }
 
 func (c asyncLoggerConfig) empty() bool {

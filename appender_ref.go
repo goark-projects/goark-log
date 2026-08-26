@@ -4,9 +4,10 @@ import "log/slog"
 
 // AppenderRef 描述一次到 appender 的结构化引用。
 type AppenderRef struct {
-	Ref     string
-	Level   *slog.Level
-	Filters []Filter
+	Ref             string
+	Level           *slog.Level
+	IncludeLocation *bool
+	Filters         []Filter
 }
 
 // AppenderRefOption 调整结构化 appender 引用。
@@ -28,6 +29,14 @@ func WithAppenderRefLevel(level slog.Level) AppenderRefOption {
 	return func(config *AppenderRef) {
 		copied := level
 		config.Level = &copied
+	}
+}
+
+// WithAppenderRefLocation 设置当前引用是否采集调用位置。
+func WithAppenderRefLocation(enabled bool) AppenderRefOption {
+	return func(config *AppenderRef) {
+		copied := enabled
+		config.IncludeLocation = &copied
 	}
 }
 
@@ -60,6 +69,10 @@ func copyAppenderRef(ref AppenderRef) AppenderRef {
 	if ref.Level != nil {
 		level := *ref.Level
 		copied.Level = &level
+	}
+	if ref.IncludeLocation != nil {
+		includeLocation := *ref.IncludeLocation
+		copied.IncludeLocation = &includeLocation
 	}
 	return copied
 }

@@ -124,9 +124,10 @@ type xmlLayout struct {
 }
 
 type xmlAppenderRef struct {
-	Ref        string         `xml:"ref,attr"`
-	Level      string         `xml:"level,attr"`
-	FilterRefs []xmlFilterRef `xml:"FilterRef"`
+	Ref             string         `xml:"ref,attr"`
+	Level           string         `xml:"level,attr"`
+	IncludeLocation string         `xml:"includeLocation,attr"`
+	FilterRefs      []xmlFilterRef `xml:"FilterRef"`
 }
 
 type xmlFilterRef struct {
@@ -275,11 +276,12 @@ type xmlLoggers struct {
 }
 
 type xmlLogger struct {
-	Name         string           `xml:"name,attr"`
-	Level        string           `xml:"level,attr"`
-	Additivity   string           `xml:"additivity,attr"`
-	AppenderRefs []xmlAppenderRef `xml:"AppenderRef"`
-	FilterRefs   []xmlFilterRef   `xml:"FilterRef"`
+	Name            string           `xml:"name,attr"`
+	Level           string           `xml:"level,attr"`
+	Additivity      string           `xml:"additivity,attr"`
+	IncludeLocation string           `xml:"includeLocation,attr"`
+	AppenderRefs    []xmlAppenderRef `xml:"AppenderRef"`
+	FilterRefs      []xmlFilterRef   `xml:"FilterRef"`
 }
 
 func decodeXMLConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
@@ -462,6 +464,10 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q layout: %w", name, err)
 	}
 	strategy := a.effectiveStrategy()
+	appenderRefs, err := xmlAppenderRefs(a.AppenderRefs)
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
+	}
 	config := appenderConfig{
 		Type:           xmlAppenderType(a.XMLName.Local, a.Type),
 		Target:         xmlConsoleTarget(a.Target),
@@ -475,7 +481,7 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 		WriteTimeout:   a.WriteTimeout,
 		FileName:       a.FileName,
 		Layout:         layout,
-		AppenderRefs:   xmlAppenderRefs(a.AppenderRefs),
+		AppenderRefs:   appenderRefs,
 		Primary:        a.Primary,
 		Failovers:      xmlFilterRefsFromAppenderRefs(a.Failovers),
 		RouteKey:       a.RouteKey,
@@ -759,10 +765,19 @@ func (l xmlLogger) config(named bool) (loggerConfig, error) {
 	if named && strings.TrimSpace(l.Name) == "" {
 		return loggerConfig{}, fmt.Errorf("goark-log: XML logger name is empty")
 	}
+	appenderRefs, err := xmlAppenderRefs(l.AppenderRefs)
+	if err != nil {
+		return loggerConfig{}, fmt.Errorf("goark-log: XML logger %q: %w", l.Name, err)
+	}
+	includeLocation, err := parseXMLBoolPointerStrict(l.IncludeLocation, "includeLocation")
+	if err != nil {
+		return loggerConfig{}, fmt.Errorf("goark-log: XML logger %q: %w", l.Name, err)
+	}
 	config := loggerConfig{
-		Level:        l.Level,
-		AppenderRefs: xmlAppenderRefs(l.AppenderRefs),
-		Filters:      xmlFilterRefs(l.FilterRefs),
+		Level:           l.Level,
+		AppenderRefs:    appenderRefs,
+		Filters:         xmlFilterRefs(l.FilterRefs),
+		IncludeLocation: includeLocation,
 	}
 	if strings.TrimSpace(l.Additivity) != "" {
 		value, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(l.Additivity)))
@@ -778,6 +793,7 @@ func (l xmlLogger) empty() bool {
 	return strings.TrimSpace(l.Name) == "" &&
 		strings.TrimSpace(l.Level) == "" &&
 		strings.TrimSpace(l.Additivity) == "" &&
+		strings.TrimSpace(l.IncludeLocation) == "" &&
 		len(l.AppenderRefs) == 0 &&
 		len(l.FilterRefs) == 0
 }
@@ -805,16 +821,21 @@ func xmlConsoleTarget(target string) string {
 	}
 }
 
-func xmlAppenderRefs(refs []xmlAppenderRef) appenderRefs {
+func xmlAppenderRefs(refs []xmlAppenderRef) (appenderRefs, error) {
 	out := make(appenderRefs, 0, len(refs))
 	for _, ref := range refs {
+		includeLocation, err := parseXMLBoolPointerStrict(ref.IncludeLocation, "includeLocation")
+		if err != nil {
+			return nil, fmt.Errorf("AppenderRef %q: %w", ref.Ref, err)
+		}
 		out = append(out, appenderRefConfig{
-			Ref:        ref.Ref,
-			Level:      ref.Level,
-			FilterRefs: xmlFilterRefs(ref.FilterRefs),
+			Ref:             ref.Ref,
+			Level:           ref.Level,
+			IncludeLocation: includeLocation,
+			FilterRefs:      xmlFilterRefs(ref.FilterRefs),
 		})
 	}
-	return out
+	return out, nil
 }
 
 func xmlFilterRefsFromAppenderRefs(refs []xmlAppenderRef) []string {
@@ -939,6 +960,17 @@ func parseXMLBoolPointer(value string) *bool {
 		return nil
 	}
 	return &parsed
+}
+
+func parseXMLBoolPointerStrict(value string, field string) (*bool, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	parsed, err := parseXMLBool(value, field)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 func parseXMLBoolValue(value string) bool {

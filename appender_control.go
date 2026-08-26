@@ -8,10 +8,11 @@ import (
 )
 
 type appenderControl struct {
-	ref      string
-	level    *slog.Level
-	filters  []Filter
-	appender Appender
+	ref             string
+	level           *slog.Level
+	includeLocation *bool
+	filters         []Filter
+	appender        Appender
 }
 
 type controlledAppender struct {
@@ -40,6 +41,10 @@ func newAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (ap
 		level := *ref.Level
 		control.level = &level
 	}
+	if ref.IncludeLocation != nil {
+		includeLocation := *ref.IncludeLocation
+		control.includeLocation = &includeLocation
+	}
 	return control, nil
 }
 
@@ -59,7 +64,14 @@ func (c appenderControl) append(ctx context.Context, event Event) (bool, error) 
 	if applyFilters(ctx, c.filters, event) == FilterDeny {
 		return false, nil
 	}
+	if c.includeLocation != nil && !*c.includeLocation {
+		event.PC = 0
+	}
 	return true, c.appender.Append(ctx, event)
+}
+
+func (c appenderControl) requiresLocation() bool {
+	return c.includeLocation != nil && *c.includeLocation
 }
 
 func (c appenderControl) name() string {

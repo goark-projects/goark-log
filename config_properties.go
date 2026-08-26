@@ -134,6 +134,16 @@ func applyProperty(config *fileConfig, aliases propertyAliases, key string, valu
 		config.Root.AppenderRefs = propertyAppenderRefs(value)
 	case key == "rootLogger.filters" || key == "root.filters":
 		config.Root.Filters = propertyList(value)
+	case key == "rootLogger.includeLocation" || key == "rootLogger.include-location" || key == "root.includeLocation" || key == "root.include-location":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		config.Root.IncludeLocation = &parsed
+	case strings.HasPrefix(key, "rootLogger.appenderRef."):
+		return applyAppenderRefProperty(&config.Root.AppenderRefs, strings.TrimPrefix(key, "rootLogger.appenderRef."), value)
+	case strings.HasPrefix(key, "root.appenderRef."):
+		return applyAppenderRefProperty(&config.Root.AppenderRefs, strings.TrimPrefix(key, "root.appenderRef."), value)
 	case strings.HasPrefix(key, "property."):
 		name := strings.TrimPrefix(key, "property.")
 		if strings.TrimSpace(name) == "" {
@@ -240,6 +250,13 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	}
 	if strings.HasPrefix(field, "rewrite.") {
 		if err := applyRewriteProperty(&appender.Rewrite, strings.TrimPrefix(field, "rewrite."), value); err != nil {
+			return err
+		}
+		config.Appenders[id] = appender
+		return nil
+	}
+	if strings.HasPrefix(field, "appenderRef.") {
+		if err := applyAppenderRefProperty(&appender.AppenderRefs, strings.TrimPrefix(field, "appenderRef."), value); err != nil {
 			return err
 		}
 		config.Appenders[id] = appender
@@ -466,6 +483,18 @@ func applyLoggerProperty(config *fileConfig, aliases propertyAliases, key string
 			return err
 		}
 		logger.Additivity = &parsed
+	case "includeLocation", "include-location":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		logger.IncludeLocation = &parsed
+	default:
+		if strings.HasPrefix(field, "appenderRef.") {
+			if err := applyAppenderRefProperty(&logger.AppenderRefs, strings.TrimPrefix(field, "appenderRef."), value); err != nil {
+				return err
+			}
+		}
 	}
 	config.Loggers[id] = logger
 	return nil
@@ -648,6 +677,42 @@ func propertyAppenderRefs(value string) appenderRefs {
 	return refs
 }
 
+func applyAppenderRefProperty(refs *appenderRefs, key string, value string) error {
+	id, field, ok := splitPropertyID(key)
+	if !ok {
+		return nil
+	}
+	ref := findPropertyAppenderRef(refs, id)
+	switch field {
+	case "ref":
+		ref.Ref = value
+	case "level":
+		ref.Level = value
+	case "includeLocation", "include-location":
+		parsed, err := parsePropertyBool(value, key)
+		if err != nil {
+			return err
+		}
+		ref.IncludeLocation = &parsed
+	case "filters", "filterRefs", "filter-refs":
+		ref.FilterRefs = propertyList(value)
+	}
+	return nil
+}
+
+func findPropertyAppenderRef(refs *appenderRefs, id string) *appenderRefConfig {
+	for index := range *refs {
+		if (*refs)[index].ID == id || ((*refs)[index].ID == "" && (*refs)[index].Ref == id) {
+			if (*refs)[index].ID == "" {
+				(*refs)[index].ID = id
+			}
+			return &(*refs)[index]
+		}
+	}
+	*refs = append(*refs, appenderRefConfig{ID: id, Ref: id})
+	return &(*refs)[len(*refs)-1]
+}
+
 func propertyList(value string) []string {
 	parts := strings.FieldsFunc(value, func(r rune) bool {
 		return r == ',' || r == ';'
@@ -664,7 +729,7 @@ func propertyList(value string) []string {
 func parsePropertyInt(value string, field string) (int, error) {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
-		return 0, fmt.Errorf("goark-log: properties %s is invalid", field)
+		return 0, fmt.Errorf("goark-log: properties %s value %q is invalid integer", field, value)
 	}
 	return parsed, nil
 }
@@ -672,7 +737,7 @@ func parsePropertyInt(value string, field string) (int, error) {
 func parsePropertyBool(value string, field string) (bool, error) {
 	parsed, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(value)))
 	if err != nil {
-		return false, fmt.Errorf("goark-log: properties %s is invalid", field)
+		return false, fmt.Errorf("goark-log: properties %s value %q is invalid boolean", field, value)
 	}
 	return parsed, nil
 }
