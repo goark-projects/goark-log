@@ -137,6 +137,21 @@ _, err = reloader.Reload(context.Background())
 
 `Watch` 使用标准库轮询文件修改时间和大小，不依赖 `fsnotify`。
 
+## MDC 和调用位置
+
+Go 没有 Java 线程局部变量，`goark-log` 用 `context.Context` 承载 MDC：
+
+```go
+ctx := goarklog.WithContextAttrs(context.Background(),
+	slog.String("trace_id", "trace-1"),
+	slog.String("span_id", "span-1"),
+)
+logger.InfoContext(ctx, "request done")
+```
+
+`PatternLayout` 支持 `%X{trace_id}`、`%mdc{trace_id}`、`%marker`、`%class`、`%method`、`%file`、`%line`、`%location`。调用位置来自 `slog.Record.PC`，
+只有 pattern 使用 caller token 时才解析 runtime frame。
+
 ## Examples
 
 示例位于 `examples/`：

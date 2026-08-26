@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,12 @@ const (
 	tokenAttr
 	tokenError
 	tokenNewline
+	tokenMarker
+	tokenCallerClass
+	tokenCallerMethod
+	tokenCallerFile
+	tokenCallerLine
+	tokenCallerLocation
 )
 
 type timeUnixMode uint8
@@ -120,8 +127,9 @@ func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
 	if l == nil {
 		return NewDefaultLayout().Format(buf, event)
 	}
+	var caller callerCache
 	for _, token := range l.tokens {
-		appendPatternToken(buf, token, event)
+		appendPatternToken(buf, token, event, &caller)
 	}
 	return nil
 }
@@ -205,32 +213,45 @@ func readPatternOption(pattern string, start int) (string, int, error) {
 }
 
 func configurePatternToken(token *patternToken, converter string, option string) error {
-	switch strings.ToLower(converter) {
-	case "d", "date":
+	normalized := strings.ToLower(converter)
+	switch {
+	case converter == "C" || normalized == "class":
+		token.kind = tokenCallerClass
+	case converter == "M" || normalized == "method":
+		token.kind = tokenCallerMethod
+	case converter == "F" || normalized == "file":
+		token.kind = tokenCallerFile
+	case converter == "L" || normalized == "line":
+		token.kind = tokenCallerLine
+	case converter == "l" || normalized == "location":
+		token.kind = tokenCallerLocation
+	case normalized == "d" || normalized == "date":
 		token.kind = tokenTime
 		token.format, token.timeUnix = normalizeTimePattern(option)
-	case "level", "p":
+	case normalized == "level" || normalized == "p":
 		token.kind = tokenLevel
-	case "pid", "processid":
+	case normalized == "pid" || normalized == "processid":
 		token.kind = tokenPID
-	case "thread", "t":
+	case normalized == "thread" || normalized == "t":
 		token.kind = tokenThread
-	case "logger", "c":
+	case normalized == "logger" || converter == "c":
 		token.kind = tokenLogger
-	case "msg", "message", "m":
+	case normalized == "msg" || normalized == "message" || converter == "m":
 		token.kind = tokenMessage
-	case "attrs", "kvp":
+	case normalized == "attrs" || normalized == "kvp":
 		token.kind = tokenAttrs
-	case "x", "mdc":
+	case converter == "X" || normalized == "mdc":
 		if strings.TrimSpace(option) == "" {
 			token.kind = tokenAttrs
 			return nil
 		}
 		token.kind = tokenAttr
 		token.key = strings.TrimSpace(option)
-	case "ex", "throwable", "exception":
+	case normalized == "ex" || normalized == "throwable" || normalized == "exception":
 		token.kind = tokenError
-	case "n":
+	case normalized == "marker":
+		token.kind = tokenMarker
+	case normalized == "n":
 		token.kind = tokenNewline
 	default:
 		return fmt.Errorf("goark-log: unsupported pattern converter %q", converter)
@@ -238,7 +259,7 @@ func configurePatternToken(token *patternToken, converter string, option string)
 	return nil
 }
 
-func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event) {
+func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callerCache) {
 	if token.kind == tokenLiteral {
 		buf.WriteString(token.literal)
 		return
@@ -259,7 +280,7 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event) {
 		buf.WriteString(processIDString)
 		return
 	}
-	value := patternTokenString(token, event)
+	value := patternTokenString(token, event, caller)
 	appendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
 }
 
@@ -282,7 +303,7 @@ func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
 	}
 }
 
-func patternTokenString(token patternToken, event Event) string {
+func patternTokenString(token patternToken, event Event, caller *callerCache) string {
 	switch token.kind {
 	case tokenTime:
 		when := event.Time
@@ -306,7 +327,7 @@ func patternTokenString(token patternToken, event Event) string {
 	case tokenPID:
 		return processIDString
 	case tokenThread:
-		return "main"
+		return eventThreadName(event)
 	case tokenLogger:
 		return event.Logger
 	case tokenMessage:
@@ -325,9 +346,100 @@ func patternTokenString(token patternToken, event Event) string {
 		return eventErrorString(event)
 	case tokenNewline:
 		return "\n"
+	case tokenMarker:
+		return eventMarkerString(event)
+	case tokenCallerClass:
+		return caller.resolve(event).class
+	case tokenCallerMethod:
+		return caller.resolve(event).method
+	case tokenCallerFile:
+		return caller.resolve(event).file
+	case tokenCallerLine:
+		frame := caller.resolve(event)
+		if frame.line == 0 {
+			return ""
+		}
+		return strconv.Itoa(frame.line)
+	case tokenCallerLocation:
+		return caller.resolve(event).location()
 	default:
 		return ""
 	}
+}
+
+type callerCache struct {
+	loaded bool
+	frame  callerFrame
+}
+
+type callerFrame struct {
+	class  string
+	method string
+	file   string
+	line   int
+}
+
+func (c *callerCache) resolve(event Event) callerFrame {
+	if c == nil {
+		return callerFrameFromPC(event.PC)
+	}
+	if !c.loaded {
+		c.frame = callerFrameFromPC(event.PC)
+		c.loaded = true
+	}
+	return c.frame
+}
+
+func callerFrameFromPC(pc uintptr) callerFrame {
+	if pc == 0 {
+		return callerFrame{}
+	}
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return callerFrame{}
+	}
+	file, line := fn.FileLine(pc)
+	name := fn.Name()
+	return callerFrame{
+		class:  callerClassName(name),
+		method: callerMethodName(name),
+		file:   baseName(file),
+		line:   line,
+	}
+}
+
+func (f callerFrame) location() string {
+	if f.method == "" && f.file == "" && f.line == 0 {
+		return ""
+	}
+	if f.line == 0 {
+		return f.method + "(" + f.file + ")"
+	}
+	return f.method + "(" + f.file + ":" + strconv.Itoa(f.line) + ")"
+}
+
+func callerClassName(name string) string {
+	index := strings.LastIndexByte(name, '.')
+	if index < 0 {
+		return name
+	}
+	return name[:index]
+}
+
+func callerMethodName(name string) string {
+	index := strings.LastIndexByte(name, '.')
+	if index < 0 || index == len(name)-1 {
+		return name
+	}
+	return name[index+1:]
+}
+
+func baseName(path string) string {
+	index := strings.LastIndexAny(path, `/\`)
+	if index < 0 || index == len(path)-1 {
+		return path
+	}
+	return path[index+1:]
 }
 
 func normalizeTimePattern(format string) (string, timeUnixMode) {
@@ -377,6 +489,29 @@ func eventErrorString(event Event) string {
 		}
 	}
 	return ""
+}
+
+func eventMarkerString(event Event) string {
+	for _, key := range []string{"marker", "goark.marker"} {
+		value, ok := event.Attr(key)
+		if ok {
+			return attrValueString(value)
+		}
+	}
+	return ""
+}
+
+func eventThreadName(event Event) string {
+	for _, key := range []string{"goark.thread", "thread", "goroutine"} {
+		value, ok := event.Attr(key)
+		if ok {
+			name := strings.TrimSpace(attrValueString(value))
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return "main"
 }
 
 func appendPadded(buf *bytes.Buffer, value string, minWidth int, maxWidth int, leftAlign bool) {

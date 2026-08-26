@@ -1,6 +1,7 @@
 package goarklog
 
 import (
+	"context"
 	"log/slog"
 	"time"
 )
@@ -21,7 +22,8 @@ type Event struct {
 
 // Attr 按键查找事件属性。
 func (e Event) Attr(key string) (slog.Value, bool) {
-	for _, attr := range e.Attrs {
+	for index := len(e.Attrs) - 1; index >= 0; index-- {
+		attr := e.Attrs[index]
 		if attr.Key == key {
 			return attr.Value, true
 		}
@@ -29,12 +31,14 @@ func (e Event) Attr(key string) (slog.Value, bool) {
 	return slog.Value{}, false
 }
 
-func newEvent(logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
+func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
 	if logger == "" {
 		logger = defaultLoggerName
 	}
-	attrs := make([]slog.Attr, 0, len(handlerAttrs)+record.NumAttrs())
+	contextAttrs := ContextAttrs(ctx)
+	attrs := make([]slog.Attr, 0, len(handlerAttrs)+len(contextAttrs)+record.NumAttrs())
 	attrs = appendAttrs(attrs, nil, handlerAttrs)
+	attrs = appendAttrs(attrs, nil, contextAttrs)
 	record.Attrs(func(attr slog.Attr) bool {
 		attrs = appendAttr(attrs, groups, attr)
 		return true

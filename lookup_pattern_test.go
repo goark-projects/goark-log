@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +70,59 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 	}
 }
 
+func TestPatternLayout_whenCallerTokensUsed_shouldRenderGoLocation(t *testing.T) {
+	pc := callerProgramCounter()
+	layout, err := NewPatternLayout("%class|%method|%file|%line|%location|%marker%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	event := testEvent("caller", fixedTestTime())
+	event.PC = pc
+	event.Attrs = []slog.Attr{slog.String("marker", "SQL")}
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	line := buf.String()
+	for _, want := range []string{
+		"goark-log",
+		"TestPatternLayout_whenCallerTokensUsed",
+		"lookup_pattern_test.go",
+		"|SQL\n",
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("caller line should contain %q, got %q", want, line)
+		}
+	}
+	if strings.Contains(line, "|0|") {
+		t.Fatalf("caller line should include a non-zero source line, got %q", line)
+	}
+}
+
+func TestHandler_whenContextAttrsUsed_shouldExposeMDCToPatternLayout(t *testing.T) {
+	var out bytes.Buffer
+	layout, err := NewPatternLayout("%X{trace_id} %X{span_id} %m%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{NewConsoleAppender(WithConsoleWriter(&out), WithConsoleLayout(layout))},
+		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	ctx := WithContextAttrs(context.Background(),
+		slog.String("trace_id", "trace-1"),
+		slog.String("span_id", "span-1"),
+	)
+	NewLogger(handler, "goark.web").InfoContext(ctx, "request done")
+	if got := out.String(); got != "trace-1 span-1 request done\n" {
+		t.Fatalf("context MDC output = %q", got)
+	}
+}
+
 func TestLayout_whenPrimitiveAttrsUsed_shouldRenderWithoutSemanticDrift(t *testing.T) {
 	event := testEvent("primitive attrs", fixedTestTime())
 	event.Attrs = []slog.Attr{
@@ -107,6 +161,12 @@ func TestLayout_whenPrimitiveAttrsUsed_shouldRenderWithoutSemanticDrift(t *testi
 	if !strings.Contains(pattern.String(), `primitive attrs profile="bench worker" index=42 cached=true ratio=1.25 elapsed=10ms`) {
 		t.Fatalf("pattern line is wrong: %q", pattern.String())
 	}
+}
+
+func callerProgramCounter() uintptr {
+	var pcs [1]uintptr
+	runtime.Callers(2, pcs[:])
+	return pcs[0]
 }
 
 func TestPatternLayout_whenAttrsHaveExplicitSeparator_shouldNotDuplicateSpace(t *testing.T) {
