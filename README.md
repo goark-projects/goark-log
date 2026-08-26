@@ -162,20 +162,20 @@ logger.InfoContext(ctx, "request done")
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。
 
-## 外部 Appender 包
+## 外部 Appender
 
-外部系统连接保持独立包，不默认进入核心库依赖。需要时显式导入并注册：
+核心库只提供 Appender 接口、插件注册表和配置构建契约，不内置 HTTP、Socket、Syslog、Kafka、SMTP、Database 等外部系统实现。外部系统连接必须放在独立模块中，按需显式导入并注册：
 
 ```go
 registry := goarklog.NewPluginRegistry()
-_ = httpappender.Register(registry)
+_ = externalappender.Register(registry)
 handler, _, err := goarklog.NewConfiguredHandler(ctx,
 	goarklog.WithConfigPath("conf/goark-log.yml"),
 	goarklog.WithPluginRegistry(registry),
 )
 ```
 
-当前提供 `goark.dev/log/appenders/http`、`goark.dev/log/appenders/socket`、`goark.dev/log/appenders/syslog`。核心包同时提供 `FailoverAppender`、`RoutingAppender`、`RewriteAppender` 作为组合型 appender。
+核心包保留 `AppenderBuildConfig` 中的 URL、Address、Network、Timeout 等字段，用于独立外部模块读取配置；这些字段不是核心库自带外部 appender 的承诺。核心包自身只提供 `ConsoleAppender`、`FileAppender`、`RollingFileAppender`、`AsyncAppender`、`FailoverAppender`、`RoutingAppender`、`RewriteAppender` 等本地和组合型 appender。
 
 ## Examples
 
