@@ -174,9 +174,45 @@ logger.InfoContext(ctx, "request done")
 
 核心库还提供 `XMLLayout`、`CSVLayout`、`GELFLayout`、`RFC5424Layout`、`YAMLLayout` 和 `HTMLLayout`，配置中可使用 `layout.type: xml/csv/gelf/rfc5424/syslog/yaml/html`。JSON、JSONTemplate、XML、CSV、GELF、YAML、HTML 支持通用 `LayoutOptions`：`compact`、`eventEol`、`complete`、`includeStacktrace`、`stacktraceAsString`、`propertiesAsList`、`includeNullDelimiter`、`header`、`footer`。
 
+## 组合 Appender
+
+核心内置 `AsyncAppender`、`FailoverAppender`、`RoutingAppender` 和 `RewriteAppender`，可通过 YAML、JSON、XML、properties 配置。配置型组合 appender 只引用子 appender，不拥有子 appender 的关闭权，关闭生命周期由 `Handler` 统一管理。
+
+```yaml
+appenders:
+  file:
+    type: file
+    fileName: logs/app.log
+  backup:
+    type: file
+    fileName: logs/backup.log
+  failover:
+    type: failover
+    primary: file
+    failovers: [backup]
+  router:
+    type: routing
+    routeKey: kind
+    defaultRoute: file
+    routes:
+      audit: backup
+  rewrite:
+    type: rewrite
+    appenderRefs: [router]
+    rewrite:
+      attrs:
+        service: boot
+      remove: [password, token]
+root:
+  level: info
+  appenderRefs: [rewrite]
+```
+
 ## 过滤器
 
 内置过滤器支持 `ThresholdFilter`、`LevelFilter`、`LevelRangeFilter`、`RegexFilter`、`AttrFilter`、`DenyAllFilter`、`CompositeFilter`、`MarkerFilter`、`NoMarkerFilter`、`MapFilter`、`ThreadContextMapFilter`、`ThreadContextStackFilter`、`StructuredDataFilter`、`ThrowableFilter`、`StringMatchFilter`、`TimeFilter`、`BurstFilter`、`DynamicThresholdFilter`。配置里可以使用短名，也可以使用 Log4j2 风格的 `*Filter` 类型名。
+
+顶层 `filterRefs` 是全局 filter 链，会在 logger level 前裁决：`DENY` 直接丢弃，`ACCEPT` 可放行低于 logger/root level 的事件，`NEUTRAL` 继续走 level 判断。root/logger/appenderRef/appender 自身的 filter 仍在事件进入对应阶段后执行。
 
 `MapFilter`、`ThreadContextMapFilter` 和 `DynamicThresholdFilter` 支持 `KeyValuePair` 子项；YAML/JSON 也可以用 `values`、`thresholds` 显式 map，properties 可用 `filter.<name>.values.<key>`、`filter.<name>.thresholds.<value>` 或 `filter.<name>.keyValuePair0.key/value`。
 `TimeFilter` 支持 `timezone`，没有配置时使用事件时间自身的时区。
