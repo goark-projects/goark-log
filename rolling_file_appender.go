@@ -1284,12 +1284,10 @@ func (a *RollingFileAppender) enqueueRolloverAction(action func() error) error {
 	if queue == nil || closed {
 		return action()
 	}
-	select {
-	case queue <- action:
-		return nil
-	default:
-		return action()
-	}
+	// 异步滚动动作必须由同一个 worker 串行执行；队列满时阻塞写线程施加背压，
+	// 避免压缩和保留删除并发操作同一批归档文件。
+	queue <- action
+	return nil
 }
 
 func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
