@@ -1,14 +1,13 @@
 package goarklog
 
 import (
-	"bufio"
-	"fmt"
 	"io"
-	"strings"
+
+	"goark.dev/log/internal/configprops"
 )
 
 func decodePropertiesConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
-	values, err := readProperties(reader)
+	values, err := configprops.Read(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -19,42 +18,53 @@ func decodePropertiesConfig(reader io.Reader, lookups *LookupResolver) (*fileCon
 	return finalizeDecodedConfig(config, lookups)
 }
 
-func readProperties(reader io.Reader) (map[string]string, error) {
-	scanner := bufio.NewScanner(reader)
-	values := make(map[string]string)
-	for lineNumber := 1; scanner.Scan(); lineNumber++ {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
-			continue
-		}
-		key, value, ok := cutProperty(line)
-		if !ok {
-			return nil, fmt.Errorf("goark-log: properties line %d is invalid", lineNumber)
-		}
-		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+func propertyAppenderRefs(value string) appenderRefs {
+	values := configprops.List(value)
+	refs := make(appenderRefs, 0, len(values))
+	for _, ref := range values {
+		refs = append(refs, appenderRefConfig{Ref: ref})
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return values, nil
+	return refs
 }
 
-func cutProperty(line string) (string, string, bool) {
-	for _, separator := range []string{"=", ":"} {
-		key, value, ok := strings.Cut(line, separator)
-		if ok {
-			return key, value, true
+func applyAppenderRefProperty(refs *appenderRefs, key string, value string) error {
+	id, field, ok := configprops.SplitID(key)
+	if !ok {
+		return nil
+	}
+	ref := findPropertyAppenderRef(refs, id)
+	switch field {
+	case "ref":
+		ref.Ref = value
+	case "level":
+		ref.Level = value
+	case "includeLocation", "include-location":
+		parsed, err := configprops.Bool(value, key)
+		if err != nil {
+			return err
+		}
+		ref.IncludeLocation = &parsed
+	case "filters", "filterRefs", "filter-refs":
+		ref.FilterRefs = configprops.List(value)
+	}
+	return nil
+}
+
+func findPropertyAppenderRef(refs *appenderRefs, id string) *appenderRefConfig {
+	for index := range *refs {
+		if (*refs)[index].ID == id || ((*refs)[index].ID == "" && (*refs)[index].Ref == id) {
+			if (*refs)[index].ID == "" {
+				(*refs)[index].ID = id
+			}
+			return &(*refs)[index]
 		}
 	}
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return "", "", false
-	}
-	return fields[0], strings.Join(fields[1:], " "), true
+	*refs = append(*refs, appenderRefConfig{ID: id, Ref: id})
+	return &(*refs)[len(*refs)-1]
 }
 
 func propertiesToFileConfig(values map[string]string) (fileConfig, error) {
-	aliases := collectPropertyAliases(values)
+	aliases := configprops.CollectAliases(values)
 	config := fileConfig{
 		Properties:   make(map[string]string),
 		CustomLevels: make(map[string]string),

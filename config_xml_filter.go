@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"goark.dev/log/internal/configxml"
+	"goark.dev/log/internal/textutil"
 )
 
 func (f xmlFilter) config(kind string) (filterConfig, error) {
@@ -71,8 +72,8 @@ func (a xmlRollingDeleteAction) config() rollingDeleteActionConfig {
 		MaxDepth: configxml.IntPointer(a.MaxDepth),
 		MaxCount: configxml.IntPointer(a.MaxCount),
 		MaxSize:  a.MaxSize,
-		Glob:     firstNonBlank(a.Glob, a.IfFileName.Glob),
-		Age:      firstNonBlank(a.Age, a.IfLastModified.Age),
+		Glob:     textutil.FirstNonBlank(a.Glob, a.IfFileName.Glob),
+		Age:      textutil.FirstNonBlank(a.Age, a.IfLastModified.Age),
 		IfFileName: rollingDeleteFileNameConfig{
 			Glob: a.IfFileName.Glob,
 		},

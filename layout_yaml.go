@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 	"gopkg.in/yaml.v3"
 )
@@ -23,7 +24,7 @@ func NewYAMLLayout(options LayoutOptions) YAMLLayout {
 // Format 把事件编码为 YAML。
 func (l YAMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	fields := map[string]any{
-		"time":    eventTime(event.Time).Format(defaultTimeFormat),
+		"time":    layoutsupport.EventTime(event.Time).Format(defaultTimeFormat),
 		"level":   levelName(event.Level),
 		"logger":  event.Logger,
 		"thread":  eventThreadName(event),

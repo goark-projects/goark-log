@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"goark.dev/log/internal/configxml"
+	"goark.dev/log/internal/textutil"
 )
 
 func (a xmlAppender) layout() (layoutConfig, error) {
@@ -55,8 +56,8 @@ func (l xmlLayout) emptyOptions() bool {
 }
 
 func (l xmlLayout) config() (layoutConfig, error) {
-	kind := firstNonBlank(l.Type, l.XMLName.Local)
-	switch normalizeKind(kind) {
+	kind := textutil.FirstNonBlank(l.Type, l.XMLName.Local)
+	switch textutil.NormalizeKind(kind) {
 	case "", "patternlayout", "pattern":
 		kind = "pattern"
 	case "textlayout", "text":

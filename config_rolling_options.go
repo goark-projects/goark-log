@@ -1,9 +1,13 @@
 package goarklog
 
-import "strings"
+import (
+	"strings"
+
+	"goark.dev/log/internal/textutil"
+)
 
 func (c rollingConfig) filePattern() string {
-	return firstNonBlank(c.FilePattern, c.FilePatternKebab)
+	return textutil.FirstNonBlank(c.FilePattern, c.FilePatternKebab)
 }
 
 func (c rollingConfig) maxSize() string {
@@ -27,7 +31,7 @@ func (c rollingConfig) cronSchedule() string {
 	if value := c.Policies.cronPolicy().schedule(); value != "" {
 		return value
 	}
-	return firstNonBlank(c.CronSchedule, c.CronScheduleKebab, c.Cron)
+	return textutil.FirstNonBlank(c.CronSchedule, c.CronScheduleKebab, c.Cron)
 }
 
 func (c rollingConfig) timeModulate() *bool {
@@ -35,11 +39,11 @@ func (c rollingConfig) timeModulate() *bool {
 }
 
 func (c rollingConfig) maxAge() string {
-	return firstNonBlank(c.Strategy.MaxAge, c.Strategy.MaxAgeKebab, c.MaxAge, c.MaxAgeKebab)
+	return textutil.FirstNonBlank(c.Strategy.MaxAge, c.Strategy.MaxAgeKebab, c.MaxAge, c.MaxAgeKebab)
 }
 
 func (c rollingConfig) fileIndex() string {
-	return firstNonBlank(c.Strategy.FileIndex, c.Strategy.FileIndexKebab)
+	return textutil.FirstNonBlank(c.Strategy.FileIndex, c.Strategy.FileIndexKebab)
 }
 
 func (c rollingConfig) directWrite() bool {
@@ -213,22 +217,22 @@ func (c rollingPoliciesConfig) startupPolicy() rollingStartupPolicyConfig {
 }
 
 func (c rollingSizePolicyConfig) empty() bool {
-	return firstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab) == ""
+	return textutil.FirstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab) == ""
 }
 
 func (c rollingSizePolicyConfig) size() string {
-	return firstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab)
+	return textutil.FirstNonBlank(c.Size, c.MaxSize, c.MaxSizeKebab)
 }
 
 func (c rollingTimePolicyConfig) empty() bool {
-	return firstNonBlank(c.Interval, c.Every, c.Unit) == "" && c.Modulate == nil
+	return textutil.FirstNonBlank(c.Interval, c.Every, c.Unit) == "" && c.Modulate == nil
 }
 
 func (c rollingTimePolicyConfig) interval() string {
 	if strings.TrimSpace(c.Unit) == "" {
-		return firstNonBlank(c.Interval, c.Every)
+		return textutil.FirstNonBlank(c.Interval, c.Every)
 	}
-	return strings.TrimSpace(firstNonBlank(c.Interval, c.Every)) + strings.TrimSpace(c.Unit)
+	return strings.TrimSpace(textutil.FirstNonBlank(c.Interval, c.Every)) + strings.TrimSpace(c.Unit)
 }
 
 func (c rollingCronPolicyConfig) empty() bool {
@@ -236,11 +240,11 @@ func (c rollingCronPolicyConfig) empty() bool {
 }
 
 func (c rollingCronPolicyConfig) schedule() string {
-	return firstNonBlank(c.Schedule, c.CronSchedule, c.CronKebab, c.Cron)
+	return textutil.FirstNonBlank(c.Schedule, c.CronSchedule, c.CronKebab, c.Cron)
 }
 
 func (c rollingDeleteActionConfig) empty() bool {
-	return firstNonBlank(c.BasePath, c.BasePathKebab, c.Glob, c.Age,
+	return textutil.FirstNonBlank(c.BasePath, c.BasePathKebab, c.Glob, c.Age,
 		c.IfFileName.Glob, c.IfFileNameKebab.Glob,
 		c.IfLastModified.Age, c.IfLastModifiedKebab.Age,
 		c.MaxSize, c.MaxSizeKebab,
@@ -252,10 +256,10 @@ func (c rollingDeleteActionConfig) empty() bool {
 
 func (c rollingDeleteActionConfig) build(defaultBase string) RollingDeleteBuildConfig {
 	config := RollingDeleteBuildConfig{
-		BasePath: firstNonBlank(c.BasePath, c.BasePathKebab, defaultBase),
-		Glob:     firstNonBlank(c.Glob, c.IfFileName.Glob, c.IfFileNameKebab.Glob),
-		MaxAge:   firstNonBlank(c.Age, c.IfLastModified.Age, c.IfLastModifiedKebab.Age),
-		MaxSize:  firstNonBlank(c.MaxSize, c.MaxSizeKebab, c.IfAccumulatedFileSize.Exceeds, c.IfAccumulatedFileSizeKebab.Exceeds),
+		BasePath: textutil.FirstNonBlank(c.BasePath, c.BasePathKebab, defaultBase),
+		Glob:     textutil.FirstNonBlank(c.Glob, c.IfFileName.Glob, c.IfFileNameKebab.Glob),
+		MaxAge:   textutil.FirstNonBlank(c.Age, c.IfLastModified.Age, c.IfLastModifiedKebab.Age),
+		MaxSize:  textutil.FirstNonBlank(c.MaxSize, c.MaxSizeKebab, c.IfAccumulatedFileSize.Exceeds, c.IfAccumulatedFileSizeKebab.Exceeds),
 	}
 	if c.MaxDepth != nil {
 		config.MaxDepth = *c.MaxDepth

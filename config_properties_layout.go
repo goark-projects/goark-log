@@ -3,6 +3,8 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/configprops"
 )
 
 func applyRewriteProperty(config *rewriteBuildConfig, key string, value string) error {
@@ -35,7 +37,7 @@ func applyRewriteProperty(config *rewriteBuildConfig, key string, value string) 
 		}
 		config.Properties[attrKey] = value
 	case key == "remove" || key == "removeAttrs" || key == "remove-attrs":
-		config.Remove = propertyList(value)
+		config.Remove = configprops.List(value)
 	}
 	return nil
 }
@@ -51,49 +53,49 @@ func applyLayoutProperty(config *layoutConfig, key string, value string) error {
 	case "eventTemplateUri", "event-template-uri", "eventTemplatePath", "event-template-path":
 		config.EventTemplateURI = value
 	case "compact":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.Compact = parsed
 	case "eventEol", "event-eol":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.EventEOL = parsed
 	case "complete":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.Complete = parsed
 	case "includeStacktrace", "include-stacktrace":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.IncludeStacktrace = parsed
 	case "stacktraceAsString", "stacktrace-as-string":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.StacktraceAsString = parsed
 	case "propertiesAsList", "properties-as-list":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.PropertiesAsList = parsed
 	case "includeNullDelimiter", "include-null-delimiter":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.IncludeNullDelimiter = parsed
 	case "disableAnsi", "disable-ansi":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}

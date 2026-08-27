@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 )
 
@@ -20,10 +21,10 @@ func NewGELFLayout(options LayoutOptions) GELFLayout {
 
 // Format 把事件编码为 GELF JSON。
 func (l GELFLayout) Format(buf *bytes.Buffer, event Event) error {
-	when := eventTime(event.Time)
+	when := layoutsupport.EventTime(event.Time)
 	buf.WriteByte('{')
 	logvalue.AppendJSONFieldString(buf, "version", "1.1", false)
-	logvalue.AppendJSONFieldString(buf, "host", hostNameString, true)
+	logvalue.AppendJSONFieldString(buf, "host", layoutsupport.HostName(), true)
 	logvalue.AppendJSONFieldString(buf, "short_message", event.Message, true)
 	if thrown := gelfThrowableString(event, l.options); thrown != "" {
 		logvalue.AppendJSONFieldString(buf, "full_message", thrown, true)

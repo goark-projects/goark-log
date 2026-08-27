@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"goark.dev/log/internal/jsoncodec"
+	"goark.dev/log/internal/textutil"
 	"goark.dev/log/internal/timepattern"
 )
 
@@ -25,7 +26,7 @@ func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry, 
 }
 
 func newJSONTemplateResolver(name string, options map[string]json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
-	switch normalizeKind(name) {
+	switch textutil.NormalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
 		layout, unix := timepattern.Normalize(format)

@@ -2,12 +2,14 @@ package goarklog
 
 import (
 	"fmt"
-	"sort"
 	"strings"
+
+	"goark.dev/log/internal/configprops"
+	"goark.dev/log/internal/textutil"
 )
 
 func applyFilterProperty(config *fileConfig, key string, value string) error {
-	id, field, ok := splitPropertyID(key)
+	id, field, ok := configprops.SplitID(key)
 	if !ok {
 		return nil
 	}
@@ -36,7 +38,7 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 	case field == "rate":
 		filter.Rate = value
 	case field == "maxBurst" || field == "max-burst":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -66,7 +68,7 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 		}
 		filter.Thresholds[mapKey] = value
 	case field == "filters" || field == "filterRefs" || field == "filter-refs":
-		filter.FilterRefs = propertyList(value)
+		filter.FilterRefs = configprops.List(value)
 	case field == "defaultThreshold" || field == "default-threshold":
 		filter.DefaultThreshold = value
 	case field == "pattern":
@@ -90,7 +92,7 @@ type propertyFilterPair struct {
 func applyFilterKeyValuePairs(config *fileConfig, values map[string]string) error {
 	pairsByFilter := make(map[string]map[string]propertyFilterPair)
 	for key, value := range values {
-		filterID, pairID, field, ok := splitFilterPairProperty(key)
+		filterID, pairID, field, ok := configprops.SplitFilterPairKey(key)
 		if !ok {
 			continue
 		}
@@ -110,18 +112,10 @@ func applyFilterKeyValuePairs(config *fileConfig, values map[string]string) erro
 		}
 		pairs[pairID] = pair
 	}
-	filterIDs := make([]string, 0, len(pairsByFilter))
-	for filterID := range pairsByFilter {
-		filterIDs = append(filterIDs, filterID)
-	}
-	sort.Strings(filterIDs)
+	filterIDs := textutil.SortedKeys(pairsByFilter)
 	for _, filterID := range filterIDs {
 		filter := config.Filters[filterID]
-		pairIDs := make([]string, 0, len(pairsByFilter[filterID]))
-		for pairID := range pairsByFilter[filterID] {
-			pairIDs = append(pairIDs, pairID)
-		}
-		sort.Strings(pairIDs)
+		pairIDs := textutil.SortedKeys(pairsByFilter[filterID])
 		for _, pairID := range pairIDs {
 			pair := pairsByFilter[filterID][pairID]
 			if !pair.hasKey && !pair.hasValue {

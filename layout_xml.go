@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 )
 
@@ -20,7 +21,7 @@ func NewXMLLayout(options LayoutOptions) XMLLayout {
 // Format 把事件编码为 XML。
 func (l XMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	buf.WriteString("<Event")
-	appendXMLAttr(buf, "time", eventTime(event.Time).Format(defaultTimeFormat))
+	appendXMLAttr(buf, "time", layoutsupport.EventTime(event.Time).Format(defaultTimeFormat))
 	appendXMLAttr(buf, "level", levelName(event.Level))
 	appendXMLAttr(buf, "logger", event.Logger)
 	appendXMLAttr(buf, "thread", eventThreadName(event))

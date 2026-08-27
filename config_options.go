@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
@@ -59,7 +61,7 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 		_ = closeAppenderList(appenders)
 		return Options{}, fmt.Errorf("goark-log: root: %w", err)
 	}
-	loggerNames := sortedLoggerNames(c.Loggers)
+	loggerNames := textutil.SortedKeys(c.Loggers)
 	for _, name := range loggerNames {
 		loggerConfig := c.Loggers[name]
 		var level *slog.Level
@@ -212,18 +214,18 @@ func (c asyncLoggerConfig) batchSize() int {
 }
 
 func (c asyncLoggerConfig) overflowStrategy() string {
-	return firstNonBlank(c.OverflowStrategy, c.OverflowStrategyKebab)
+	return textutil.FirstNonBlank(c.OverflowStrategy, c.OverflowStrategyKebab)
 }
 
 func (c asyncLoggerConfig) waitStrategy() string {
-	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
+	return textutil.FirstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
 }
 
 func (c asyncLoggerConfig) waitOptions() AsyncWaitOptions {
 	return AsyncWaitOptions{
-		Retries:   firstNonZero(c.WaitRetries, c.WaitRetriesKebab),
-		SleepTime: parseOptionalDuration(firstNonBlank(c.SleepTime, c.SleepTimeKebab)),
-		Timeout:   parseOptionalDuration(c.Timeout),
+		Retries:   textutil.FirstNonZero(c.WaitRetries, c.WaitRetriesKebab),
+		SleepTime: textutil.OptionalDuration(textutil.FirstNonBlank(c.SleepTime, c.SleepTimeKebab)),
+		Timeout:   textutil.OptionalDuration(c.Timeout),
 	}
 }
 

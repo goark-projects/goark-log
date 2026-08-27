@@ -3,9 +3,11 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/configprops"
 )
 
-func applyProperty(config *fileConfig, aliases propertyAliases, key string, value string) error {
+func applyProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
 	switch {
 	case key == "status":
 		config.Status = value
@@ -16,9 +18,9 @@ func applyProperty(config *fileConfig, aliases propertyAliases, key string, valu
 	case key == "rootLogger.appenderRefs" || key == "root.appenderRefs":
 		config.Root.AppenderRefs = propertyAppenderRefs(value)
 	case key == "rootLogger.filters" || key == "root.filters":
-		config.Root.Filters = propertyList(value)
+		config.Root.Filters = configprops.List(value)
 	case key == "rootLogger.includeLocation" || key == "rootLogger.include-location" || key == "root.includeLocation" || key == "root.include-location":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
@@ -64,19 +66,19 @@ func applyProperty(config *fileConfig, aliases propertyAliases, key string, valu
 func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value string) error {
 	switch key {
 	case "enabled":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.Enabled = &parsed
 	case "queueSize", "queue-size":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
 		config.QueueSize = parsed
 	case "batchSize", "batch-size":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -86,7 +88,7 @@ func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value strin
 	case "waitStrategy", "wait-strategy":
 		config.WaitStrategy = value
 	case "waitRetries", "wait-retries":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -96,7 +98,7 @@ func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value strin
 	case "timeout":
 		config.Timeout = value
 	case "includeLocation", "include-location":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}

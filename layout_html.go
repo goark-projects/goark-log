@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 )
 
@@ -20,7 +21,7 @@ func NewHTMLLayout(options LayoutOptions) HTMLLayout {
 // Format 把事件编码为 HTML 表格行。
 func (l HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	buf.WriteString("<tr>")
-	appendHTMLCell(buf, eventTime(event.Time).Format(defaultTimeFormat))
+	appendHTMLCell(buf, layoutsupport.EventTime(event.Time).Format(defaultTimeFormat))
 	appendHTMLCell(buf, levelName(event.Level))
 	appendHTMLCell(buf, event.Logger)
 	appendHTMLCell(buf, eventThreadName(event))

@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func buildThresholdFilterPlugin(config FilterBuildConfig) (Filter, error) {
@@ -95,7 +97,7 @@ func buildMarkerFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewMarkerFilter(firstNonBlank(config.Marker, config.Value), options...)
+	return NewMarkerFilter(textutil.FirstNonBlank(config.Marker, config.Value), options...)
 }
 
 func buildNoMarkerFilterPlugin(config FilterBuildConfig) (Filter, error) {
@@ -127,7 +129,7 @@ func buildThreadContextStackFilterPlugin(config FilterBuildConfig) (Filter, erro
 	if err != nil {
 		return nil, err
 	}
-	return NewThreadContextStackFilter(firstNonBlank(config.Value, config.Text, config.Pattern), options...)
+	return NewThreadContextStackFilter(textutil.FirstNonBlank(config.Value, config.Text, config.Pattern), options...)
 }
 
 func buildStructuredDataFilterPlugin(config FilterBuildConfig) (Filter, error) {
@@ -143,7 +145,7 @@ func buildThrowableFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewThrowableFilter(firstNonBlank(config.Pattern, config.Text, config.Value), options...)
+	return NewThrowableFilter(textutil.FirstNonBlank(config.Pattern, config.Text, config.Value), options...)
 }
 
 func buildStringMatchFilterPlugin(config FilterBuildConfig) (Filter, error) {
@@ -151,7 +153,7 @@ func buildStringMatchFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStringMatchFilter(firstNonBlank(config.Text, config.Value, config.Pattern), options...)
+	return NewStringMatchFilter(textutil.FirstNonBlank(config.Text, config.Value, config.Pattern), options...)
 }
 
 func buildTimeFilterPlugin(config FilterBuildConfig) (Filter, error) {
@@ -159,8 +161,8 @@ func buildTimeFilterPlugin(config FilterBuildConfig) (Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	start := firstNonBlank(config.Start, "00:00:00")
-	end := firstNonBlank(config.End, "23:59:59.999999999")
+	start := textutil.FirstNonBlank(config.Start, "00:00:00")
+	end := textutil.FirstNonBlank(config.End, "23:59:59.999999999")
 	if strings.TrimSpace(config.Timezone) == "" {
 		return NewTimeFilter(start, end, options...)
 	}
@@ -172,7 +174,7 @@ func buildTimeFilterPlugin(config FilterBuildConfig) (Filter, error) {
 }
 
 func buildBurstFilterPlugin(config FilterBuildConfig) (Filter, error) {
-	level, err := ParseLevel(firstNonBlank(config.Level, "warn"))
+	level, err := ParseLevel(textutil.FirstNonBlank(config.Level, "warn"))
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +201,7 @@ func buildBurstFilterPlugin(config FilterBuildConfig) (Filter, error) {
 }
 
 func buildDynamicThresholdFilterPlugin(config FilterBuildConfig) (Filter, error) {
-	defaultLevel, err := ParseLevel(firstNonBlank(config.DefaultThreshold, config.Level, "error"))
+	defaultLevel, err := ParseLevel(textutil.FirstNonBlank(config.DefaultThreshold, config.Level, "error"))
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,8 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func (c loggerConfig) refs() []string {
@@ -10,7 +12,7 @@ func (c loggerConfig) refs() []string {
 }
 
 func (c loggerConfig) appenderRefs() appenderRefs {
-	return firstAppenderRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+	return textutil.FirstSlice(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
 }
 
 func (c loggerConfig) appenderRefControls(filters map[string]Filter) ([]AppenderRef, error) {
@@ -18,25 +20,25 @@ func (c loggerConfig) appenderRefControls(filters map[string]Filter) ([]Appender
 }
 
 func (c loggerConfig) filterRefs() []string {
-	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return textutil.FirstTrimmedStrings(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c filterConfig) filterRefs() []string {
-	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return textutil.FirstTrimmedStrings(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c *fileConfig) filterRefs() []string {
 	if c == nil {
 		return nil
 	}
-	return firstStringRefs(c.FilterRefs, c.FilterRefsKebab)
+	return textutil.FirstTrimmedStrings(c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, error) {
 	if len(c.Filters) == 0 {
 		return nil, nil
 	}
-	names := sortedFilterNames(c.Filters)
+	names := textutil.SortedKeys(c.Filters)
 	filters := make(map[string]Filter, len(c.Filters))
 	visiting := make(map[string]bool, len(c.Filters))
 	for _, name := range names {
@@ -94,7 +96,7 @@ func (c *fileConfig) resolveNestedFilters(refs []string, registry *PluginRegistr
 }
 
 func buildFilter(name string, spec filterConfig, nested []Filter, registry *PluginRegistry) (Filter, error) {
-	if normalizeKind(spec.Type) == "" {
+	if textutil.NormalizeKind(spec.Type) == "" {
 		return nil, fmt.Errorf("goark-log: filter %q type is empty", name)
 	}
 	factory, ok := registry.filterFactory(spec.Type)
@@ -131,11 +133,11 @@ func parseRegexFilterField(value string) (RegexFilterField, error) {
 }
 
 func (c filterConfig) minLevel() string {
-	return firstNonBlank(c.MinLevel, c.MinLevelKebab)
+	return textutil.FirstNonBlank(c.MinLevel, c.MinLevelKebab)
 }
 
 func (c filterConfig) maxLevel() string {
-	return firstNonBlank(c.MaxLevel, c.MaxLevelKebab)
+	return textutil.FirstNonBlank(c.MaxLevel, c.MaxLevelKebab)
 }
 
 func (c filterConfig) maxBurst() int {
@@ -146,7 +148,7 @@ func (c filterConfig) maxBurst() int {
 }
 
 func (c filterConfig) defaultThreshold() string {
-	return firstNonBlank(c.DefaultThreshold, c.DefaultKebab)
+	return textutil.FirstNonBlank(c.DefaultThreshold, c.DefaultKebab)
 }
 
 func (c filterConfig) values() map[string]string {
@@ -204,8 +206,8 @@ func (c filterConfig) filterBuildConfig(name string) FilterBuildConfig {
 		Thresholds:       c.thresholds(),
 		DefaultThreshold: c.defaultThreshold(),
 		Pattern:          c.Pattern,
-		OnMatch:          firstNonBlank(c.OnMatch, c.OnMatchKebab),
-		OnMismatch:       firstNonBlank(c.OnMismatch, c.OnMismatchKebab),
+		OnMatch:          textutil.FirstNonBlank(c.OnMatch, c.OnMatchKebab),
+		OnMismatch:       textutil.FirstNonBlank(c.OnMismatch, c.OnMismatchKebab),
 	}
 }
 
@@ -234,7 +236,7 @@ func mergeStringMaps(base map[string]string, overlay map[string]string) map[stri
 }
 
 func isDynamicThresholdFilterKind(value string) bool {
-	switch normalizeKind(value) {
+	switch textutil.NormalizeKind(value) {
 	case "dynamicthreshold", "dynamicthresholdfilter":
 		return true
 	default:

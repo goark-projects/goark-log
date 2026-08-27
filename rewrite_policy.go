@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 type rewriteBuildConfig struct {
@@ -22,7 +24,7 @@ func (c rewriteBuildConfig) attrs() map[string]string {
 }
 
 func (c rewriteBuildConfig) removeKeys() []string {
-	return firstStringRefs(c.Remove, c.RemoveAttrs, c.RemoveAttrsKebab)
+	return textutil.FirstTrimmedStrings(c.Remove, c.RemoveAttrs, c.RemoveAttrsKebab)
 }
 
 func (c *rewriteBuildConfig) resolveLookups(lookups *LookupResolver) error {

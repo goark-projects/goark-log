@@ -4,6 +4,8 @@ import (
 	"encoding/xml"
 	"io"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func decodeXMLConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
@@ -59,7 +61,7 @@ func (c xmlConfig) customLevels() map[string]string {
 		if name == "" {
 			continue
 		}
-		levels[name] = firstNonBlank(level.IntLevel, level.Value, level.Text)
+		levels[name] = textutil.FirstNonBlank(level.IntLevel, level.Value, level.Text)
 	}
 	return levels
 }
@@ -74,7 +76,7 @@ func (c xmlConfig) properties() map[string]string {
 		if name == "" {
 			continue
 		}
-		properties[name] = firstNonBlank(property.Value, property.Text)
+		properties[name] = textutil.FirstNonBlank(property.Value, property.Text)
 	}
 	return properties
 }

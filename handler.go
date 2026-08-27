@@ -39,6 +39,17 @@ type LoggerRule struct {
 	IncludeLocation     *bool
 }
 
+// DefaultOptions 返回默认 Spring Boot 风格 stderr 配置。
+func DefaultOptions() Options {
+	return Options{
+		Appenders: []Appender{NewConsoleAppender()},
+		Root: RootLogger{
+			Level:        slog.LevelInfo,
+			AppenderRefs: []string{"console"},
+		},
+	}
+}
+
 // Handler 是 goark-log 的 slog.Handler 实现。
 type Handler struct {
 	router *router

@@ -3,6 +3,8 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func buildCompositeAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
@@ -11,7 +13,7 @@ func buildCompositeAppender(name string, spec appenderConfig, specs map[string]a
 		waiting  bool
 		err      error
 	)
-	switch normalizeKind(spec.Type) {
+	switch textutil.NormalizeKind(spec.Type) {
 	case "async":
 		appender, waiting, err = buildAsyncAppender(name, spec, specs, built, filters, registry)
 	case "failover", "failoverappender":
@@ -176,7 +178,7 @@ func resolveRoutingRoutes(ownerKind string, owner string, routeRefs map[string]s
 }
 
 func isCompositeAppenderKind(value string) bool {
-	switch normalizeKind(value) {
+	switch textutil.NormalizeKind(value) {
 	case "async", "failover", "failoverappender", "routing", "routingappender", "rewrite", "rewriteappender":
 		return true
 	default:

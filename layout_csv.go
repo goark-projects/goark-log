@@ -3,6 +3,7 @@ package goarklog
 import (
 	"bytes"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 )
 
@@ -18,7 +19,7 @@ func NewCSVLayout(options LayoutOptions) CSVLayout {
 
 // Format 把事件编码为 CSV。
 func (l CSVLayout) Format(buf *bytes.Buffer, event Event) error {
-	appendCSVField(buf, eventTime(event.Time).Format(defaultTimeFormat), false)
+	appendCSVField(buf, layoutsupport.EventTime(event.Time).Format(defaultTimeFormat), false)
 	appendCSVField(buf, levelName(event.Level), true)
 	appendCSVField(buf, event.Logger, true)
 	appendCSVField(buf, eventThreadName(event), true)

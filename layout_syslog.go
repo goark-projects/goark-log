@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
+	"goark.dev/log/internal/textutil"
 )
 
 // RFC5424Layout 输出 RFC 5424 syslog 单行事件。
@@ -26,15 +28,15 @@ func (l RFC5424Layout) Format(buf *bytes.Buffer, event Event) error {
 	buf.WriteByte('<')
 	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(priority), 10))
 	buf.WriteString(">1 ")
-	buf.WriteString(eventTime(event.Time).UTC().Format(time.RFC3339Nano))
+	buf.WriteString(layoutsupport.EventTime(event.Time).UTC().Format(time.RFC3339Nano))
 	buf.WriteByte(' ')
-	appendSyslogToken(buf, hostNameString)
+	appendSyslogToken(buf, layoutsupport.HostName())
 	buf.WriteByte(' ')
-	appendSyslogToken(buf, firstNonBlank(l.AppName, event.Logger, "goark"))
+	appendSyslogToken(buf, textutil.FirstNonBlank(l.AppName, event.Logger, "goark"))
 	buf.WriteByte(' ')
 	appendSyslogToken(buf, processIDString)
 	buf.WriteByte(' ')
-	appendSyslogToken(buf, firstNonBlank(l.MessageID, "-"))
+	appendSyslogToken(buf, textutil.FirstNonBlank(l.MessageID, "-"))
 	buf.WriteByte(' ')
 	appendStructuredData(buf, event)
 	buf.WriteByte(' ')

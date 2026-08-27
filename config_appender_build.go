@@ -3,13 +3,15 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {
 	if len(c.Appenders) == 0 {
 		return DefaultOptions().Appenders, nil
 	}
-	appenderNames := sortedAppenderNames(c.Appenders)
+	appenderNames := textutil.SortedKeys(c.Appenders)
 	built := make(map[string]Appender, len(c.Appenders))
 	appenders := make([]Appender, 0, len(c.Appenders))
 	compositeNames := make([]string, 0)
@@ -58,7 +60,7 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)
 	}
-	kind := normalizeKind(spec.Type)
+	kind := textutil.NormalizeKind(spec.Type)
 	if kind == "" {
 		return nil, fmt.Errorf("goark-log: appender %q type is empty", name)
 	}

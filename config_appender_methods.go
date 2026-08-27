@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"strings"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func (c appenderConfig) fileName() string {
@@ -18,8 +20,8 @@ func (c appenderConfig) refs() []string {
 }
 
 func (c appenderConfig) failoverRefs() []string {
-	primary := firstNonBlank(c.Primary, c.PrimaryKebab)
-	failovers := firstStringRefs(c.Failovers, c.FailoversKebab)
+	primary := textutil.FirstNonBlank(c.Primary, c.PrimaryKebab)
+	failovers := textutil.FirstTrimmedStrings(c.Failovers, c.FailoversKebab)
 	if primary == "" && len(failovers) == 0 {
 		return c.refs()
 	}
@@ -30,7 +32,7 @@ func (c appenderConfig) failoverRefs() []string {
 }
 
 func (c appenderConfig) appenderRefs() appenderRefs {
-	return firstAppenderRefs(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
+	return textutil.FirstSlice(c.AppenderRefs, c.AppenderRefsKebab, c.Refs)
 }
 
 func (c appenderConfig) appenderRefControls(filters map[string]Filter) ([]AppenderRef, error) {
@@ -38,7 +40,7 @@ func (c appenderConfig) appenderRefControls(filters map[string]Filter) ([]Append
 }
 
 func (c appenderConfig) filterRefs() []string {
-	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return textutil.FirstTrimmedStrings(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c appenderConfig) queueSize() int {
@@ -63,19 +65,19 @@ func (c appenderConfig) overflowStrategy() string {
 }
 
 func (c appenderConfig) waitStrategy() string {
-	return firstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
+	return textutil.FirstNonBlank(c.WaitStrategy, c.WaitStrategyKebab)
 }
 
 func (c appenderConfig) waitOptions() AsyncWaitOptions {
 	return AsyncWaitOptions{
-		Retries:   firstNonZero(c.WaitRetries, c.WaitRetriesKebab),
-		SleepTime: parseOptionalDuration(firstNonBlank(c.SleepTime, c.SleepTimeKebab)),
-		Timeout:   parseOptionalDuration(c.Timeout),
+		Retries:   textutil.FirstNonZero(c.WaitRetries, c.WaitRetriesKebab),
+		SleepTime: textutil.OptionalDuration(textutil.FirstNonBlank(c.SleepTime, c.SleepTimeKebab)),
+		Timeout:   textutil.OptionalDuration(c.Timeout),
 	}
 }
 
 func (c appenderConfig) bufferSize() string {
-	return firstNonBlank(c.BufferSize, c.BufferSizeKebab)
+	return textutil.FirstNonBlank(c.BufferSize, c.BufferSizeKebab)
 }
 
 func (c appenderConfig) flushOnWrite() bool {
@@ -87,15 +89,15 @@ func (c appenderConfig) createOnDemand() bool {
 }
 
 func (c appenderConfig) filePermissions() string {
-	return firstNonBlank(c.FilePermissions, c.FilePermissionsKebab)
+	return textutil.FirstNonBlank(c.FilePermissions, c.FilePermissionsKebab)
 }
 
 func (c appenderConfig) routeKey() string {
-	return firstNonBlank(c.RouteKey, c.RouteKeyKebab)
+	return textutil.FirstNonBlank(c.RouteKey, c.RouteKeyKebab)
 }
 
 func (c appenderConfig) defaultRoute() string {
-	return firstNonBlank(c.DefaultRoute, c.DefaultRouteKebab)
+	return textutil.FirstNonBlank(c.DefaultRoute, c.DefaultRouteKebab)
 }
 
 func (c appenderConfig) routes() map[string]string {
@@ -119,9 +121,9 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		Address:          c.Address,
 		Network:          c.Network,
 		Facility:         c.Facility,
-		AppName:          firstNonBlank(c.AppName, c.AppNameKebab),
-		ConnectTimeout:   firstNonBlank(c.ConnectTimeout, c.ConnectTimeoutKebab),
-		WriteTimeout:     firstNonBlank(c.WriteTimeout, c.WriteTimeoutKebab),
+		AppName:          textutil.FirstNonBlank(c.AppName, c.AppNameKebab),
+		ConnectTimeout:   textutil.FirstNonBlank(c.ConnectTimeout, c.ConnectTimeoutKebab),
+		WriteTimeout:     textutil.FirstNonBlank(c.WriteTimeout, c.WriteTimeoutKebab),
 		FileName:         c.fileName(),
 		Layout:           layout,
 		AppenderRefs:     c.refs(),

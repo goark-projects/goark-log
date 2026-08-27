@@ -2,14 +2,16 @@ package goarklog
 
 import (
 	"strings"
+
+	"goark.dev/log/internal/configprops"
 )
 
-func applyLoggerProperty(config *fileConfig, aliases propertyAliases, key string, value string) error {
-	id, field, ok := splitPropertyID(key)
+func applyLoggerProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
+	id, field, ok := configprops.SplitID(key)
 	if !ok {
 		return nil
 	}
-	id = aliases.loggerName(id)
+	id = aliases.LoggerName(id)
 	logger := config.Loggers[id]
 	switch field {
 	case "name":
@@ -19,15 +21,15 @@ func applyLoggerProperty(config *fileConfig, aliases propertyAliases, key string
 	case "appenderRefs", "appender-refs", "refs":
 		logger.AppenderRefs = propertyAppenderRefs(value)
 	case "filters", "filterRefs", "filter-refs":
-		logger.Filters = propertyList(value)
+		logger.Filters = configprops.List(value)
 	case "additivity":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		logger.Additivity = &parsed
 	case "includeLocation", "include-location":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}

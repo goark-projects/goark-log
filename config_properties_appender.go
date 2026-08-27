@@ -3,14 +3,16 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/configprops"
 )
 
-func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key string, value string) error {
-	id, field, ok := splitPropertyID(key)
+func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
+	id, field, ok := configprops.SplitID(key)
 	if !ok {
 		return nil
 	}
-	id = aliases.appenderName(id)
+	id = aliases.AppenderName(id)
 	appender := config.Appenders[id]
 	if strings.HasPrefix(field, "layout.") {
 		if err := applyLayoutProperty(&appender.Layout, strings.TrimPrefix(field, "layout."), value); err != nil {
@@ -75,19 +77,19 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "primary", "primary-ref":
 		appender.Primary = value
 	case "failovers", "failover-refs":
-		appender.Failovers = propertyList(value)
+		appender.Failovers = configprops.List(value)
 	case "routeKey", "route-key", "attrKey", "attr-key":
 		appender.RouteKey = value
 	case "defaultRoute", "default-route":
 		appender.DefaultRoute = value
 	case "queueSize", "queue-size":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
 		appender.QueueSize = parsed
 	case "batchSize", "batch-size":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -97,7 +99,7 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "waitStrategy", "wait-strategy":
 		appender.WaitStrategy = value
 	case "waitRetries", "wait-retries":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -109,19 +111,19 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "bufferSize", "buffer-size":
 		appender.BufferSize = value
 	case "flushOnWrite", "flush-on-write":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		appender.FlushOnWrite = parsed
 	case "append":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		appender.Append = &parsed
 	case "createOnDemand", "create-on-demand":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
@@ -129,7 +131,7 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "filePermissions", "file-permissions":
 		appender.FilePermissions = value
 	case "filters", "filterRefs", "filter-refs":
-		appender.Filters = propertyList(value)
+		appender.Filters = configprops.List(value)
 	case "rolling.filePattern", "rolling.file-pattern":
 		appender.Rolling.FilePattern = value
 	case "rolling.maxSize", "rolling.max-size":
@@ -139,7 +141,7 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "rolling.cron", "rolling.cronSchedule", "rolling.cron-schedule", "rolling.policies.cron.schedule", "rolling.policies.cronTriggeringPolicy.schedule", "rolling.policies.cron-triggering-policy.schedule":
 		appender.Rolling.CronSchedule = value
 	case "rolling.strategy.delete.maxCount", "rolling.strategy.delete.max-count":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -147,7 +149,7 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "rolling.strategy.delete.maxSize", "rolling.strategy.delete.max-size":
 		appender.Rolling.Strategy.Delete.MaxSize = value
 	case "rolling.strategy.delete.ifAccumulatedFileCount.exceeds", "rolling.strategy.delete.if-accumulated-file-count.exceeds":
-		parsed, err := parsePropertyInt(value, key)
+		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
@@ -159,7 +161,7 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 	case "rolling.strategy.fileIndex", "rolling.strategy.file-index":
 		appender.Rolling.Strategy.FileIndex = value
 	case "rolling.directWrite", "rolling.direct-write", "rolling.strategy.directWrite", "rolling.strategy.direct-write":
-		parsed, err := parsePropertyBool(value, key)
+		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}

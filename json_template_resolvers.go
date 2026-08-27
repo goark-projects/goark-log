@@ -8,6 +8,7 @@ import (
 
 	"goark.dev/log/internal/callsite"
 	"goark.dev/log/internal/logvalue"
+	"goark.dev/log/internal/textutil"
 	"goark.dev/log/internal/timepattern"
 )
 
@@ -54,7 +55,7 @@ type levelJSONResolver struct {
 }
 
 func (r levelJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	switch normalizeKind(r.field) {
+	switch textutil.NormalizeKind(r.field) {
 	case "int", "integer", "value":
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(event.Level), 10))
 	case "severity", "syslogseverity":
@@ -105,7 +106,7 @@ func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		buf.WriteString("null")
 		return
 	}
-	switch normalizeKind(r.field) {
+	switch textutil.NormalizeKind(r.field) {
 	case "", "object":
 		if r.stacktraceAsString {
 			logvalue.AppendJSONString(buf, throwableStackString(throwable))

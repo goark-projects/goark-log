@@ -75,3 +75,32 @@ func TestRollingMaxAge_whenSupportedValuesUsed_shouldParse(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorInterval_whenSupportedValuesUsed_shouldParse(t *testing.T) {
+	cases := []struct {
+		value string
+		want  time.Duration
+	}{
+		{value: "0", want: 0},
+		{value: "false", want: 0},
+		{value: "1.5", want: 1500 * time.Millisecond},
+		{value: "20ms", want: 20 * time.Millisecond},
+	}
+	for _, tt := range cases {
+		got, err := MonitorInterval(tt.value)
+		if err != nil {
+			t.Fatalf("MonitorInterval(%q) error = %v", tt.value, err)
+		}
+		if got != tt.want {
+			t.Fatalf("MonitorInterval(%q) = %v, want %v", tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestMonitorInterval_whenInvalidValuesUsed_shouldReject(t *testing.T) {
+	for _, value := range []string{"-1", "soon"} {
+		if _, err := MonitorInterval(value); err == nil {
+			t.Fatalf("MonitorInterval(%q) should reject invalid value", value)
+		}
+	}
+}

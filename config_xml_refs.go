@@ -5,13 +5,14 @@ import (
 	"strings"
 
 	"goark.dev/log/internal/configxml"
+	"goark.dev/log/internal/textutil"
 )
 
 func xmlAppenderType(element string, configured string) string {
 	if strings.TrimSpace(configured) != "" {
 		return configured
 	}
-	switch normalizeKind(element) {
+	switch textutil.NormalizeKind(element) {
 	case "rollingfile":
 		return "rollingFile"
 	default:
@@ -65,7 +66,7 @@ func xmlRoutes(routes []xmlRoute) map[string]string {
 		if key == "" {
 			continue
 		}
-		out[key] = firstNonBlank(route.Ref, route.AppenderRef.Ref)
+		out[key] = textutil.FirstNonBlank(route.Ref, route.AppenderRef.Ref)
 	}
 	if len(out) == 0 {
 		return nil
@@ -115,7 +116,7 @@ func xmlRemoveAttrs(values []xmlRemoveAttr) []string {
 	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
-		if key := firstNonBlank(value.Key, value.Name); key != "" {
+		if key := textutil.FirstNonBlank(value.Key, value.Name); key != "" {
 			out = append(out, key)
 		}
 	}

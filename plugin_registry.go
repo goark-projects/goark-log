@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"goark.dev/log/internal/lookupguard"
+	"goark.dev/log/internal/textutil"
 )
 
 // PluginRegistry 保存显式注册的日志插件。
@@ -44,6 +45,36 @@ func DefaultPluginRegistry() *PluginRegistry {
 	return defaultRegistry
 }
 
+// RegisterAppender 向默认插件注册表注册 appender。
+func RegisterAppender(kind string, factory AppenderFactory) error {
+	return DefaultPluginRegistry().RegisterAppender(kind, factory)
+}
+
+// RegisterPlugins 向默认插件注册表批量注册外部插件。
+func RegisterPlugins(registrars ...PluginRegistrar) error {
+	return DefaultPluginRegistry().RegisterPlugins(registrars...)
+}
+
+// RegisterLayout 向默认插件注册表注册 layout。
+func RegisterLayout(kind string, factory LayoutFactory) error {
+	return DefaultPluginRegistry().RegisterLayout(kind, factory)
+}
+
+// RegisterFilter 向默认插件注册表注册 filter。
+func RegisterFilter(kind string, factory FilterFactory) error {
+	return DefaultPluginRegistry().RegisterFilter(kind, factory)
+}
+
+// RegisterLookup 向默认插件注册表注册配置 lookup。
+func RegisterLookup(namespace string, lookup LookupFunc) error {
+	return DefaultPluginRegistry().RegisterLookup(namespace, lookup)
+}
+
+// RegisterJSONTemplateResolver 向默认插件注册表注册 JSON Template resolver。
+func RegisterJSONTemplateResolver(kind string, factory JSONTemplateResolverFactory) error {
+	return DefaultPluginRegistry().RegisterJSONTemplateResolver(kind, factory)
+}
+
 // RegisterPlugins 把一组外部插件注册到当前注册表。
 func (r *PluginRegistry) RegisterPlugins(registrars ...PluginRegistrar) error {
 	if r == nil {
@@ -68,7 +99,7 @@ func (r *PluginRegistry) RegisterAppender(kind string, factory AppenderFactory) 
 	if factory == nil {
 		return fmt.Errorf("goark-log: appender factory is nil")
 	}
-	kind = normalizeKind(kind)
+	kind = textutil.NormalizeKind(kind)
 	if kind == "" {
 		return fmt.Errorf("goark-log: appender kind is empty")
 	}
@@ -86,7 +117,7 @@ func (r *PluginRegistry) RegisterLayout(kind string, factory LayoutFactory) erro
 	if factory == nil {
 		return fmt.Errorf("goark-log: layout factory is nil")
 	}
-	kind = normalizeKind(kind)
+	kind = textutil.NormalizeKind(kind)
 	if kind == "" {
 		return fmt.Errorf("goark-log: layout kind is empty")
 	}
@@ -104,7 +135,7 @@ func (r *PluginRegistry) RegisterFilter(kind string, factory FilterFactory) erro
 	if factory == nil {
 		return fmt.Errorf("goark-log: filter factory is nil")
 	}
-	kind = normalizeKind(kind)
+	kind = textutil.NormalizeKind(kind)
 	if kind == "" {
 		return fmt.Errorf("goark-log: filter kind is empty")
 	}
@@ -143,7 +174,7 @@ func (r *PluginRegistry) RegisterJSONTemplateResolver(kind string, factory JSONT
 	if factory == nil {
 		return fmt.Errorf("goark-log: JSON template resolver factory is nil")
 	}
-	kind = normalizeKind(kind)
+	kind = textutil.NormalizeKind(kind)
 	if kind == "" {
 		return fmt.Errorf("goark-log: JSON template resolver kind is empty")
 	}
@@ -172,7 +203,7 @@ func (r *PluginRegistry) appenderFactory(kind string) (AppenderFactory, bool) {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	factory, ok := r.appenders[normalizeKind(kind)]
+	factory, ok := r.appenders[textutil.NormalizeKind(kind)]
 	return factory, ok
 }
 
@@ -180,7 +211,7 @@ func (r *PluginRegistry) layoutFactory(kind string) (LayoutFactory, bool) {
 	if r == nil {
 		r = DefaultPluginRegistry()
 	}
-	kind = normalizeKind(kind)
+	kind = textutil.NormalizeKind(kind)
 	if kind == "" {
 		kind = "pattern"
 	}
@@ -196,7 +227,7 @@ func (r *PluginRegistry) filterFactory(kind string) (FilterFactory, bool) {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	factory, ok := r.filters[normalizeKind(kind)]
+	factory, ok := r.filters[textutil.NormalizeKind(kind)]
 	return factory, ok
 }
 
@@ -206,6 +237,6 @@ func (r *PluginRegistry) jsonTemplateResolverFactory(kind string) (JSONTemplateR
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	factory, ok := r.resolvers[normalizeKind(kind)]
+	factory, ok := r.resolvers[textutil.NormalizeKind(kind)]
 	return factory, ok
 }

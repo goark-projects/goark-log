@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"fmt"
+
+	"goark.dev/log/internal/textutil"
 )
 
 func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) {
@@ -20,11 +22,11 @@ func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) 
 }
 
 func (c layoutConfig) eventTemplate() string {
-	return firstNonBlank(c.EventTemplate, c.EventTemplateKebab)
+	return textutil.FirstNonBlank(c.EventTemplate, c.EventTemplateKebab)
 }
 
 func (c layoutConfig) eventTemplateURI() string {
-	return firstNonBlank(c.EventTemplateURI, c.EventTemplateURIKebab, c.EventTemplatePath, c.EventTemplatePathKebab)
+	return textutil.FirstNonBlank(c.EventTemplateURI, c.EventTemplateURIKebab, c.EventTemplatePath, c.EventTemplatePathKebab)
 }
 
 func (c layoutConfig) options() LayoutOptions {

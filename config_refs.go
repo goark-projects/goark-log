@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"goark.dev/log/internal/textutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -94,7 +95,7 @@ func (c appenderRefConfig) hasControls() bool {
 }
 
 func (c appenderRefConfig) filterRefs() []string {
-	return firstStringRefs(c.Filters, c.FilterRefs, c.FilterRefsKebab)
+	return textutil.FirstTrimmedStrings(c.Filters, c.FilterRefs, c.FilterRefsKebab)
 }
 
 func (c appenderRefConfig) build(filters map[string]Filter) (AppenderRef, error) {

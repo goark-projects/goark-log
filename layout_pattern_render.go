@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
@@ -38,7 +39,7 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, call
 		return
 	}
 	if token.kind == tokenHost && token.minWidth == 0 && token.maxWidth == 0 {
-		buf.WriteString(hostNameString)
+		buf.WriteString(layoutsupport.HostName())
 		return
 	}
 	value := patternTokenString(token, event, caller, options)
@@ -130,7 +131,7 @@ func patternTokenString(token patternToken, event Event, caller *callsite.Cache,
 	case tokenRelative:
 		return patternRelativeString()
 	case tokenHost:
-		return hostNameString
+		return layoutsupport.HostName()
 	case tokenSequence:
 		return strconv.FormatUint(patternSequence.Add(1), 10)
 	case tokenSubPattern:
