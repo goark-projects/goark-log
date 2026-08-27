@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"goark.dev/log/internal/callsite"
 )
 
 func TestNativeLogger_whenRootIncludeLocationEnabled_shouldCaptureCallSite(t *testing.T) {
@@ -199,8 +201,8 @@ func assertRecordingAppenderCaller(t *testing.T, appender *recordingAppender, me
 	if len(events) != 1 {
 		t.Fatalf("event count = %d, want 1", len(events))
 	}
-	frame := callerFrameFromPC(events[0].PC)
-	if !strings.Contains(frame.method, methodPrefix) {
-		t.Fatalf("caller method = %q, want %q", frame.method, methodPrefix)
+	frame := callsite.FrameFromPC(events[0].PC)
+	if !strings.Contains(frame.Method, methodPrefix) {
+		t.Fatalf("caller method = %q, want %q", frame.Method, methodPrefix)
 	}
 }

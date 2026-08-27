@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // FailoverAppender 在主 appender 写入失败时按顺序尝试备用 appender。
@@ -226,7 +228,7 @@ func (a *RoutingAppender) routeKey(ctx context.Context, event Event) string {
 	if !ok {
 		return ""
 	}
-	return strings.TrimSpace(attrValueString(value))
+	return strings.TrimSpace(logvalue.String(value))
 }
 
 // RewritePolicy 在写出前重写事件快照。

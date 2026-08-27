@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 const (
@@ -180,13 +182,13 @@ func (m StructuredDataMessage) String() string {
 		buf.WriteString(m.id)
 		if m.msgType != "" {
 			buf.WriteString(" type=")
-			quoteValue(&buf, m.msgType)
+			logvalue.QuoteValue(&buf, m.msgType)
 		}
 		for _, attr := range m.attrs {
 			buf.WriteByte(' ')
 			buf.WriteString(attr.Key)
 			buf.WriteByte('=')
-			appendTextValue(&buf, attr.Value)
+			logvalue.AppendTextValue(&buf, attr.Value)
 		}
 		buf.WriteByte(']')
 		if m.message != "" {
@@ -215,7 +217,7 @@ func normalizeMessageAttrs(attrs []slog.Attr) []slog.Attr {
 func messageAttrsString(attrs []slog.Attr) string {
 	var buf bytes.Buffer
 	for _, attr := range attrs {
-		appendPatternKeyValueAttr(&buf, attr.Key, attr.Value)
+		logvalue.AppendPatternKeyValueAttr(&buf, attr.Key, attr.Value)
 	}
 	return buf.String()
 }

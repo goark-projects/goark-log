@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // RFC5424Layout 输出 RFC 5424 syslog 单行事件。
@@ -89,7 +91,7 @@ func appendStructuredData(buf *bytes.Buffer, event Event) {
 		buf.WriteByte(' ')
 		buf.WriteString(attr.Key)
 		buf.WriteString("=\"")
-		appendStructuredDataValue(buf, attrValueString(attr.Value))
+		appendStructuredDataValue(buf, logvalue.String(attr.Value))
 		buf.WriteByte('"')
 	}
 	buf.WriteByte(']')

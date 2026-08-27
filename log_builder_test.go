@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 func TestLogBuilder_whenFluentEventBuilt_shouldDispatchCompleteEvent(t *testing.T) {
@@ -161,7 +163,7 @@ func TestLogBuilder_whenMessageFactoryConfigured_shouldUseFactory(t *testing.T) 
 
 	logger, err := NewNativeLogger(handler, "goark.builder",
 		WithLoggerMessageFactory(MessageFactoryFunc(func(pattern string, args ...any) Message {
-			return NewSimpleMessage(pattern + ":" + attrValueString(slog.AnyValue(args[0])))
+			return NewSimpleMessage(pattern + ":" + logvalue.String(slog.AnyValue(args[0])))
 		})),
 	)
 	if err != nil {

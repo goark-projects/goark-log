@@ -1,4 +1,4 @@
-package goarklog
+package jsontemplate
 
 import (
 	"fmt"
@@ -8,12 +8,13 @@ import (
 	"strings"
 )
 
-func readJSONTemplateFile(path string) (string, error) {
+// ReadFile 读取本地 JSON Template 文件，核心包只允许普通路径和 file URI。
+func ReadFile(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("goark-log: JSON template file path is empty")
 	}
-	resolved, err := localTemplatePath(path)
+	resolved, err := localPath(path)
 	if err != nil {
 		return "", err
 	}
@@ -24,7 +25,7 @@ func readJSONTemplateFile(path string) (string, error) {
 	return string(data), nil
 }
 
-func localTemplatePath(value string) (string, error) {
+func localPath(value string) (string, error) {
 	if runtime.GOOS == "windows" && len(value) >= 2 && value[1] == ':' {
 		return value, nil
 	}

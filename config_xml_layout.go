@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"strings"
+
+	"goark.dev/log/internal/configxml"
 )
 
 func (a xmlAppender) layout() (layoutConfig, error) {
@@ -80,35 +82,35 @@ func (l xmlLayout) config() (layoutConfig, error) {
 	default:
 		kind = l.Type
 	}
-	compact, err := parseXMLBool(l.Compact, "compact")
+	compact, err := configxml.Bool(l.Compact, "compact")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	eventEOL, err := parseXMLBool(l.EventEOL, "eventEol")
+	eventEOL, err := configxml.Bool(l.EventEOL, "eventEol")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	complete, err := parseXMLBool(l.Complete, "complete")
+	complete, err := configxml.Bool(l.Complete, "complete")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	includeStacktrace, err := parseXMLBool(l.IncludeStacktrace, "includeStacktrace")
+	includeStacktrace, err := configxml.Bool(l.IncludeStacktrace, "includeStacktrace")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	stacktraceAsString, err := parseXMLBool(l.StacktraceAsString, "stacktraceAsString")
+	stacktraceAsString, err := configxml.Bool(l.StacktraceAsString, "stacktraceAsString")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	propertiesAsList, err := parseXMLBool(l.PropertiesAsList, "propertiesAsList")
+	propertiesAsList, err := configxml.Bool(l.PropertiesAsList, "propertiesAsList")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	includeNullDelimiter, err := parseXMLBool(l.IncludeNullDelimiter, "includeNullDelimiter")
+	includeNullDelimiter, err := configxml.Bool(l.IncludeNullDelimiter, "includeNullDelimiter")
 	if err != nil {
 		return layoutConfig{}, err
 	}
-	disableANSI, err := parseXMLBool(l.DisableANSI, "disableAnsi")
+	disableANSI, err := configxml.Bool(l.DisableANSI, "disableAnsi")
 	if err != nil {
 		return layoutConfig{}, err
 	}

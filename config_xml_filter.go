@@ -1,12 +1,16 @@
 package goarklog
 
-import "strings"
+import (
+	"strings"
+
+	"goark.dev/log/internal/configxml"
+)
 
 func (f xmlFilter) config(kind string) (filterConfig, error) {
 	if strings.TrimSpace(f.Type) != "" {
 		kind = f.Type
 	}
-	maxBurst, err := parseXMLInt(f.MaxBurst, "maxBurst")
+	maxBurst, err := configxml.Int(f.MaxBurst, "maxBurst")
 	if err != nil {
 		return filterConfig{}, err
 	}
@@ -36,20 +40,20 @@ func (f xmlFilter) config(kind string) (filterConfig, error) {
 }
 
 func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
-	queueSize, err := parseXMLInt(c.QueueSize, "queueSize")
+	queueSize, err := configxml.Int(c.QueueSize, "queueSize")
 	if err != nil {
 		return asyncLoggerConfig{}, err
 	}
-	batchSize, err := parseXMLInt(c.BatchSize, "batchSize")
+	batchSize, err := configxml.Int(c.BatchSize, "batchSize")
 	if err != nil {
 		return asyncLoggerConfig{}, err
 	}
-	waitRetries, err := parseXMLInt(c.WaitRetries, "waitRetries")
+	waitRetries, err := configxml.Int(c.WaitRetries, "waitRetries")
 	if err != nil {
 		return asyncLoggerConfig{}, err
 	}
 	return asyncLoggerConfig{
-		Enabled:          parseXMLBoolPointer(c.Enabled),
+		Enabled:          configxml.BoolPointer(c.Enabled),
 		QueueSize:        queueSize,
 		BatchSize:        batchSize,
 		OverflowStrategy: c.OverflowStrategy,
@@ -57,15 +61,15 @@ func (c xmlAsyncLogger) config() (asyncLoggerConfig, error) {
 		WaitRetries:      waitRetries,
 		SleepTime:        c.SleepTime,
 		Timeout:          c.Timeout,
-		IncludeLocation:  parseXMLBoolPointer(c.IncludeLocation),
+		IncludeLocation:  configxml.BoolPointer(c.IncludeLocation),
 	}, nil
 }
 
 func (a xmlRollingDeleteAction) config() rollingDeleteActionConfig {
 	return rollingDeleteActionConfig{
 		BasePath: a.BasePath,
-		MaxDepth: parseXMLIntPointer(a.MaxDepth),
-		MaxCount: parseXMLIntPointer(a.MaxCount),
+		MaxDepth: configxml.IntPointer(a.MaxDepth),
+		MaxCount: configxml.IntPointer(a.MaxCount),
 		MaxSize:  a.MaxSize,
 		Glob:     firstNonBlank(a.Glob, a.IfFileName.Glob),
 		Age:      firstNonBlank(a.Age, a.IfLastModified.Age),
@@ -76,7 +80,7 @@ func (a xmlRollingDeleteAction) config() rollingDeleteActionConfig {
 			Age: a.IfLastModified.Age,
 		},
 		IfAccumulatedFileCount: rollingDeleteAccumulatedCountConfig{
-			Exceeds: parseXMLIntValue(a.IfAccumulatedFileCount.Exceeds),
+			Exceeds: configxml.IntValue(a.IfAccumulatedFileCount.Exceeds),
 		},
 		IfAccumulatedFileSize: rollingDeleteAccumulatedSizeConfig{
 			Exceeds: a.IfAccumulatedFileSize.Exceeds,

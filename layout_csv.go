@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"bytes"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // CSVLayout 输出单行 CSV，字段顺序固定。
@@ -26,7 +28,7 @@ func (l CSVLayout) Format(buf *bytes.Buffer, event Event) error {
 		return nil
 	}
 	var attrs bytes.Buffer
-	appendPatternAttrs(&attrs, event.Attrs)
+	logvalue.AppendPatternAttrs(&attrs, event.Attrs)
 	appendCSVField(buf, attrs.String(), true)
 	appendLayoutTerminator(buf, l.options)
 	return nil

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
 
@@ -58,7 +60,7 @@ func (r levelJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 	case "severity", "syslogseverity":
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(syslogSeverity(event.Level)), 10))
 	default:
-		appendJSONString(buf, levelName(event.Level))
+		logvalue.AppendJSONString(buf, levelName(event.Level))
 	}
 }
 
@@ -67,19 +69,19 @@ type loggerJSONResolver struct {
 }
 
 func (r loggerJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	appendJSONString(buf, loggerNameWithPrecision(event.Logger, r.precision))
+	logvalue.AppendJSONString(buf, loggerNameWithPrecision(event.Logger, r.precision))
 }
 
 type messageJSONResolver struct{}
 
 func (messageJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	appendJSONString(buf, event.Message)
+	logvalue.AppendJSONString(buf, event.Message)
 }
 
 type threadJSONResolver struct{}
 
 func (threadJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	appendJSONString(buf, eventThreadName(event))
+	logvalue.AppendJSONString(buf, eventThreadName(event))
 }
 
 type markerJSONResolver struct{}
@@ -89,7 +91,7 @@ func (markerJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		buf.WriteString("null")
 		return
 	}
-	appendJSONString(buf, event.Marker.String())
+	logvalue.AppendJSONString(buf, event.Marker.String())
 }
 
 type throwableJSONResolver struct {
@@ -106,28 +108,28 @@ func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 	switch normalizeKind(r.field) {
 	case "", "object":
 		if r.stacktraceAsString {
-			appendJSONString(buf, throwableStackString(throwable))
+			logvalue.AppendJSONString(buf, throwableStackString(throwable))
 			return
 		}
 		appendThrowableJSON(buf, throwable)
 	case "type":
-		appendJSONString(buf, throwable.Type)
+		logvalue.AppendJSONString(buf, throwable.Type)
 	case "message":
-		appendJSONString(buf, throwable.Message)
+		logvalue.AppendJSONString(buf, throwable.Message)
 	case "string", "formatted":
 		if r.stacktraceAsString {
-			appendJSONString(buf, throwableStackString(throwable))
+			logvalue.AppendJSONString(buf, throwableStackString(throwable))
 			return
 		}
-		appendJSONString(buf, throwable.String())
+		logvalue.AppendJSONString(buf, throwable.String())
 	case "rootcause":
 		appendThrowableJSON(buf, rootThrowable(throwable))
 	case "rootcausemessage":
-		appendJSONString(buf, rootThrowable(throwable).Message)
+		logvalue.AppendJSONString(buf, rootThrowable(throwable).Message)
 	case "stacktrace":
 		appendThrowableStackJSON(buf, throwable)
 	case "stacktraceasstring", "stacktracestring":
-		appendJSONString(buf, throwableStackString(throwable))
+		logvalue.AppendJSONString(buf, throwableStackString(throwable))
 	default:
 		appendThrowableJSON(buf, throwable)
 	}
@@ -136,18 +138,18 @@ func (r throwableJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 type sourceJSONResolver struct{}
 
 func (sourceJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
-	frame := callerFrameFromPC(event.PC)
-	if frame.method == "" && frame.file == "" && frame.line == 0 {
+	frame := callsite.FrameFromPC(event.PC)
+	if frame.IsZero() {
 		buf.WriteString("null")
 		return
 	}
 	buf.WriteByte('{')
-	appendJSONFieldString(buf, "class", frame.class, false)
-	appendJSONFieldString(buf, "method", frame.method, true)
-	appendJSONFieldString(buf, "file", frame.file, true)
-	appendJSONKey(buf, "line", true)
-	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(frame.line), 10))
-	appendJSONFieldString(buf, "location", frame.location(), true)
+	logvalue.AppendJSONFieldString(buf, "class", frame.Class, false)
+	logvalue.AppendJSONFieldString(buf, "method", frame.Method, true)
+	logvalue.AppendJSONFieldString(buf, "file", frame.File, true)
+	logvalue.AppendJSONKey(buf, "line", true)
+	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(frame.Line), 10))
+	logvalue.AppendJSONFieldString(buf, "location", frame.Location(), true)
 	buf.WriteByte('}')
 }
 
@@ -155,7 +157,7 @@ type processJSONResolver struct{}
 
 func (processJSONResolver) AppendJSON(buf *bytes.Buffer, _ Event) {
 	buf.WriteByte('{')
-	appendJSONKey(buf, "pid", false)
+	logvalue.AppendJSONKey(buf, "pid", false)
 	buf.WriteString(processIDString)
 	buf.WriteByte('}')
 }
@@ -168,7 +170,7 @@ func (contextStackJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		if index > 0 {
 			buf.WriteByte(',')
 		}
-		appendJSONString(buf, value)
+		logvalue.AppendJSONString(buf, value)
 	}
 	buf.WriteByte(']')
 }
@@ -187,7 +189,7 @@ func (r attrsJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		}
 	}
 	if r.propertiesAsList {
-		appendJSONAttrsList(buf, attrs)
+		logvalue.AppendJSONAttrsList(buf, attrs)
 		return
 	}
 	appendJSONAttrsObject(buf, attrs)
@@ -203,7 +205,7 @@ func (r attrJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		buf.WriteString("null")
 		return
 	}
-	appendJSONValue(buf, value)
+	logvalue.AppendJSONValue(buf, value)
 }
 
 type endOfBatchJSONResolver struct{}
@@ -219,7 +221,7 @@ func (endOfBatchJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 func appendJSONAttrsObject(buf *bytes.Buffer, attrs []slog.Attr) {
 	buf.WriteByte('{')
 	for index, attr := range attrs {
-		appendJSONFieldValue(buf, attr.Key, attr.Value, index > 0)
+		logvalue.AppendJSONFieldValue(buf, attr.Key, attr.Value, index > 0)
 	}
 	buf.WriteByte('}')
 }

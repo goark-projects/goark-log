@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // GELFLayout 输出 Graylog Extended Log Format 单行 JSON。
@@ -20,27 +22,27 @@ func NewGELFLayout(options LayoutOptions) GELFLayout {
 func (l GELFLayout) Format(buf *bytes.Buffer, event Event) error {
 	when := eventTime(event.Time)
 	buf.WriteByte('{')
-	appendJSONFieldString(buf, "version", "1.1", false)
-	appendJSONFieldString(buf, "host", hostNameString, true)
-	appendJSONFieldString(buf, "short_message", event.Message, true)
+	logvalue.AppendJSONFieldString(buf, "version", "1.1", false)
+	logvalue.AppendJSONFieldString(buf, "host", hostNameString, true)
+	logvalue.AppendJSONFieldString(buf, "short_message", event.Message, true)
 	if thrown := gelfThrowableString(event, l.options); thrown != "" {
-		appendJSONFieldString(buf, "full_message", thrown, true)
+		logvalue.AppendJSONFieldString(buf, "full_message", thrown, true)
 	}
-	appendJSONKey(buf, "timestamp", true)
+	logvalue.AppendJSONKey(buf, "timestamp", true)
 	buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), float64(when.UnixNano())/1e9, 'f', 6, 64))
-	appendJSONKey(buf, "level", true)
+	logvalue.AppendJSONKey(buf, "level", true)
 	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(syslogSeverity(event.Level)), 10))
-	appendJSONFieldString(buf, "_logger", event.Logger, true)
-	appendJSONFieldString(buf, "_thread", eventThreadName(event), true)
+	logvalue.AppendJSONFieldString(buf, "_logger", event.Logger, true)
+	logvalue.AppendJSONFieldString(buf, "_thread", eventThreadName(event), true)
 	if marker := eventMarkerString(event); marker != "" {
-		appendJSONFieldString(buf, "_marker", marker, true)
+		logvalue.AppendJSONFieldString(buf, "_marker", marker, true)
 	}
 	for _, attr := range event.Attrs {
 		key := gelfAdditionalFieldKey(attr.Key)
 		if key == "" {
 			continue
 		}
-		appendJSONFieldValue(buf, key, attr.Value, true)
+		logvalue.AppendJSONFieldValue(buf, key, attr.Value, true)
 	}
 	buf.WriteByte('}')
 	appendLayoutTerminator(buf, l.options)

@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+
+	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logvalue"
 )
 
 const (
@@ -90,7 +93,7 @@ func throwableFromValue(value slog.Value) *Throwable {
 	case error:
 		return NewThrowable(typed)
 	default:
-		text := attrValueString(value)
+		text := logvalue.String(value)
 		if text == "" {
 			return nil
 		}
@@ -108,7 +111,7 @@ func captureThrowableStack(skip int) []string {
 	stack := make([]string, 0, count)
 	for {
 		frame, more := frames.Next()
-		location := baseName(frame.File)
+		location := callsite.BaseName(frame.File)
 		if frame.Line > 0 {
 			location += ":" + strconv.Itoa(frame.Line)
 		}

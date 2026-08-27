@@ -1,4 +1,4 @@
-package goarklog
+package jsontemplate
 
 import (
 	"encoding/json"
@@ -7,14 +7,14 @@ import (
 	"strings"
 )
 
-type jsonTemplateRawField struct {
-	key string
-	raw json.RawMessage
+// RawField 保存模板字段名和未解析的 resolver 配置。
+type RawField struct {
+	Key string
+	Raw json.RawMessage
 }
 
-// NewJSONTemplateLayout 编译 JSON 事件模板。
-
-func decodeJSONTemplateRawFields(template string) ([]jsonTemplateRawField, error) {
+// DecodeRawFields 解码 JSON Template 顶层字段，保持字段顺序。
+func DecodeRawFields(template string) ([]RawField, error) {
 	decoder := json.NewDecoder(strings.NewReader(template))
 	token, err := decoder.Token()
 	if err != nil {
@@ -23,7 +23,7 @@ func decodeJSONTemplateRawFields(template string) ([]jsonTemplateRawField, error
 	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
 		return nil, fmt.Errorf("event template must be a JSON object")
 	}
-	fields := make([]jsonTemplateRawField, 0, 8)
+	fields := make([]RawField, 0, 8)
 	for decoder.More() {
 		token, err := decoder.Token()
 		if err != nil {
@@ -37,7 +37,7 @@ func decodeJSONTemplateRawFields(template string) ([]jsonTemplateRawField, error
 		if err := decoder.Decode(&raw); err != nil {
 			return nil, err
 		}
-		fields = append(fields, jsonTemplateRawField{key: key, raw: append([]byte(nil), raw...)})
+		fields = append(fields, RawField{Key: key, Raw: append([]byte(nil), raw...)})
 	}
 	token, err = decoder.Token()
 	if err != nil {

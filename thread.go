@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 const (
@@ -48,7 +50,7 @@ func threadNameFromAttrs(attrs []slog.Attr) string {
 		attr := attrs[index]
 		switch attr.Key {
 		case ThreadNameAttrKey, "thread", "goroutine":
-			name := strings.TrimSpace(attrValueString(attr.Value))
+			name := strings.TrimSpace(logvalue.String(attr.Value))
 			if name != "" {
 				return name
 			}

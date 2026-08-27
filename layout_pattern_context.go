@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 func eventMarkerString(event Event) string {
@@ -11,7 +13,7 @@ func eventMarkerString(event Event) string {
 	for _, key := range []string{"marker", "goark.marker"} {
 		value, ok := event.Attr(key)
 		if ok {
-			return attrValueString(value)
+			return logvalue.String(value)
 		}
 	}
 	return ""
@@ -24,7 +26,7 @@ func eventThreadName(event Event) string {
 	for _, key := range []string{"goark.thread", "thread", "goroutine"} {
 		value, ok := event.Attr(key)
 		if ok {
-			name := strings.TrimSpace(attrValueString(value))
+			name := strings.TrimSpace(logvalue.String(value))
 			if name != "" {
 				return name
 			}

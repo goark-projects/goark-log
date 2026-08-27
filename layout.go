@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
 
@@ -35,13 +36,13 @@ func NewDefaultLayout() Layout {
 type TextLayout struct{}
 
 func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
-	appendKey(buf, "time")
+	logvalue.AppendKey(buf, "time")
 	buf.Write(event.Time.AppendFormat(buf.AvailableBuffer(), defaultTimeFormat))
-	appendKeyValue(buf, "level", levelName(event.Level))
-	appendKeyValue(buf, "logger", event.Logger)
-	appendKeyValue(buf, "msg", event.Message)
+	logvalue.AppendKeyValue(buf, "level", levelName(event.Level))
+	logvalue.AppendKeyValue(buf, "logger", event.Logger)
+	logvalue.AppendKeyValue(buf, "msg", event.Message)
 	for _, attr := range event.Attrs {
-		appendKeyValueAttr(buf, attr.Key, attr.Value)
+		logvalue.AppendKeyValueAttr(buf, attr.Key, attr.Value)
 	}
 	buf.WriteByte('\n')
 	return nil

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // RegexFilterField 指定 RegexFilter 的匹配目标。
@@ -124,7 +126,7 @@ func (f *RegexFilter) value(event Event) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		return attrValueString(value), true
+		return logvalue.String(value), true
 	default:
 		return "", false
 	}

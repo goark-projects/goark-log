@@ -2,6 +2,8 @@ package goarklog
 
 import (
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 func eventErrorString(event Event) string {
@@ -22,7 +24,7 @@ func eventErrorStringWithOption(event Event, option string) string {
 	for _, key := range []string{"error", "err"} {
 		value, ok := event.Attr(key)
 		if ok {
-			return attrValueString(value)
+			return logvalue.String(value)
 		}
 	}
 	return ""

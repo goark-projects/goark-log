@@ -3,6 +3,8 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/configxml"
 )
 
 func (a xmlAppender) config() (string, appenderConfig, error) {
@@ -10,27 +12,27 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if name == "" {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender name is empty")
 	}
-	queueSize, err := parseXMLInt(a.QueueSize, "queueSize")
+	queueSize, err := configxml.Int(a.QueueSize, "queueSize")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
-	batchSize, err := parseXMLInt(a.BatchSize, "batchSize")
+	batchSize, err := configxml.Int(a.BatchSize, "batchSize")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
-	flushOnWrite, err := parseXMLBool(a.FlushOnWrite, "flushOnWrite")
+	flushOnWrite, err := configxml.Bool(a.FlushOnWrite, "flushOnWrite")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
-	appendEnabled, err := parseXMLBoolPointerStrict(a.Append, "append")
+	appendEnabled, err := configxml.BoolPointerStrict(a.Append, "append")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
-	createOnDemand, err := parseXMLBool(a.CreateOnDemand, "createOnDemand")
+	createOnDemand, err := configxml.Bool(a.CreateOnDemand, "createOnDemand")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
-	waitRetries, err := parseXMLInt(a.WaitRetries, "waitRetries")
+	waitRetries, err := configxml.Int(a.WaitRetries, "waitRetries")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
@@ -87,18 +89,18 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 				},
 				TimeBasedTriggeringPolicy: rollingTimePolicyConfig{
 					Interval: a.Policies.Time.Interval,
-					Modulate: parseXMLBoolPointer(a.Policies.Time.Modulate),
+					Modulate: configxml.BoolPointer(a.Policies.Time.Modulate),
 				},
 				CronTriggeringPolicy: rollingCronPolicyConfig{
 					Schedule: a.Policies.Cron.Schedule,
 				},
 				OnStartupTriggeringPolicy: rollingStartupPolicyConfig{
-					Enabled: parseXMLBoolPointer(a.Policies.Startup.Enabled),
+					Enabled: configxml.BoolPointer(a.Policies.Startup.Enabled),
 				},
 			},
 			Strategy: rollingStrategyConfig{
 				Type:      strategy.Type,
-				Max:       parseXMLIntPointer(strategy.Max),
+				Max:       configxml.IntPointer(strategy.Max),
 				FileIndex: strategy.FileIndex,
 				Delete:    strategy.Delete.config(),
 			},

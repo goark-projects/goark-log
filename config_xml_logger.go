@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/configxml"
 )
 
 func (l xmlLogger) config(named bool) (loggerConfig, error) {
@@ -14,7 +16,7 @@ func (l xmlLogger) config(named bool) (loggerConfig, error) {
 	if err != nil {
 		return loggerConfig{}, fmt.Errorf("goark-log: XML logger %q: %w", l.Name, err)
 	}
-	includeLocation, err := parseXMLBoolPointerStrict(l.IncludeLocation, "includeLocation")
+	includeLocation, err := configxml.BoolPointerStrict(l.IncludeLocation, "includeLocation")
 	if err != nil {
 		return loggerConfig{}, fmt.Errorf("goark-log: XML logger %q: %w", l.Name, err)
 	}

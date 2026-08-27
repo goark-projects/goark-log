@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 const (
@@ -73,7 +75,7 @@ func contextStackFromValue(value slog.Value) []string {
 		}
 		return appendContextStackValues(nil, values...)
 	default:
-		text := strings.TrimSpace(attrValueString(value))
+		text := strings.TrimSpace(logvalue.String(value))
 		if text == "" {
 			return nil
 		}

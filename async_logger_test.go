@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"goark.dev/log/internal/callsite"
 )
 
 func TestAsyncLogger_whenCloseCalled_shouldDrainQueuedEvents(t *testing.T) {
@@ -270,9 +272,9 @@ func TestAsyncLogger_whenIncludeLocationEnabled_shouldCaptureNativeCaller(t *tes
 	if len(events) != 1 {
 		t.Fatalf("event count = %d, want 1", len(events))
 	}
-	frame := callerFrameFromPC(events[0].PC)
-	if !strings.Contains(frame.method, "TestAsyncLogger_whenIncludeLocationEnabled") {
-		t.Fatalf("caller method = %q, want test method", frame.method)
+	frame := callsite.FrameFromPC(events[0].PC)
+	if !strings.Contains(frame.Method, "TestAsyncLogger_whenIncludeLocationEnabled") {
+		t.Fatalf("caller method = %q, want test method", frame.Method)
 	}
 }
 

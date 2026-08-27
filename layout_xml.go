@@ -3,6 +3,8 @@ package goarklog
 import (
 	"bytes"
 	"encoding/xml"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // XMLLayout 输出单事件 XML 片段。
@@ -44,7 +46,7 @@ func (l XMLLayout) Format(buf *bytes.Buffer, event Event) error {
 			buf.WriteString("<Entry")
 			appendXMLAttr(buf, "key", attr.Key)
 			buf.WriteByte('>')
-			appendXMLText(buf, attrValueString(attr.Value))
+			appendXMLText(buf, logvalue.String(attr.Value))
 			buf.WriteString("</Entry>")
 		}
 		buf.WriteString("</ContextMap>")

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // MapFilterOperator 指定 map 过滤器多条件关系。
@@ -102,7 +104,7 @@ func (f *MapFilter) matches(event Event) bool {
 	if f.operator == MapFilterOr {
 		for key, want := range f.values {
 			value, ok := event.Attr(key)
-			if ok && attrValueString(value) == want {
+			if ok && logvalue.String(value) == want {
 				return true
 			}
 		}
@@ -110,7 +112,7 @@ func (f *MapFilter) matches(event Event) bool {
 	}
 	for key, want := range f.values {
 		value, ok := event.Attr(key)
-		if !ok || attrValueString(value) != want {
+		if !ok || logvalue.String(value) != want {
 			return false
 		}
 	}

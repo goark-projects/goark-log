@@ -3,9 +3,11 @@ package goarklog
 import (
 	"bytes"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"log/slog"
 	"time"
+
+	"goark.dev/log/internal/logvalue"
+	"gopkg.in/yaml.v3"
 )
 
 // YAMLLayout 输出单事件 YAML 文档。
@@ -151,6 +153,6 @@ func slogValueAny(value slog.Value) any {
 	case slog.KindAny:
 		return value.Any()
 	default:
-		return attrValueString(value)
+		return logvalue.String(value)
 	}
 }

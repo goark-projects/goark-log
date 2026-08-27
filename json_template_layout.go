@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/jsontemplate"
+	"goark.dev/log/internal/logvalue"
 )
 
 const defaultJSONEventTemplate = `{
@@ -74,7 +77,7 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 	if strings.TrimSpace(template) == "" {
 		template = defaultJSONEventTemplate
 	}
-	rawFields, err := decodeJSONTemplateRawFields(template)
+	rawFields, err := jsontemplate.DecodeRawFields(template)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: parse JSON template layout: %w", err)
 	}
@@ -83,11 +86,11 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 	}
 	fields := make([]jsonTemplateField, 0, len(rawFields))
 	for _, rawField := range rawFields {
-		resolver, err := compileJSONTemplateResolver(rawField.raw, settings.registry, settings.layoutOptions)
+		resolver, err := compileJSONTemplateResolver(rawField.Raw, settings.registry, settings.layoutOptions)
 		if err != nil {
-			return nil, fmt.Errorf("goark-log: JSON template field %q: %w", rawField.key, err)
+			return nil, fmt.Errorf("goark-log: JSON template field %q: %w", rawField.Key, err)
 		}
-		fields = append(fields, jsonTemplateField{key: rawField.key, resolver: resolver})
+		fields = append(fields, jsonTemplateField{key: rawField.Key, resolver: resolver})
 	}
 	layout := &JSONTemplateLayout{fields: fields, registry: settings.registry, options: settings.layoutOptions}
 	if settings.layoutOptions.Complete {
@@ -98,7 +101,7 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 
 // NewJSONTemplateLayoutFromFile 从本地文件编译 JSON 事件模板。
 func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
-	template, err := readJSONTemplateFile(path)
+	template, err := jsontemplate.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +128,7 @@ func (l *JSONTemplateLayout) Format(buf *bytes.Buffer, event Event) error {
 	appendJSONCompleteSeparator(buf, l.options, l.state)
 	buf.WriteByte('{')
 	for index, field := range l.fields {
-		appendJSONKey(buf, field.key, index > 0)
+		logvalue.AppendJSONKey(buf, field.key, index > 0)
 		field.resolver.AppendJSON(buf, event)
 	}
 	buf.WriteByte('}')

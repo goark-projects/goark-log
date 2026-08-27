@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
 
@@ -91,7 +93,7 @@ func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
 	if l == nil {
 		return NewDefaultLayout().Format(buf, event)
 	}
-	var caller callerCache
+	var caller callsite.Cache
 	for _, token := range l.tokens {
 		appendPatternToken(buf, token, event, &caller, l.options)
 	}
@@ -131,13 +133,13 @@ func readPatternToken(pattern string, layoutOptions LayoutOptions) (patternToken
 		token.leftAlign = true
 		index++
 	}
-	for index < len(pattern) && isPatternDigit(pattern[index]) {
+	for index < len(pattern) && logvalue.IsPatternDigit(pattern[index]) {
 		token.minWidth = token.minWidth*10 + int(pattern[index]-'0')
 		index++
 	}
 	if index < len(pattern) && pattern[index] == '.' {
 		index++
-		for index < len(pattern) && isPatternDigit(pattern[index]) {
+		for index < len(pattern) && logvalue.IsPatternDigit(pattern[index]) {
 			token.maxWidth = token.maxWidth*10 + int(pattern[index]-'0')
 			index++
 		}
@@ -146,7 +148,7 @@ func readPatternToken(pattern string, layoutOptions LayoutOptions) (patternToken
 	if index < len(pattern) && pattern[index] == 'X' {
 		index++
 	} else {
-		for index < len(pattern) && isPatternLetter(pattern[index]) {
+		for index < len(pattern) && logvalue.IsPatternLetter(pattern[index]) {
 			index++
 		}
 	}

@@ -7,16 +7,18 @@ import (
 	"strings"
 	"time"
 
+	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
 
-func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callerCache, options LayoutOptions) {
+func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callsite.Cache, options LayoutOptions) {
 	if token.kind == tokenLiteral {
 		buf.WriteString(token.literal)
 		return
 	}
 	if token.kind == tokenAttrs && token.minWidth == 0 && token.maxWidth == 0 {
-		appendPatternAttrs(buf, event.Attrs)
+		logvalue.AppendPatternAttrs(buf, event.Attrs)
 		return
 	}
 	if token.kind == tokenNewline && token.minWidth == 0 && token.maxWidth == 0 {
@@ -40,7 +42,7 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, call
 		return
 	}
 	value := patternTokenString(token, event, caller, options)
-	appendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
+	logvalue.AppendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
 }
 
 func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
@@ -62,7 +64,7 @@ func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
 	}
 }
 
-func patternTokenString(token patternToken, event Event, caller *callerCache, options LayoutOptions) string {
+func patternTokenString(token patternToken, event Event, caller *callsite.Cache, options LayoutOptions) string {
 	switch token.kind {
 	case tokenTime:
 		when := event.Time
@@ -96,10 +98,10 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 		if !ok {
 			return ""
 		}
-		return attrValueString(value)
+		return logvalue.String(value)
 	case tokenAttrs:
 		var attrBuf bytes.Buffer
-		appendPatternAttrs(&attrBuf, event.Attrs)
+		logvalue.AppendPatternAttrs(&attrBuf, event.Attrs)
 		return attrBuf.String()
 	case tokenError:
 		return eventErrorStringWithOption(event, token.key)
@@ -110,19 +112,19 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 	case tokenContextStack:
 		return contextStackString(event.ContextStack)
 	case tokenCallerClass:
-		return caller.resolve(event).class
+		return caller.ResolvePC(event.PC).Class
 	case tokenCallerMethod:
-		return caller.resolve(event).method
+		return caller.ResolvePC(event.PC).Method
 	case tokenCallerFile:
-		return caller.resolve(event).file
+		return caller.ResolvePC(event.PC).File
 	case tokenCallerLine:
-		frame := caller.resolve(event)
-		if frame.line == 0 {
+		frame := caller.ResolvePC(event.PC)
+		if frame.Line == 0 {
 			return ""
 		}
-		return strconv.Itoa(frame.line)
+		return strconv.Itoa(frame.Line)
 	case tokenCallerLocation:
-		return caller.resolve(event).location()
+		return caller.ResolvePC(event.PC).Location()
 	case tokenUUID:
 		return newPatternUUID()
 	case tokenRelative:
@@ -137,12 +139,12 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)
 		}
-		return applyANSIStyle(formatChildPattern(token.child, event), highlightStyle(event.Level))
+		return logvalue.ApplyANSIStyle(formatChildPattern(token.child, event), logvalue.HighlightStyle(event.Level, LevelFatal))
 	case tokenStyle:
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)
 		}
-		return applyANSIStyle(formatChildPattern(token.child, event), token.value)
+		return logvalue.ApplyANSIStyle(formatChildPattern(token.child, event), token.value)
 	case tokenNotEmpty:
 		value := formatChildPattern(token.child, event)
 		if strings.TrimSpace(value) == "" {
@@ -152,7 +154,7 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 	case tokenReplace:
 		return token.regex.ReplaceAllString(formatChildPattern(token.child, event), token.repl)
 	case tokenEncode:
-		return encodePatternValue(formatChildPattern(token.child, event), token.value)
+		return logvalue.EncodePatternValue(formatChildPattern(token.child, event), token.value)
 	case tokenEquals:
 		value := formatChildPattern(token.child, event)
 		matched := value == token.value
@@ -164,7 +166,7 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 		}
 		return value
 	case tokenMaxLen:
-		return maxPatternLength(formatChildPattern(token.child, event), token.repeat)
+		return logvalue.MaxPatternLength(formatChildPattern(token.child, event), token.repeat)
 	case tokenRepeat:
 		return strings.Repeat(formatChildPattern(token.child, event), token.repeat)
 	default:

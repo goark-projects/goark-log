@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 const (
@@ -119,7 +121,7 @@ func markerFromValue(value slog.Value) (Marker, bool) {
 		}
 		return *typed, true
 	default:
-		name := strings.TrimSpace(attrValueString(value))
+		name := strings.TrimSpace(logvalue.String(value))
 		if name == "" {
 			return Marker{}, false
 		}

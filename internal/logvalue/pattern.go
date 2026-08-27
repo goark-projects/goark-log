@@ -1,4 +1,4 @@
-package goarklog
+package logvalue
 
 import (
 	"html"
@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-func encodePatternValue(value string, mode string) string {
+// EncodePatternValue 按 pattern encode 转换器规则转义字符串。
+func EncodePatternValue(value string, mode string) string {
 	switch mode {
 	case "", "json":
 		quoted := strconv.Quote(value)
@@ -24,9 +25,10 @@ func encodePatternValue(value string, mode string) string {
 	}
 }
 
-func highlightStyle(level slog.Level) string {
+// HighlightStyle 返回指定级别的默认 ANSI 高亮样式。
+func HighlightStyle(level slog.Level, fatalLevel slog.Level) string {
 	switch {
-	case level >= LevelFatal:
+	case level >= fatalLevel:
 		return "red,bold"
 	case level >= slog.LevelError:
 		return "red"
@@ -41,7 +43,8 @@ func highlightStyle(level slog.Level) string {
 	}
 }
 
-func applyANSIStyle(value string, style string) string {
+// ApplyANSIStyle 将 ANSI 样式应用到字符串。
+func ApplyANSIStyle(value string, style string) string {
 	if value == "" {
 		return ""
 	}
@@ -142,6 +145,7 @@ func ansiStyleCode(value string) (string, bool) {
 	}
 }
 
-func maxPatternLength(value string, limit int) string {
+// MaxPatternLength 按 pattern 宽度规则截断字符串。
+func MaxPatternLength(value string, limit int) string {
 	return truncatePatternWidth(value, limit)
 }

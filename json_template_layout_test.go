@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 func TestJSONTemplateLayout_whenDefaultTemplateUsed_shouldRenderLog4jStyleFields(t *testing.T) {
@@ -294,5 +296,5 @@ func TestJSONTemplateLayout_whenCompleteOptionUsed_shouldWriteValidArray(t *test
 type constantJSONResolver string
 
 func (r constantJSONResolver) AppendJSON(buf *bytes.Buffer, _ Event) {
-	appendJSONString(buf, string(r))
+	logvalue.AppendJSONString(buf, string(r))
 }

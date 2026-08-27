@@ -5,6 +5,9 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+
+	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logvalue"
 )
 
 func TestNativeLogger_whenInfoCalled_shouldDispatchNamedEvent(t *testing.T) {
@@ -100,9 +103,9 @@ func TestNativeLogger_whenCallerEnabled_shouldCaptureCallSite(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("event count = %d, want 1", len(events))
 	}
-	frame := callerFrameFromPC(events[0].PC)
-	if !strings.Contains(frame.method, "TestNativeLogger_whenCallerEnabled") {
-		t.Fatalf("caller method = %q, want test method", frame.method)
+	frame := callsite.FrameFromPC(events[0].PC)
+	if !strings.Contains(frame.Method, "TestNativeLogger_whenCallerEnabled") {
+		t.Fatalf("caller method = %q, want test method", frame.Method)
 	}
 }
 
@@ -112,7 +115,7 @@ func assertAttrString(t *testing.T, event Event, key string, want string) {
 	if !ok {
 		t.Fatalf("event attr %q missing, event=%+v", key, event)
 	}
-	if got := attrValueString(value); got != want {
+	if got := logvalue.String(value); got != want {
 		t.Fatalf("event attr %q = %q, want %q", key, got, want)
 	}
 }

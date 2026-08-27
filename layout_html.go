@@ -3,6 +3,8 @@ package goarklog
 import (
 	"bytes"
 	"html"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // HTMLLayout 输出 HTML 表格行，适合文件或控制台片段组合。
@@ -25,7 +27,7 @@ func (l HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
 	appendHTMLCell(buf, event.Message)
 	if len(event.Attrs) > 0 {
 		var attrs bytes.Buffer
-		appendPatternAttrs(&attrs, event.Attrs)
+		logvalue.AppendPatternAttrs(&attrs, event.Attrs)
 		appendHTMLCell(buf, attrs.String())
 	} else {
 		appendHTMLCell(buf, "")

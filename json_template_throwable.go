@@ -3,6 +3,8 @@ package goarklog
 import (
 	"bytes"
 	"log/slog"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 func appendThrowableJSON(buf *bytes.Buffer, throwable *Throwable) {
@@ -11,14 +13,14 @@ func appendThrowableJSON(buf *bytes.Buffer, throwable *Throwable) {
 		return
 	}
 	buf.WriteByte('{')
-	appendJSONFieldString(buf, "type", throwable.Type, false)
-	appendJSONFieldString(buf, "message", throwable.Message, true)
-	appendJSONKey(buf, "rootCause", true)
+	logvalue.AppendJSONFieldString(buf, "type", throwable.Type, false)
+	logvalue.AppendJSONFieldString(buf, "message", throwable.Message, true)
+	logvalue.AppendJSONKey(buf, "rootCause", true)
 	appendThrowableRootCauseJSON(buf, rootThrowable(throwable))
-	appendJSONKey(buf, "stackTrace", true)
+	logvalue.AppendJSONKey(buf, "stackTrace", true)
 	appendThrowableStackJSON(buf, throwable)
 	if throwable.Cause != nil {
-		appendJSONKey(buf, "cause", true)
+		logvalue.AppendJSONKey(buf, "cause", true)
 		appendThrowableJSON(buf, throwable.Cause)
 	}
 	buf.WriteByte('}')
@@ -30,8 +32,8 @@ func appendThrowableRootCauseJSON(buf *bytes.Buffer, throwable *Throwable) {
 		return
 	}
 	buf.WriteByte('{')
-	appendJSONFieldString(buf, "type", throwable.Type, false)
-	appendJSONFieldString(buf, "message", throwable.Message, true)
+	logvalue.AppendJSONFieldString(buf, "type", throwable.Type, false)
+	logvalue.AppendJSONFieldString(buf, "message", throwable.Message, true)
 	buf.WriteByte('}')
 }
 
@@ -45,7 +47,7 @@ func appendThrowableStackJSON(buf *bytes.Buffer, throwable *Throwable) {
 		if index > 0 {
 			buf.WriteByte(',')
 		}
-		appendJSONString(buf, frame)
+		logvalue.AppendJSONString(buf, frame)
 	}
 	buf.WriteByte(']')
 }

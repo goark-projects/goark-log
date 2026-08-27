@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // AttrFilter 按属性键和值过滤日志事件。
@@ -32,5 +34,5 @@ func (f *AttrFilter) Decide(_ context.Context, event Event) FilterDecision {
 		return FilterNeutral
 	}
 	value, ok := event.Attr(f.key)
-	return f.outcome.decide(ok && attrValueString(value) == f.value)
+	return f.outcome.decide(ok && logvalue.String(value) == f.value)
 }

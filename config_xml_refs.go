@@ -3,6 +3,8 @@ package goarklog
 import (
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/configxml"
 )
 
 func xmlAppenderType(element string, configured string) string {
@@ -31,7 +33,7 @@ func xmlConsoleTarget(target string) string {
 func xmlAppenderRefs(refs []xmlAppenderRef) (appenderRefs, error) {
 	out := make(appenderRefs, 0, len(refs))
 	for _, ref := range refs {
-		includeLocation, err := parseXMLBoolPointerStrict(ref.IncludeLocation, "includeLocation")
+		includeLocation, err := configxml.BoolPointerStrict(ref.IncludeLocation, "includeLocation")
 		if err != nil {
 			return nil, fmt.Errorf("AppenderRef %q: %w", ref.Ref, err)
 		}

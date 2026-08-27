@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/logvalue"
 )
 
 // DynamicThresholdFilter 按事件属性动态选择级别阈值。
@@ -45,7 +47,7 @@ func (f *DynamicThresholdFilter) Decide(_ context.Context, event Event) FilterDe
 	}
 	threshold := f.defaultThreshold
 	if value, ok := event.Attr(f.key); ok {
-		if configured, exists := f.thresholds[attrValueString(value)]; exists {
+		if configured, exists := f.thresholds[logvalue.String(value)]; exists {
 			threshold = configured
 		}
 	}
