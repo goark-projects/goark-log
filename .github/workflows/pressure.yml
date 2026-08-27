@@ -1,0 +1,63 @@
+name: pressure
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchtime:
+        description: Benchmark duration per case.
+        required: false
+        default: 5s
+      count:
+        description: Benchmark repeat count.
+        required: false
+        default: "3"
+  schedule:
+    - cron: "30 18 * * *"
+
+env:
+  GOARK_LOG_STRESS: "1"
+  BENCHTIME: ${{ github.event.inputs.benchtime || '5s' }}
+  BENCH_COUNT: ${{ github.event.inputs.count || '3' }}
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare artifacts
+        run: mkdir -p artifacts
+
+      - name: Long stress tests
+        run: go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+
+      - name: Root pressure benchmarks
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime="${BENCHTIME}" -count="${BENCH_COUNT}" -cpu=1,4,16 2>&1 | tee artifacts/root-pressure-bench.txt
+
+      - name: Internal pressure benchmarks
+        run: |
+          set -o pipefail
+          go test -run '^$' -bench . -benchmem -benchtime="${BENCHTIME}" -count="${BENCH_COUNT}" ./internal/disruptor ./internal/jsoncodec 2>&1 | tee artifacts/internal-pressure-bench.txt
+
+      - name: Comparison pressure benchmarks
+        working-directory: benchmarks/compare
+        run: |
+          set -o pipefail
+          mkdir -p ../../artifacts
+          go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime="${BENCHTIME}" -count="${BENCH_COUNT}" -cpu=1,4,16 2>&1 | tee ../../artifacts/compare-pressure-bench.txt
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: goark-log-pressure
+          path: artifacts/*.txt
