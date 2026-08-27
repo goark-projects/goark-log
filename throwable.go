@@ -13,7 +13,7 @@ const (
 	ThrowableAttrKey = "goark.throwable"
 )
 
-// Throwable 是 Go error 的 Log4j2 Throwable 快照。
+// Throwable 是 Go error 的异常快照。
 type Throwable struct {
 	Type    string
 	Message string

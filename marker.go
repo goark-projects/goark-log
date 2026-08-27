@@ -13,7 +13,7 @@ const (
 
 type markerContextKey struct{}
 
-// Marker 表示 Log4j2 风格的事件标签，支持父级层次匹配。
+// Marker 表示事件标签，支持父级层次匹配。
 type Marker struct {
 	Name    string
 	Parents []Marker

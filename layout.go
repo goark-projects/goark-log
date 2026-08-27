@@ -177,7 +177,7 @@ func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, l
 	buf.WriteString("}\n")
 }
 
-// PatternLayout 支持 Log4j2 风格的基础占位符子集。
+// PatternLayout 支持常用日志 pattern 占位符。
 type PatternLayout struct {
 	tokens  []patternToken
 	options LayoutOptions

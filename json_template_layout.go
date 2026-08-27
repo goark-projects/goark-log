@@ -29,7 +29,7 @@ const defaultJSONEventTemplate = `{
   "contextMap": {"$resolver": "mdc"}
 }`
 
-// JSONTemplateLayout 按 Log4j2 JSON Template 风格输出事件。
+// JSONTemplateLayout 按 JSON 事件模板输出日志事件。
 type JSONTemplateLayout struct {
 	fields   []jsonTemplateField
 	registry *PluginRegistry

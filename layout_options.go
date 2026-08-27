@@ -18,7 +18,7 @@ type LayoutOptions struct {
 	IncludeStacktrace bool
 	// StacktraceAsString 将异常栈输出为字符串，便于兼容文本型采集器。
 	StacktraceAsString bool
-	// PropertiesAsList 将上下文属性输出为键值列表，兼容 Log4j2 属性列表模式。
+	// PropertiesAsList 将上下文属性输出为键值列表。
 	PropertiesAsList bool
 	// IncludeNullDelimiter 在事件结束后追加 NUL 字节，用于 GELF 等协议分隔。
 	IncludeNullDelimiter bool

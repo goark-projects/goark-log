@@ -9,7 +9,7 @@ import (
 
 const logBuilderInlineAttrs = 8
 
-// LogBuilder 是 Log4j2 风格的事件构造器。
+// LogBuilder 是低分配链式事件构造器。
 type LogBuilder struct {
 	logger    *Logger
 	ctx       context.Context

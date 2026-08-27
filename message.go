@@ -69,7 +69,7 @@ func (m SimpleMessage) String() string {
 	return string(m)
 }
 
-// ParameterizedMessage 使用 Log4j2 风格的 {} 占位符格式化消息。
+// ParameterizedMessage 使用 {} 占位符格式化消息。
 type ParameterizedMessage struct {
 	pattern string
 	args    []any
@@ -136,7 +136,7 @@ func (m MapMessage) String() string {
 	return messageAttrsString(m.attrs)
 }
 
-// StructuredDataMessage 表示 Log4j2/RFC5424 风格的结构化消息。
+// StructuredDataMessage 表示 RFC5424 风格的结构化消息。
 type StructuredDataMessage struct {
 	id      string
 	msgType string

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ParseMonitorInterval 解析配置监控间隔；纯数字按 Log4j2 习惯表示秒。
+// ParseMonitorInterval 解析配置监控间隔；纯数字按秒处理。
 func ParseMonitorInterval(value string) (time.Duration, error) {
 	text := strings.ToLower(strings.TrimSpace(value))
 	switch text {
