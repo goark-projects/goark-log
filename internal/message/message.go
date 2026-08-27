@@ -1,4 +1,4 @@
-package goarklog
+package message
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 )
 
 const (
+	loggerNameKey = "goark.logger"
+
 	// StructuredDataIDAttrKey 是结构化消息 ID 的标准属性键。
 	StructuredDataIDAttrKey = "goark.structuredData.id"
 	// StructuredDataTypeAttrKey 是结构化消息类型的标准属性键。
@@ -115,7 +117,7 @@ type MapMessage struct {
 
 // NewMapMessage 创建结构化属性消息。
 func NewMapMessage(attrs ...slog.Attr) MapMessage {
-	return MapMessage{attrs: normalizeMessageAttrs(attrs)}
+	return MapMessage{attrs: normalizeAttrs(attrs)}
 }
 
 // WithAttr 返回追加属性后的新 MapMessage。
@@ -135,7 +137,7 @@ func (m MapMessage) Attrs() []slog.Attr {
 }
 
 func (m MapMessage) String() string {
-	return messageAttrsString(m.attrs)
+	return attrsString(m.attrs)
 }
 
 // StructuredDataMessage 表示 RFC5424 风格的结构化消息。
@@ -152,7 +154,7 @@ func NewStructuredDataMessage(id string, msgType string, message string, attrs .
 		id:      strings.TrimSpace(id),
 		msgType: strings.TrimSpace(msgType),
 		message: strings.TrimSpace(message),
-		attrs:   normalizeMessageAttrs(attrs),
+		attrs:   normalizeAttrs(attrs),
 	}
 }
 
@@ -199,7 +201,7 @@ func (m StructuredDataMessage) String() string {
 	return buf.String()
 }
 
-func normalizeMessageAttrs(attrs []slog.Attr) []slog.Attr {
+func normalizeAttrs(attrs []slog.Attr) []slog.Attr {
 	if len(attrs) == 0 {
 		return nil
 	}
@@ -214,7 +216,12 @@ func normalizeMessageAttrs(attrs []slog.Attr) []slog.Attr {
 	return out
 }
 
-func messageAttrsString(attrs []slog.Attr) string {
+func normalizeAttr(attr slog.Attr) slog.Attr {
+	attr.Value = attr.Value.Resolve()
+	return attr
+}
+
+func attrsString(attrs []slog.Attr) string {
 	var buf bytes.Buffer
 	for _, attr := range attrs {
 		logvalue.AppendPatternKeyValueAttr(&buf, attr.Key, attr.Value)

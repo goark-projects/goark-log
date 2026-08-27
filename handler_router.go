@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	internaljsonappender "goark.dev/log/internal/jsonappender"
+	logcontext "goark.dev/log/internal/logcontext"
 )
 
 // router 保存不可变路由快照，并为后续 reload 留出原子替换边界。
@@ -232,7 +235,7 @@ func (h *Handler) dispatchAttrsFast(ctx context.Context, route route, logger str
 	if logger == "" {
 		logger = defaultLoggerName
 	}
-	event := attrEvent{
+	event := internaljsonappender.AttrEvent{
 		Time:    when,
 		Level:   level,
 		Logger:  logger,
@@ -242,7 +245,7 @@ func (h *Handler) dispatchAttrsFast(ctx context.Context, route route, logger str
 	var joined error
 	wrote := false
 	for _, control := range route.Appenders {
-		appender, ok := control.appender.(attrAppender)
+		appender, ok := control.appender.(internaljsonappender.AttrAppender)
 		if !ok {
 			return false, nil
 		}
@@ -264,7 +267,7 @@ func (h *Handler) dispatchFixedAttrsFast(ctx context.Context, route route, logge
 	if logger == "" {
 		logger = defaultLoggerName
 	}
-	event := fixedAttrEvent{
+	event := internaljsonappender.FixedAttrEvent{
 		Time:    when,
 		Level:   level,
 		Logger:  logger,
@@ -275,7 +278,7 @@ func (h *Handler) dispatchFixedAttrsFast(ctx context.Context, route route, logge
 	var joined error
 	wrote := false
 	for _, control := range route.Appenders {
-		appender, ok := control.appender.(*JSONAppender)
+		appender, ok := control.appender.(internaljsonappender.FixedAttrAppender)
 		if !ok {
 			return false, nil
 		}
@@ -283,7 +286,7 @@ func (h *Handler) dispatchFixedAttrsFast(ctx context.Context, route route, logge
 			continue
 		}
 		wrote = true
-		if err := appender.appendFixedAttrs(ctx, event); err != nil {
+		if err := appender.AppendFixedAttrs(ctx, event); err != nil {
 			joined = errors.Join(joined, err)
 		}
 	}
@@ -304,7 +307,7 @@ func canDispatchAttrsFast(ctx context.Context, route route, handlerAttrs []slog.
 		if len(control.filters) != 0 {
 			return false
 		}
-		if _, ok := control.appender.(attrAppender); !ok {
+		if _, ok := control.appender.(internaljsonappender.AttrAppender); !ok {
 			return false
 		}
 	}
@@ -325,7 +328,7 @@ func canDispatchFixedAttrsFast(ctx context.Context, route route, handlerAttrs []
 		if len(control.filters) != 0 {
 			return false
 		}
-		if _, ok := control.appender.(*JSONAppender); !ok {
+		if _, ok := control.appender.(internaljsonappender.FixedAttrAppender); !ok {
 			return false
 		}
 	}
@@ -340,22 +343,7 @@ func attrCanShare(attr slog.Attr) bool {
 }
 
 func contextLogStateEmpty(ctx context.Context) bool {
-	if ctx == nil {
-		return true
-	}
-	if attrs, ok := ctx.Value(contextAttrsKey{}).([]slog.Attr); ok && len(attrs) > 0 {
-		return false
-	}
-	if values, ok := ctx.Value(contextStackKey{}).([]string); ok && len(values) > 0 {
-		return false
-	}
-	if marker, ok := ctx.Value(markerContextKey{}).(Marker); ok && marker.Name != "" {
-		return false
-	}
-	if name, ok := ctx.Value(threadNameContextKey{}).(string); ok && name != "" {
-		return false
-	}
-	return true
+	return logcontext.Empty(ctx)
 }
 
 func loggerMatches(name string, rule string) bool {

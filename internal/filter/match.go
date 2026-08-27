@@ -1,4 +1,4 @@
-package goarklog
+package filter
 
 import (
 	"context"
@@ -69,7 +69,7 @@ func WithMapFilterOnMismatch(decision FilterDecision) MapFilterOption {
 func NewMapFilter(values map[string]string, options ...MapFilterOption) (*MapFilter, error) {
 	settings := mapFilterSettings{
 		operator: MapFilterAnd,
-		base:     *newFilterSettings(FilterNeutral, FilterDeny),
+		base:     *newSettings(FilterNeutral, FilterDeny),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -195,7 +195,7 @@ func NewRegexFilter(pattern string, options ...RegexFilterOption) (*RegexFilter,
 	}
 	settings := regexFilterSettings{
 		field: RegexFieldMessage,
-		base:  *newFilterSettings(FilterNeutral, FilterDeny),
+		base:  *newSettings(FilterNeutral, FilterDeny),
 	}
 	for _, option := range options {
 		if option != nil {

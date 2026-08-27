@@ -1,4 +1,4 @@
-package goarklog
+package layout
 
 import (
 	"bytes"
@@ -29,18 +29,17 @@ const defaultJSONEventTemplate = `{
 
 // JSONTemplateLayout 按 JSON 事件模板输出日志事件。
 type JSONTemplateLayout struct {
-	fields   []jsonTemplateField
-	registry *PluginRegistry
-	options  LayoutOptions
-	state    *jsonLayoutState
+	fields  []jsonTemplateField
+	options LayoutOptions
+	state   *jsonLayoutState
 }
 
 // JSONTemplateLayoutOption 调整 JSONTemplateLayout 编译行为。
 type JSONTemplateLayoutOption func(*jsonTemplateLayoutOptions)
 
 type jsonTemplateLayoutOptions struct {
-	registry      *PluginRegistry
-	layoutOptions LayoutOptions
+	resolverLookup JSONTemplateResolverLookup
+	layoutOptions  LayoutOptions
 }
 
 // JSONTemplateResolver 是 JSON Template 字段值编码器。
@@ -51,16 +50,19 @@ type JSONTemplateResolver interface {
 // JSONTemplateResolverFactory 从配置构建 JSON Template resolver。
 type JSONTemplateResolverFactory func(config JSONTemplateResolverBuildConfig) (JSONTemplateResolver, error)
 
+// JSONTemplateResolverLookup 按规范化前的名称查找自定义 resolver 工厂。
+type JSONTemplateResolverLookup func(kind string) (JSONTemplateResolverFactory, bool)
+
 // JSONTemplateResolverBuildConfig 是 JSON Template resolver 插件的构建输入。
 type JSONTemplateResolverBuildConfig struct {
 	Name    string
 	Options map[string]json.RawMessage
 }
 
-// WithJSONTemplateResolverRegistry 设置用于解析自定义 resolver 的插件注册表。
-func WithJSONTemplateResolverRegistry(registry *PluginRegistry) JSONTemplateLayoutOption {
+// WithJSONTemplateResolverLookup 设置用于解析自定义 resolver 的查找函数。
+func WithJSONTemplateResolverLookup(lookup JSONTemplateResolverLookup) JSONTemplateLayoutOption {
 	return func(options *jsonTemplateLayoutOptions) {
-		options.registry = registry
+		options.resolverLookup = lookup
 	}
 }
 
@@ -90,13 +92,13 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 	}
 	fields := make([]jsonTemplateField, 0, len(rawFields))
 	for _, rawField := range rawFields {
-		resolver, err := compileJSONTemplateResolver(rawField.Raw, settings.registry, settings.layoutOptions)
+		resolver, err := compileJSONTemplateResolver(rawField.Raw, settings.resolverLookup, settings.layoutOptions)
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: JSON template field %q: %w", rawField.Key, err)
 		}
 		fields = append(fields, jsonTemplateField{key: rawField.Key, resolver: resolver})
 	}
-	layout := &JSONTemplateLayout{fields: fields, registry: settings.registry, options: settings.layoutOptions}
+	layout := &JSONTemplateLayout{fields: fields, options: settings.layoutOptions}
 	if settings.layoutOptions.Complete {
 		layout.state = &jsonLayoutState{}
 	}
@@ -113,19 +115,16 @@ func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOpt
 }
 
 func newJSONTemplateLayoutOptions(options ...JSONTemplateLayoutOption) jsonTemplateLayoutOptions {
-	settings := jsonTemplateLayoutOptions{registry: DefaultPluginRegistry()}
+	settings := jsonTemplateLayoutOptions{}
 	for _, option := range options {
 		if option != nil {
 			option(&settings)
 		}
 	}
-	if settings.registry == nil {
-		settings.registry = DefaultPluginRegistry()
-	}
 	return settings
 }
 
-func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+func compileJSONTemplateResolver(raw json.RawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
 	var object map[string]json.RawMessage
 	if err := jsoncodec.Unmarshal(raw, &object); err == nil {
 		if resolverRaw, ok := object["$resolver"]; ok {
@@ -133,13 +132,13 @@ func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry, 
 			if err := jsoncodec.Unmarshal(resolverRaw, &name); err != nil {
 				return nil, fmt.Errorf("$resolver must be a string")
 			}
-			return newJSONTemplateResolver(name, object, registry, layoutOptions)
+			return newJSONTemplateResolver(name, object, lookup, layoutOptions)
 		}
 	}
 	return rawJSONResolver{raw: append([]byte(nil), raw...)}, nil
 }
 
-func newJSONTemplateResolver(name string, options map[string]json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+func newJSONTemplateResolver(name string, options map[string]json.RawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
 	switch textutil.NormalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
@@ -190,8 +189,10 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage, re
 	case "endofbatch":
 		return endOfBatchJSONResolver{}, nil
 	default:
-		if factory, ok := registry.jsonTemplateResolverFactory(name); ok {
-			return factory(JSONTemplateResolverBuildConfig{Name: name, Options: copyJSONRawOptions(options)})
+		if lookup != nil {
+			if factory, ok := lookup(name); ok {
+				return factory(JSONTemplateResolverBuildConfig{Name: name, Options: copyJSONRawOptions(options)})
+			}
 		}
 		return nil, fmt.Errorf("unsupported resolver %q", name)
 	}

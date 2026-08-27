@@ -297,7 +297,7 @@ rootLogger.appenderRefs = file
 			}
 			defer closeAppenderList(options.Appenders)
 			layout := configuredFileJSONLayout(t, options.Appenders, "file")
-			assertFullLayoutOptions(t, layout.options)
+			assertFullLayoutOptions(t, layout.Options())
 		})
 	}
 }
@@ -376,8 +376,8 @@ rootLogger.appenderRefs = file
 			}
 			defer closeAppenderList(options.Appenders)
 			layout := configuredFilePatternLayout(t, options.Appenders, "file")
-			if !layout.options.DisableANSI {
-				t.Fatalf("pattern layout options = %+v, want DisableANSI", layout.options)
+			if !layout.Options().DisableANSI {
+				t.Fatalf("pattern layout options = %+v, want DisableANSI", layout.Options())
 			}
 		})
 	}
@@ -1210,9 +1210,9 @@ func configuredFileJSONLayout(t *testing.T, appenders []Appender, name string) J
 		if !ok || file.Name() != name {
 			continue
 		}
-		layout, ok := file.layout.(JSONLayout)
+		layout, ok := file.Layout().(JSONLayout)
 		if !ok {
-			t.Fatalf("file layout type = %T, want JSONLayout", file.layout)
+			t.Fatalf("file layout type = %T, want JSONLayout", file.Layout())
 		}
 		return layout
 	}
@@ -1227,9 +1227,9 @@ func configuredFilePatternLayout(t *testing.T, appenders []Appender, name string
 		if !ok || file.Name() != name {
 			continue
 		}
-		layout, ok := file.layout.(*PatternLayout)
+		layout, ok := file.Layout().(*PatternLayout)
 		if !ok {
-			t.Fatalf("file layout type = %T, want *PatternLayout", file.layout)
+			t.Fatalf("file layout type = %T, want *PatternLayout", file.Layout())
 		}
 		return layout
 	}

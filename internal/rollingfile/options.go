@@ -1,4 +1,4 @@
-package goarklog
+package rollingfile
 
 import (
 	"errors"
@@ -170,7 +170,8 @@ func WithRollingDeleteActions(actions ...RollingDeleteAction) RollingFileOption 
 	}
 }
 
-func withRollingClock(clock func() time.Time) RollingFileOption {
+// WithRollingClock 设置测试和可控时间源。
+func WithRollingClock(clock func() time.Time) RollingFileOption {
 	return func(appender *RollingFileAppender) {
 		appender.clock = clock
 	}

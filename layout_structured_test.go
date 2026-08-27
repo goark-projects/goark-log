@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -77,7 +78,7 @@ func TestJSONTemplateLayout_whenSourceAndProcessResolversUsed_shouldWriteObjects
 		t.Fatalf("source resolver output = %#v", decoded["source"])
 	}
 	process, ok := decoded["process"].(map[string]any)
-	if !ok || process["pid"] != float64(mustAtoi(t, processIDString)) {
+	if !ok || process["pid"] != float64(os.Getpid()) {
 		t.Fatalf("process resolver output = %#v", decoded["process"])
 	}
 	if decoded["threadName"] != "worker-1" {

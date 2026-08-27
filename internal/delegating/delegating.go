@@ -1,16 +1,24 @@
-package goarklog
+package delegating
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
-	"sort"
 	"strings"
 
+	"goark.dev/log/internal/logevent"
 	"goark.dev/log/internal/logvalue"
-	"goark.dev/log/internal/textutil"
 )
+
+// Event 是组合 appender 处理的事件快照。
+type Event = logevent.Event
+
+// Appender 是组合 appender 依赖的最小输出端接口。
+type Appender interface {
+	Name() string
+	Append(ctx context.Context, event Event) error
+	Close() error
+}
 
 // FailoverAppender 在主 appender 写入失败时按顺序尝试备用 appender。
 type FailoverAppender struct {
@@ -78,7 +86,7 @@ func (a *FailoverAppender) Append(ctx context.Context, event Event) error {
 	if a == nil || a.primary == nil {
 		return fmt.Errorf("goark-log: failover appender is nil")
 	}
-	ctx = normalizeContext(ctx)
+	ctx = logevent.NormalizeContext(ctx)
 	primaryErr := a.primary.Append(ctx, event)
 	if primaryErr == nil {
 		return nil
@@ -194,7 +202,7 @@ func (a *RoutingAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: routing appender is nil")
 	}
-	ctx = normalizeContext(ctx)
+	ctx = logevent.NormalizeContext(ctx)
 	key := a.routeKey(ctx, event)
 	appender := a.routes[key]
 	if appender == nil {
@@ -236,47 +244,6 @@ func (a *RoutingAppender) routeKey(ctx context.Context, event Event) string {
 
 // RewritePolicy 在写出前重写事件快照。
 type RewritePolicy func(ctx context.Context, event Event) (Event, error)
-
-type rewriteBuildConfig struct {
-	Attrs            map[string]string `yaml:"attrs"`
-	Attributes       map[string]string `yaml:"attributes"`
-	Properties       map[string]string `yaml:"properties"`
-	Remove           []string          `yaml:"remove"`
-	RemoveAttrs      []string          `yaml:"removeAttrs"`
-	RemoveAttrsKebab []string          `yaml:"remove-attrs"`
-}
-
-func (c rewriteBuildConfig) attrs() map[string]string {
-	attrs := mergeStringMaps(copyStringMap(c.Attrs), c.Attributes)
-	return mergeStringMaps(attrs, c.Properties)
-}
-
-func (c rewriteBuildConfig) removeKeys() []string {
-	return textutil.FirstTrimmedStrings(c.Remove, c.RemoveAttrs, c.RemoveAttrsKebab)
-}
-
-func (c *rewriteBuildConfig) resolveLookups(lookups *LookupResolver) error {
-	var err error
-	if c.Attrs, err = resolveStringMapLookups(lookups, c.Attrs); err != nil {
-		return err
-	}
-	if c.Attributes, err = resolveStringMapLookups(lookups, c.Attributes); err != nil {
-		return err
-	}
-	if c.Properties, err = resolveStringMapLookups(lookups, c.Properties); err != nil {
-		return err
-	}
-	if c.Remove, err = resolveStringListLookups(lookups, c.Remove); err != nil {
-		return err
-	}
-	if c.RemoveAttrs, err = resolveStringListLookups(lookups, c.RemoveAttrs); err != nil {
-		return err
-	}
-	if c.RemoveAttrsKebab, err = resolveStringListLookups(lookups, c.RemoveAttrsKebab); err != nil {
-		return err
-	}
-	return nil
-}
 
 // RewriteAppender 在写出前执行事件重写。
 type RewriteAppender struct {
@@ -336,7 +303,7 @@ func (a *RewriteAppender) Append(ctx context.Context, event Event) error {
 	if a == nil || a.delegate == nil {
 		return fmt.Errorf("goark-log: rewrite appender is nil")
 	}
-	ctx = normalizeContext(ctx)
+	ctx = logevent.NormalizeContext(ctx)
 	if a.policy != nil {
 		rewritten, err := a.policy(ctx, event)
 		if err != nil {
@@ -352,60 +319,6 @@ func (a *RewriteAppender) Close() error {
 		return nil
 	}
 	return a.delegate.Close()
-}
-
-func newAttributeRewritePolicy(config RewriteBuildConfig) RewritePolicy {
-	additions := rewriteAdditions(config.Attrs)
-	removals := rewriteRemovalSet(config.RemoveAttrs)
-	if len(additions) == 0 && len(removals) == 0 {
-		return nil
-	}
-	return func(_ context.Context, event Event) (Event, error) {
-		rewritten := event
-		attrs := make([]slog.Attr, 0, len(event.Attrs)+len(additions))
-		for _, attr := range event.Attrs {
-			if _, remove := removals[attr.Key]; remove {
-				continue
-			}
-			attrs = append(attrs, attr)
-		}
-		attrs = append(attrs, additions...)
-		rewritten.Attrs = attrs
-		return rewritten, nil
-	}
-}
-
-func rewriteAdditions(values map[string]string) []slog.Attr {
-	if len(values) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	attrs := make([]slog.Attr, 0, len(keys))
-	for _, key := range keys {
-		attrs = append(attrs, slog.String(key, values[key]))
-	}
-	return attrs
-}
-
-func rewriteRemovalSet(keys []string) map[string]struct{} {
-	if len(keys) == 0 {
-		return nil
-	}
-	removals := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			removals[key] = struct{}{}
-		}
-	}
-	return removals
 }
 
 func closeUniqueAppenders(appenders []Appender) error {

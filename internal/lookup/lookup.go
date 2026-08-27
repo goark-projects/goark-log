@@ -1,4 +1,4 @@
-package goarklog
+package lookup
 
 import (
 	"fmt"
@@ -12,19 +12,19 @@ import (
 	"goark.dev/log/internal/timepattern"
 )
 
-// LookupFunc 根据键解析配置变量。
-type LookupFunc func(key string) (string, bool)
+// Func 根据键解析配置变量。
+type Func func(key string) (string, bool)
 
-// LookupResolver 负责解析配置中的 ${namespace:key} 变量。
-type LookupResolver struct {
-	lookups map[string]LookupFunc
+// Resolver 负责解析配置中的 ${namespace:key} 变量。
+type Resolver struct {
+	lookups map[string]Func
 	now     func() time.Time
 }
 
-// NewLookupResolver 创建带默认 lookup 的解析器。
-func NewLookupResolver() *LookupResolver {
-	resolver := &LookupResolver{
-		lookups: make(map[string]LookupFunc, 4),
+// NewResolver 创建带默认 lookup 的解析器。
+func NewResolver() *Resolver {
+	resolver := &Resolver{
+		lookups: make(map[string]Func, 4),
 		now:     time.Now,
 	}
 	resolver.Register("env", os.LookupEnv)
@@ -35,7 +35,7 @@ func NewLookupResolver() *LookupResolver {
 }
 
 // Register 注册一个命名 lookup。
-func (r *LookupResolver) Register(namespace string, lookup LookupFunc) {
+func (r *Resolver) Register(namespace string, lookup Func) {
 	if r == nil || lookup == nil {
 		return
 	}
@@ -49,12 +49,13 @@ func (r *LookupResolver) Register(namespace string, lookup LookupFunc) {
 	r.lookups[namespace] = lookup
 }
 
-func (r *LookupResolver) clone() *LookupResolver {
+// Clone 返回当前解析器的独立浅拷贝。
+func (r *Resolver) Clone() *Resolver {
 	if r == nil {
-		return NewLookupResolver()
+		return NewResolver()
 	}
-	copied := &LookupResolver{
-		lookups: make(map[string]LookupFunc, len(r.lookups)),
+	copied := &Resolver{
+		lookups: make(map[string]Func, len(r.lookups)),
 		now:     r.now,
 	}
 	for namespace, lookup := range r.lookups {
@@ -64,12 +65,12 @@ func (r *LookupResolver) clone() *LookupResolver {
 }
 
 // Resolve 替换文本中的配置变量。
-func (r *LookupResolver) Resolve(text string) (string, error) {
+func (r *Resolver) Resolve(text string) (string, error) {
 	if !strings.Contains(text, "${") {
 		return text, nil
 	}
 	if r == nil {
-		r = NewLookupResolver()
+		r = NewResolver()
 	}
 	var builder strings.Builder
 	builder.Grow(len(text))
@@ -99,7 +100,7 @@ func (r *LookupResolver) Resolve(text string) (string, error) {
 	return builder.String(), nil
 }
 
-func (r *LookupResolver) resolveExpr(expr string) (string, error) {
+func (r *Resolver) resolveExpr(expr string) (string, error) {
 	if key, fallback, hasFallback, ok, err := splitPropertyShorthandExpr(expr); ok || err != nil {
 		if err != nil {
 			return "", err
@@ -129,7 +130,7 @@ func (r *LookupResolver) resolveExpr(expr string) (string, error) {
 	return "", fmt.Errorf("goark-log: lookup %q has no value", expr)
 }
 
-func (r *LookupResolver) propertyLookup(key string) (string, bool) {
+func (r *Resolver) propertyLookup(key string) (string, bool) {
 	for _, namespace := range []string{"prop", "property"} {
 		lookup, ok := r.lookups[namespace]
 		if !ok {
@@ -189,7 +190,7 @@ func splitLookupExpr(expr string) (namespace string, key string, fallback string
 	return
 }
 
-func (r *LookupResolver) systemLookup(key string) (string, bool) {
+func (r *Resolver) systemLookup(key string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "pid", "processid", "process-id":
 		return strconv.Itoa(os.Getpid()), true
@@ -208,7 +209,7 @@ func (r *LookupResolver) systemLookup(key string) (string, bool) {
 	}
 }
 
-func (r *LookupResolver) goLookup(key string) (string, bool) {
+func (r *Resolver) goLookup(key string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "version":
 		return runtime.Version(), true
@@ -221,7 +222,7 @@ func (r *LookupResolver) goLookup(key string) (string, bool) {
 	}
 }
 
-func (r *LookupResolver) dateLookup(key string) (string, bool) {
+func (r *Resolver) dateLookup(key string) (string, bool) {
 	if strings.TrimSpace(key) == "" {
 		return "", false
 	}

@@ -1,4 +1,4 @@
-package goarklog
+package logevent
 
 import (
 	"context"
@@ -11,19 +11,23 @@ import (
 	"time"
 
 	"goark.dev/log/internal/callsite"
+	"goark.dev/log/internal/logcontext"
 	"goark.dev/log/internal/logvalue"
 )
 
-const loggerNameKey = "goark.logger"
-
-const defaultLoggerName = "goark"
-
 const (
+	// LoggerNameKey 是 slog 记录中覆盖 logger 名称的内部属性键。
+	LoggerNameKey = "goark.logger"
+	// DefaultLoggerName 是未显式命名时使用的默认 logger 名称。
+	DefaultLoggerName = "goark"
 	// ThrowableAttrKey 是 goark-log 标准异常属性键。
 	ThrowableAttrKey = "goark.throwable"
+	// DefaultThreadName 是事件没有显式逻辑线程名时的默认值。
+	DefaultThreadName = logcontext.DefaultThreadName
 )
 
-func normalizeContext(ctx context.Context) context.Context {
+// NormalizeContext 返回可安全读取的 context。
+func NormalizeContext(ctx context.Context) context.Context {
 	if ctx == nil {
 		return context.Background()
 	}
@@ -38,7 +42,7 @@ type Event struct {
 	Logger       string
 	PC           uintptr
 	Attrs        []slog.Attr
-	Marker       *Marker
+	Marker       *logcontext.Marker
 	Throwable    *Throwable
 	ThreadName   string
 	ContextStack []string
@@ -54,6 +58,11 @@ func (e Event) Attr(key string) (slog.Value, bool) {
 		}
 	}
 	return slog.Value{}, false
+}
+
+// MarkerPointer 返回 marker 的不可变快照指针。
+func MarkerPointer(marker logcontext.Marker) *logcontext.Marker {
+	return logcontext.MarkerPointer(marker)
 }
 
 // Throwable 是 Go error 的异常快照。
@@ -98,7 +107,8 @@ func (t *Throwable) String() string {
 	return t.Message
 }
 
-func throwableStackString(throwable *Throwable) string {
+// ThrowableStackString 返回包含 cause 链的异常栈文本。
+func ThrowableStackString(throwable *Throwable) string {
 	if throwable == nil {
 		return ""
 	}
@@ -136,12 +146,13 @@ func ThrowableWithStackAttr(err error) slog.Attr {
 	return slog.Any(ThrowableAttrKey, NewThrowableWithStack(err))
 }
 
-func throwableFromAttrs(attrs []slog.Attr) *Throwable {
+// ThrowableFromAttrs 从事件属性中提取异常快照。
+func ThrowableFromAttrs(attrs []slog.Attr) *Throwable {
 	for index := len(attrs) - 1; index >= 0; index-- {
 		attr := attrs[index]
 		switch attr.Key {
 		case ThrowableAttrKey, "throwable", "error", "err":
-			if throwable := throwableFromValue(attr.Value); throwable != nil {
+			if throwable := ThrowableFromValue(attr.Value); throwable != nil {
 				return throwable
 			}
 		}
@@ -149,7 +160,8 @@ func throwableFromAttrs(attrs []slog.Attr) *Throwable {
 	return nil
 }
 
-func throwableFromValue(value slog.Value) *Throwable {
+// ThrowableFromValue 把 slog.Value 转成异常快照。
+func ThrowableFromValue(value slog.Value) *Throwable {
 	value = value.Resolve()
 	switch typed := value.Any().(type) {
 	case nil:
@@ -194,46 +206,74 @@ func captureThrowableStack(skip int) []string {
 	return stack
 }
 
-func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
+// AppendContextStackValues 返回追加并清理后的 NDC 栈快照。
+func AppendContextStackValues(dst []string, values ...string) []string {
+	return logcontext.AppendStackValues(dst, values...)
+}
+
+// ContextStackFromAttrs 从事件属性中提取 NDC 栈。
+func ContextStackFromAttrs(attrs []slog.Attr) []string {
+	return logcontext.StackFromAttrs(attrs)
+}
+
+// ContextStackString 把 NDC 栈编码为 pattern 布局使用的字符串。
+func ContextStackString(values []string) string {
+	return logcontext.StackString(values)
+}
+
+// MarkerFromAttrs 从事件属性中提取 marker。
+func MarkerFromAttrs(attrs []slog.Attr) *logcontext.Marker {
+	return logcontext.MarkerFromAttrs(attrs)
+}
+
+// ThreadNameFromAttrs 从事件属性中提取逻辑线程名。
+func ThreadNameFromAttrs(attrs []slog.Attr) string {
+	return logcontext.ThreadNameFromAttrs(attrs)
+}
+
+// New 从 slog.Record 创建事件快照。
+func New(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
 	if logger == "" {
-		logger = defaultLoggerName
+		logger = DefaultLoggerName
 	}
-	contextAttrs := ContextAttrs(ctx)
+	contextAttrs := logcontext.Attrs(ctx)
 	attrs := make([]slog.Attr, 0, len(handlerAttrs)+len(contextAttrs)+record.NumAttrs())
-	attrs = appendAttrs(attrs, nil, handlerAttrs)
-	attrs = appendAttrs(attrs, nil, contextAttrs)
+	attrs = AppendAttrs(attrs, nil, handlerAttrs)
+	attrs = AppendAttrs(attrs, nil, contextAttrs)
 	record.Attrs(func(attr slog.Attr) bool {
-		attrs = appendAttr(attrs, groups, attr)
+		attrs = AppendAttr(attrs, groups, attr)
 		return true
 	})
-	return newEventFromCollected(ctx, logger, record.Time, record.Level, record.Message, record.PC, attrs)
+	return NewFromCollected(ctx, logger, record.Time, record.Level, record.Message, record.PC, attrs)
 }
 
-func newEventFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr, copyAttrs bool) Event {
+// NewFromAttrs 从已给定属性创建事件快照。
+func NewFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr, copyAttrs bool) Event {
 	if logger == "" {
-		logger = defaultLoggerName
+		logger = DefaultLoggerName
 	}
-	contextAttrs := ContextAttrs(ctx)
-	collected := makeEventAttrs(handlerAttrs, contextAttrs, groups, attrs, copyAttrs)
-	return newEventFromCollected(ctx, logger, when, level, message, pc, collected)
+	contextAttrs := logcontext.Attrs(ctx)
+	collected := MakeAttrs(handlerAttrs, contextAttrs, groups, attrs, copyAttrs)
+	return NewFromCollected(ctx, logger, when, level, message, pc, collected)
 }
 
-func newEventFromCollected(ctx context.Context, logger string, when time.Time, level slog.Level, message string, pc uintptr, collected []slog.Attr) Event {
-	marker := markerFromAttrs(collected)
+// NewFromCollected 从已合并属性创建事件快照。
+func NewFromCollected(ctx context.Context, logger string, when time.Time, level slog.Level, message string, pc uintptr, collected []slog.Attr) Event {
+	marker := MarkerFromAttrs(collected)
 	if marker == nil {
-		if contextMarker, ok := ContextMarker(ctx); ok {
-			marker = markerPointer(contextMarker)
+		if contextMarker, ok := logcontext.ContextMarker(ctx); ok {
+			marker = MarkerPointer(contextMarker)
 		}
 	}
-	threadName := threadNameFromAttrs(collected)
+	threadName := ThreadNameFromAttrs(collected)
 	if threadName == "" {
-		threadName = ContextThreadName(ctx)
+		threadName = logcontext.ThreadName(ctx)
 	}
 	if threadName == "" {
-		threadName = defaultThreadName
+		threadName = DefaultThreadName
 	}
-	contextStack := ContextStack(ctx)
-	contextStack = appendContextStackValues(contextStack, contextStackFromAttrs(collected)...)
+	contextStack := logcontext.Stack(ctx)
+	contextStack = AppendContextStackValues(contextStack, ContextStackFromAttrs(collected)...)
 	return Event{
 		Time:         when,
 		Level:        level,
@@ -242,30 +282,32 @@ func newEventFromCollected(ctx context.Context, logger string, when time.Time, l
 		PC:           pc,
 		Attrs:        collected,
 		Marker:       marker,
-		Throwable:    throwableFromAttrs(collected),
+		Throwable:    ThrowableFromAttrs(collected),
 		ThreadName:   threadName,
 		ContextStack: contextStack,
 	}
 }
 
-func makeEventAttrs(handlerAttrs []slog.Attr, contextAttrs []slog.Attr, groups []string, attrs []slog.Attr, copyAttrs bool) []slog.Attr {
+// MakeAttrs 合并 handler、context 和调用方属性。
+func MakeAttrs(handlerAttrs []slog.Attr, contextAttrs []slog.Attr, groups []string, attrs []slog.Attr, copyAttrs bool) []slog.Attr {
 	total := len(handlerAttrs) + len(contextAttrs) + len(attrs)
 	if total == 0 {
 		return nil
 	}
-	if !copyAttrs && len(handlerAttrs) == 0 && len(contextAttrs) == 0 && len(groups) == 0 && attrsCanShare(attrs) {
+	if !copyAttrs && len(handlerAttrs) == 0 && len(contextAttrs) == 0 && len(groups) == 0 && AttrsCanShare(attrs) {
 		return attrs
 	}
 	collected := make([]slog.Attr, 0, total)
-	collected = appendAttrs(collected, nil, handlerAttrs)
-	collected = appendAttrs(collected, nil, contextAttrs)
-	collected = appendAttrs(collected, groups, attrs)
+	collected = AppendAttrs(collected, nil, handlerAttrs)
+	collected = AppendAttrs(collected, nil, contextAttrs)
+	collected = AppendAttrs(collected, groups, attrs)
 	return collected
 }
 
-func attrsCanShare(attrs []slog.Attr) bool {
+// AttrsCanShare 判断属性切片是否可直接复用。
+func AttrsCanShare(attrs []slog.Attr) bool {
 	for _, attr := range attrs {
-		if attr.Key == "" || attr.Key == loggerNameKey {
+		if attr.Key == "" || attr.Key == LoggerNameKey {
 			return false
 		}
 		if attr.Value.Kind() == slog.KindLogValuer {
@@ -275,33 +317,37 @@ func attrsCanShare(attrs []slog.Attr) bool {
 	return true
 }
 
-func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {
+// AppendAttrs 追加并规范化属性。
+func AppendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {
 	for _, attr := range attrs {
-		dst = appendAttr(dst, groups, attr)
+		dst = AppendAttr(dst, groups, attr)
 	}
 	return dst
 }
 
-func appendAttr(dst []slog.Attr, groups []string, attr slog.Attr) []slog.Attr {
-	attr = normalizeAttr(attr)
+// AppendAttr 追加单个属性并应用 group 前缀。
+func AppendAttr(dst []slog.Attr, groups []string, attr slog.Attr) []slog.Attr {
+	attr = NormalizeAttr(attr)
 	if attr.Key == "" {
 		return dst
 	}
-	if attr.Key == loggerNameKey {
+	if attr.Key == LoggerNameKey {
 		return dst
 	}
 	if len(groups) > 0 {
-		attr.Key = groupKey(groups, attr.Key)
+		attr.Key = GroupKey(groups, attr.Key)
 	}
 	return append(dst, attr)
 }
 
-func normalizeAttr(attr slog.Attr) slog.Attr {
+// NormalizeAttr 解析 slog.LogValuer，得到稳定属性值。
+func NormalizeAttr(attr slog.Attr) slog.Attr {
 	attr.Value = attr.Value.Resolve()
 	return attr
 }
 
-func groupKey(groups []string, key string) string {
+// GroupKey 生成 slog group 展平后的属性键。
+func GroupKey(groups []string, key string) string {
 	total := len(key)
 	for _, group := range groups {
 		total += len(group) + 1

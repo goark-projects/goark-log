@@ -1,4 +1,4 @@
-package goarklog
+package layout
 
 import (
 	"bytes"

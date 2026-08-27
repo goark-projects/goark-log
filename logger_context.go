@@ -3,16 +3,48 @@ package goarklog
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
 	"time"
+
+	statuslog "goark.dev/log/internal/status"
 )
 
 const (
 	// DefaultReloadInterval 是 Watch 的默认轮询间隔。
 	DefaultReloadInterval = 5 * time.Second
 )
+
+// StatusEvent 是 goark-log 内部状态事件。
+type StatusEvent = statuslog.Event
+
+// StatusLogger 记录 goark-log 内部配置、重载和写出错误。
+type StatusLogger = statuslog.Logger
+
+// StatusOption 调整 StatusLogger。
+type StatusOption = statuslog.Option
+
+// WithStatusLevel 设置状态日志级别。
+func WithStatusLevel(level slog.Level) StatusOption {
+	return statuslog.WithLevel(level)
+}
+
+// WithStatusWriter 设置状态日志 writer。
+func WithStatusWriter(writer io.Writer) StatusOption {
+	return statuslog.WithWriter(writer)
+}
+
+// WithStatusBufferSize 设置保留的内存状态事件数量。
+func WithStatusBufferSize(size int) StatusOption {
+	return statuslog.WithBufferSize(size)
+}
+
+// NewStatusLogger 创建状态日志器。
+func NewStatusLogger(options ...StatusOption) *StatusLogger {
+	return statuslog.New(options...)
+}
 
 // LoggerContext 管理一个可关闭、可重载的日志运行期。
 type LoggerContext struct {

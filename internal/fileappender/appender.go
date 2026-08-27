@@ -1,4 +1,4 @@
-package goarklog
+package fileappender
 
 import (
 	"bufio"
@@ -12,21 +12,22 @@ import (
 	"strings"
 	"sync"
 
+	internallayout "goark.dev/log/internal/layout"
+	"goark.dev/log/internal/logevent"
 	"goark.dev/log/internal/logfile"
 )
-
-// Appender 是日志事件的最终写出端。
-type Appender interface {
-	Name() string
-	Append(ctx context.Context, event Event) error
-	Close() error
-}
 
 var bufferPool = sync.Pool{
 	New: func() any {
 		return new(bytes.Buffer)
 	},
 }
+
+// Event 是文件输出端处理的事件快照。
+type Event = logevent.Event
+
+// Layout 是文件输出端依赖的布局接口。
+type Layout = internallayout.Layout
 
 // ConsoleAppender 把日志写入 stdout、stderr 或自定义 writer。
 type ConsoleAppender struct {
@@ -67,7 +68,7 @@ func NewConsoleAppender(options ...ConsoleOption) *ConsoleAppender {
 	appender := &ConsoleAppender{
 		name:   "console",
 		writer: os.Stderr,
-		layout: NewDefaultLayout(),
+		layout: internallayout.NewDefaultLayout(),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -78,7 +79,7 @@ func NewConsoleAppender(options ...ConsoleOption) *ConsoleAppender {
 		appender.writer = os.Stderr
 	}
 	if appender.layout == nil {
-		appender.layout = NewDefaultLayout()
+		appender.layout = internallayout.NewDefaultLayout()
 	}
 	return appender
 }
@@ -94,7 +95,7 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: console appender is nil")
 	}
-	ctx = normalizeContext(ctx)
+	ctx = logevent.NormalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 		return fmt.Errorf("goark-log: console appender %q is closed", a.Name())
 	}
 	if !a.started {
-		if _, err := writeLayoutHeader(a.writer, a.layout); err != nil {
+		if _, err := internallayout.WriteHeader(a.writer, a.layout); err != nil {
 			return err
 		}
 		a.started = true
@@ -132,7 +133,7 @@ func (a *ConsoleAppender) Close() error {
 	if !a.started {
 		return nil
 	}
-	_, err := writeLayoutFooter(a.writer, a.layout)
+	_, err := internallayout.WriteFooter(a.writer, a.layout)
 	return err
 }
 
@@ -220,7 +221,7 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 	appender := &FileAppender{
 		name:        "file",
 		path:        cleanPath,
-		layout:      NewDefaultLayout(),
+		layout:      internallayout.NewDefaultLayout(),
 		bufferSize:  DefaultFileBufferSize,
 		append:      true,
 		permissions: logfile.DefaultPermissions,
@@ -234,7 +235,7 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 		return nil, fmt.Errorf("goark-log: file appender name is empty")
 	}
 	if appender.layout == nil {
-		appender.layout = NewDefaultLayout()
+		appender.layout = internallayout.NewDefaultLayout()
 	}
 	if appender.bufferSize < 0 {
 		return nil, fmt.Errorf("goark-log: file buffer size must be >= 0")
@@ -257,11 +258,19 @@ func (a *FileAppender) Name() string {
 	return a.name
 }
 
+// Layout 返回当前文件 appender 使用的布局。
+func (a *FileAppender) Layout() Layout {
+	if a == nil {
+		return nil
+	}
+	return a.layout
+}
+
 func (a *FileAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: file appender is nil")
 	}
-	ctx = normalizeContext(ctx)
+	ctx = logevent.NormalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -367,7 +376,7 @@ func (a *FileAppender) writeHeaderLocked() (int, error) {
 	if writer == nil {
 		return 0, nil
 	}
-	return writeLayoutHeader(writer, a.layout)
+	return internallayout.WriteHeader(writer, a.layout)
 }
 
 func (a *FileAppender) writeFooterLocked() (int, error) {
@@ -375,7 +384,7 @@ func (a *FileAppender) writeFooterLocked() (int, error) {
 	if writer == nil {
 		return 0, nil
 	}
-	return writeLayoutFooter(writer, a.layout)
+	return internallayout.WriteFooter(writer, a.layout)
 }
 
 func (a *FileAppender) outputWriterLocked() io.Writer {

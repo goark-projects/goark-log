@@ -1,4 +1,4 @@
-package goarklog
+package layout
 
 import (
 	"bytes"
@@ -98,6 +98,14 @@ func (l *PatternLayout) Format(buf *bytes.Buffer, event Event) error {
 		appendPatternToken(buf, token, event, &caller, l.options)
 	}
 	return nil
+}
+
+// Options 返回布局输出参数快照。
+func (l *PatternLayout) Options() LayoutOptions {
+	if l == nil {
+		return LayoutOptions{}
+	}
+	return l.options
 }
 
 func compilePattern(pattern string, options LayoutOptions) ([]patternToken, error) {

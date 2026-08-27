@@ -1,4 +1,4 @@
-package goarklog
+package layout
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 
 	"goark.dev/log/internal/callsite"
 	"goark.dev/log/internal/layoutsupport"
+	configlevel "goark.dev/log/internal/level"
+	"goark.dev/log/internal/logevent"
 	"goark.dev/log/internal/logvalue"
 	"goark.dev/log/internal/timepattern"
 )
@@ -140,7 +142,7 @@ func patternTokenString(token patternToken, event Event, caller *callsite.Cache,
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)
 		}
-		return logvalue.ApplyANSIStyle(formatChildPattern(token.child, event), logvalue.HighlightStyle(event.Level, LevelFatal))
+		return logvalue.ApplyANSIStyle(formatChildPattern(token.child, event), logvalue.HighlightStyle(event.Level, configlevel.Fatal))
 	case tokenStyle:
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)
@@ -305,7 +307,7 @@ func eventErrorStringWithOption(event Event, option string) string {
 	if event.Throwable != nil {
 		return throwableStringWithPatternOption(event.Throwable, option)
 	}
-	if throwable := throwableFromAttrs(event.Attrs); throwable != nil {
+	if throwable := logevent.ThrowableFromAttrs(event.Attrs); throwable != nil {
 		return throwableStringWithPatternOption(throwable, option)
 	}
 	for _, key := range []string{"error", "err"} {
@@ -327,7 +329,7 @@ func throwableStringWithPatternOption(throwable *Throwable, option string) strin
 	case "short":
 		return throwable.Message
 	case "full":
-		return throwableStackString(throwable)
+		return logevent.ThrowableStackString(throwable)
 	default:
 		return throwable.String()
 	}

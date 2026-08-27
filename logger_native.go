@@ -7,9 +7,68 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	logmessage "goark.dev/log/internal/message"
 )
 
 const logBuilderInlineAttrs = 8
+
+const (
+	// StructuredDataIDAttrKey 是结构化消息 ID 的标准属性键。
+	StructuredDataIDAttrKey = logmessage.StructuredDataIDAttrKey
+	// StructuredDataTypeAttrKey 是结构化消息类型的标准属性键。
+	StructuredDataTypeAttrKey = logmessage.StructuredDataTypeAttrKey
+)
+
+// Message 表示可被日志事件快照化的消息对象。
+type Message = logmessage.Message
+
+// AttributedMessage 表示会同时贡献结构化属性的消息对象。
+type AttributedMessage = logmessage.AttributedMessage
+
+// MessageFactory 创建日志消息对象。
+type MessageFactory = logmessage.MessageFactory
+
+// MessageFactoryFunc 把函数适配为 MessageFactory。
+type MessageFactoryFunc = logmessage.MessageFactoryFunc
+
+// ParameterizedMessageFactory 创建 {} 占位符参数化消息。
+type ParameterizedMessageFactory = logmessage.ParameterizedMessageFactory
+
+// SimpleMessageFactory 忽略参数并创建普通字符串消息。
+type SimpleMessageFactory = logmessage.SimpleMessageFactory
+
+// SimpleMessage 是不可变字符串消息。
+type SimpleMessage = logmessage.SimpleMessage
+
+// ParameterizedMessage 使用 {} 占位符格式化消息。
+type ParameterizedMessage = logmessage.ParameterizedMessage
+
+// MapMessage 用属性集合表达消息，适合结构化日志。
+type MapMessage = logmessage.MapMessage
+
+// StructuredDataMessage 表示 RFC5424 风格的结构化消息。
+type StructuredDataMessage = logmessage.StructuredDataMessage
+
+// NewSimpleMessage 创建字符串消息。
+func NewSimpleMessage(text string) SimpleMessage {
+	return logmessage.NewSimpleMessage(text)
+}
+
+// NewParameterizedMessage 创建参数化消息，参数会被快照复制。
+func NewParameterizedMessage(pattern string, args ...any) ParameterizedMessage {
+	return logmessage.NewParameterizedMessage(pattern, args...)
+}
+
+// NewMapMessage 创建结构化属性消息。
+func NewMapMessage(attrs ...slog.Attr) MapMessage {
+	return logmessage.NewMapMessage(attrs...)
+}
+
+// NewStructuredDataMessage 创建结构化数据消息。
+func NewStructuredDataMessage(id string, msgType string, message string, attrs ...slog.Attr) StructuredDataMessage {
+	return logmessage.NewStructuredDataMessage(id, msgType, message, attrs...)
+}
 
 // Logger 是 goark-log 的低分配原生日志入口。
 type Logger struct {

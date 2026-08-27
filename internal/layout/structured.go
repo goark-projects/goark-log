@@ -1,4 +1,4 @@
-package goarklog
+package layout
 
 import (
 	"bytes"
@@ -45,6 +45,11 @@ func (l JSONLayout) AppendFooter(buf *bytes.Buffer) error {
 	return nil
 }
 
+// Options 返回布局输出参数快照。
+func (l JSONLayout) Options() LayoutOptions {
+	return l.options
+}
+
 type jsonLayoutState struct {
 	events atomic.Uint64
 }
@@ -87,7 +92,8 @@ func appendJSONCompleteFooter(buf *bytes.Buffer, options LayoutOptions) {
 	buf.WriteString(footer)
 }
 
-func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
+// AppendJSONEvent 用零额外状态编码 JSON 单行事件。
+func AppendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
 	buf.WriteByte('{')
 	logvalue.AppendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
 	logvalue.AppendJSONFieldString(buf, "level", levelName(level), true)
@@ -124,7 +130,8 @@ func appendJSONLayoutEvent(buf *bytes.Buffer, event Event, options LayoutOptions
 	appendLayoutTerminator(buf, options)
 }
 
-func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
+// AppendJSONFixedEvent 编码最多三个属性的固定数组事件，避免热路径切片分配。
+func AppendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
 	buf.WriteByte('{')
 	logvalue.AppendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
 	logvalue.AppendJSONFieldString(buf, "level", levelName(level), true)

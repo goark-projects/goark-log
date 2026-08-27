@@ -2,419 +2,155 @@ package goarklog
 
 import (
 	"bytes"
-	"html"
 	"io"
 	"log/slog"
-	"os"
-	"strconv"
-	"strings"
-	"sync/atomic"
 	"time"
 
-	"goark.dev/log/internal/layoutsupport"
-	"goark.dev/log/internal/logvalue"
-	"goark.dev/log/internal/textutil"
-	"goark.dev/log/internal/timepattern"
+	internallayout "goark.dev/log/internal/layout"
 )
 
 const (
 	// DefaultSpringBootPattern 是默认控制台输出格式，风格对齐 Spring Boot。
-	DefaultSpringBootPattern = "%d %5level %pid --- [%thread] %logger : %msg%attrs%n"
-	defaultTimeFormat        = timepattern.DefaultLayout
+	DefaultSpringBootPattern = internallayout.DefaultSpringBootPattern
 )
 
-var processIDString = strconv.Itoa(os.Getpid())
-var patternSequence atomic.Uint64
-var patternStartTime = time.Now()
-
 // Layout 把日志事件编码为字节。
-type Layout interface {
-	Format(buf *bytes.Buffer, event Event) error
-}
+type Layout = internallayout.Layout
 
 // LayoutOptions 描述通用结构化布局参数。
-type LayoutOptions struct {
-	// Compact 禁用默认事件换行，适合由上层协议自行分隔事件的场景。
-	Compact bool
-	// EventEOL 在 Compact 模式下仍然为每个事件追加换行。
-	EventEOL bool
-	// Complete 启用布局页眉和页脚输出，由 appender 在流生命周期内写一次。
-	Complete bool
-	// IncludeStacktrace 在支持异常结构的布局中输出完整异常结构。
-	IncludeStacktrace bool
-	// StacktraceAsString 将异常栈输出为字符串，便于兼容文本型采集器。
-	StacktraceAsString bool
-	// PropertiesAsList 将上下文属性输出为键值列表。
-	PropertiesAsList bool
-	// IncludeNullDelimiter 在事件结束后追加 NUL 字节，用于 GELF 等协议分隔。
-	IncludeNullDelimiter bool
-	// DisableANSI 禁用 PatternLayout 中 highlight/style 转换器的 ANSI SGR 输出。
-	DisableANSI bool
-	// Header 是 Complete 模式下流打开时写入的页眉。
-	Header string
-	// Footer 是 Complete 模式下流关闭时写入的页脚。
-	Footer string
-}
+type LayoutOptions = internallayout.LayoutOptions
 
-type lifecycleLayout interface {
-	AppendHeader(buf *bytes.Buffer) error
-	AppendFooter(buf *bytes.Buffer) error
-}
+// TextLayout 输出稳定的 key=value 文本。
+type TextLayout = internallayout.TextLayout
+
+// CSVLayout 输出单行 CSV，字段顺序固定。
+type CSVLayout = internallayout.CSVLayout
+
+// HTMLLayout 输出 HTML 表格行，适合文件或控制台片段组合。
+type HTMLLayout = internallayout.HTMLLayout
+
+// GELFLayout 输出 Graylog Extended Log Format 单行 JSON。
+type GELFLayout = internallayout.GELFLayout
+
+// RFC5424Layout 输出 RFC 5424 syslog 单行事件。
+type RFC5424Layout = internallayout.RFC5424Layout
+
+// SyslogLayout 是 RFC5424Layout 的语义别名。
+type SyslogLayout = internallayout.SyslogLayout
+
+// JSONLayout 输出 JSON 事件。
+type JSONLayout = internallayout.JSONLayout
+
+// XMLLayout 输出单事件 XML 片段。
+type XMLLayout = internallayout.XMLLayout
+
+// YAMLLayout 输出单事件 YAML 文档。
+type YAMLLayout = internallayout.YAMLLayout
+
+// PatternLayout 支持常用日志 pattern 占位符。
+type PatternLayout = internallayout.PatternLayout
+
+// JSONTemplateLayout 按 JSON 事件模板输出日志事件。
+type JSONTemplateLayout = internallayout.JSONTemplateLayout
+
+// JSONTemplateLayoutOption 调整 JSONTemplateLayout 编译行为。
+type JSONTemplateLayoutOption = internallayout.JSONTemplateLayoutOption
+
+// JSONTemplateResolver 是 JSON Template 字段值编码器。
+type JSONTemplateResolver = internallayout.JSONTemplateResolver
+
+// JSONTemplateResolverFactory 从配置构建 JSON Template resolver。
+type JSONTemplateResolverFactory = internallayout.JSONTemplateResolverFactory
+
+// JSONTemplateResolverBuildConfig 是 JSON Template resolver 插件的构建输入。
+type JSONTemplateResolverBuildConfig = internallayout.JSONTemplateResolverBuildConfig
 
 // NewDefaultLayout 创建默认 Spring Boot 风格布局。
 func NewDefaultLayout() Layout {
-	layout, _ := NewPatternLayout(DefaultSpringBootPattern)
-	return layout
-}
-
-// TextLayout 输出稳定的 key=value 文本。
-type TextLayout struct{}
-
-func (TextLayout) Format(buf *bytes.Buffer, event Event) error {
-	logvalue.AppendKey(buf, "time")
-	buf.Write(event.Time.AppendFormat(buf.AvailableBuffer(), defaultTimeFormat))
-	logvalue.AppendKeyValue(buf, "level", levelName(event.Level))
-	logvalue.AppendKeyValue(buf, "logger", event.Logger)
-	logvalue.AppendKeyValue(buf, "msg", event.Message)
-	for _, attr := range event.Attrs {
-		logvalue.AppendKeyValueAttr(buf, attr.Key, attr.Value)
-	}
-	buf.WriteByte('\n')
-	return nil
-}
-
-// CSVLayout 输出单行 CSV，字段顺序固定。
-type CSVLayout struct {
-	options LayoutOptions
+	return internallayout.NewDefaultLayout()
 }
 
 // NewCSVLayout 创建可配置 CSV 布局。
 func NewCSVLayout(options LayoutOptions) CSVLayout {
-	return CSVLayout{options: options}
-}
-
-// Format 把事件编码为 CSV。
-func (l CSVLayout) Format(buf *bytes.Buffer, event Event) error {
-	appendCSVField(buf, layoutsupport.EventTime(event.Time).Format(defaultTimeFormat), false)
-	appendCSVField(buf, levelName(event.Level), true)
-	appendCSVField(buf, event.Logger, true)
-	appendCSVField(buf, eventThreadName(event), true)
-	appendCSVField(buf, event.Message, true)
-	if len(event.Attrs) == 0 {
-		appendLayoutTerminator(buf, l.options)
-		return nil
-	}
-	var attrs bytes.Buffer
-	logvalue.AppendPatternAttrs(&attrs, event.Attrs)
-	appendCSVField(buf, attrs.String(), true)
-	appendLayoutTerminator(buf, l.options)
-	return nil
-}
-
-func (l CSVLayout) AppendHeader(buf *bytes.Buffer) error {
-	appendLayoutHeader(buf, l.options)
-	return nil
-}
-
-func (l CSVLayout) AppendFooter(buf *bytes.Buffer) error {
-	appendLayoutFooter(buf, l.options)
-	return nil
-}
-
-func appendCSVField(buf *bytes.Buffer, value string, comma bool) {
-	if comma {
-		buf.WriteByte(',')
-	}
-	if !csvNeedsQuote(value) {
-		buf.WriteString(value)
-		return
-	}
-	buf.WriteByte('"')
-	for _, r := range value {
-		if r == '"' {
-			buf.WriteString(`""`)
-			continue
-		}
-		buf.WriteRune(r)
-	}
-	buf.WriteByte('"')
-}
-
-func csvNeedsQuote(value string) bool {
-	for _, r := range value {
-		switch r {
-		case ',', '"', '\r', '\n':
-			return true
-		}
-	}
-	return value == ""
-}
-
-// HTMLLayout 输出 HTML 表格行，适合文件或控制台片段组合。
-type HTMLLayout struct {
-	options LayoutOptions
+	return internallayout.NewCSVLayout(options)
 }
 
 // NewHTMLLayout 创建可配置 HTML 布局。
 func NewHTMLLayout(options LayoutOptions) HTMLLayout {
-	return HTMLLayout{options: options}
-}
-
-// Format 把事件编码为 HTML 表格行。
-func (l HTMLLayout) Format(buf *bytes.Buffer, event Event) error {
-	buf.WriteString("<tr>")
-	appendHTMLCell(buf, layoutsupport.EventTime(event.Time).Format(defaultTimeFormat))
-	appendHTMLCell(buf, levelName(event.Level))
-	appendHTMLCell(buf, event.Logger)
-	appendHTMLCell(buf, eventThreadName(event))
-	appendHTMLCell(buf, event.Message)
-	if len(event.Attrs) > 0 {
-		var attrs bytes.Buffer
-		logvalue.AppendPatternAttrs(&attrs, event.Attrs)
-		appendHTMLCell(buf, attrs.String())
-	} else {
-		appendHTMLCell(buf, "")
-	}
-	buf.WriteString("</tr>")
-	appendLayoutTerminator(buf, l.options)
-	return nil
-}
-
-func (l HTMLLayout) AppendHeader(buf *bytes.Buffer) error {
-	appendLayoutHeader(buf, l.options)
-	return nil
-}
-
-func (l HTMLLayout) AppendFooter(buf *bytes.Buffer) error {
-	appendLayoutFooter(buf, l.options)
-	return nil
-}
-
-func appendHTMLCell(buf *bytes.Buffer, value string) {
-	buf.WriteString("<td>")
-	buf.WriteString(html.EscapeString(value))
-	buf.WriteString("</td>")
-}
-
-// GELFLayout 输出 Graylog Extended Log Format 单行 JSON。
-type GELFLayout struct {
-	options LayoutOptions
+	return internallayout.NewHTMLLayout(options)
 }
 
 // NewGELFLayout 创建可配置 GELF 布局。
 func NewGELFLayout(options LayoutOptions) GELFLayout {
-	return GELFLayout{options: options}
+	return internallayout.NewGELFLayout(options)
 }
 
-// Format 把事件编码为 GELF JSON。
-func (l GELFLayout) Format(buf *bytes.Buffer, event Event) error {
-	when := layoutsupport.EventTime(event.Time)
-	buf.WriteByte('{')
-	logvalue.AppendJSONFieldString(buf, "version", "1.1", false)
-	logvalue.AppendJSONFieldString(buf, "host", layoutsupport.HostName(), true)
-	logvalue.AppendJSONFieldString(buf, "short_message", event.Message, true)
-	if thrown := gelfThrowableString(event, l.options); thrown != "" {
-		logvalue.AppendJSONFieldString(buf, "full_message", thrown, true)
-	}
-	logvalue.AppendJSONKey(buf, "timestamp", true)
-	buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), float64(when.UnixNano())/1e9, 'f', 6, 64))
-	logvalue.AppendJSONKey(buf, "level", true)
-	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(syslogSeverity(event.Level)), 10))
-	logvalue.AppendJSONFieldString(buf, "_logger", event.Logger, true)
-	logvalue.AppendJSONFieldString(buf, "_thread", eventThreadName(event), true)
-	if marker := eventMarkerString(event); marker != "" {
-		logvalue.AppendJSONFieldString(buf, "_marker", marker, true)
-	}
-	for _, attr := range event.Attrs {
-		key := gelfAdditionalFieldKey(attr.Key)
-		if key == "" {
-			continue
-		}
-		logvalue.AppendJSONFieldValue(buf, key, attr.Value, true)
-	}
-	buf.WriteByte('}')
-	appendLayoutTerminator(buf, l.options)
-	return nil
+// NewJSONLayout 创建可配置 JSON 布局。
+func NewJSONLayout(options LayoutOptions) JSONLayout {
+	return internallayout.NewJSONLayout(options)
 }
 
-func (l GELFLayout) AppendHeader(buf *bytes.Buffer) error {
-	appendLayoutHeader(buf, l.options)
-	return nil
+// NewXMLLayout 创建可配置 XML 布局。
+func NewXMLLayout(options LayoutOptions) XMLLayout {
+	return internallayout.NewXMLLayout(options)
 }
 
-func (l GELFLayout) AppendFooter(buf *bytes.Buffer) error {
-	appendLayoutFooter(buf, l.options)
-	return nil
+// NewYAMLLayout 创建可配置 YAML 布局。
+func NewYAMLLayout(options LayoutOptions) YAMLLayout {
+	return internallayout.NewYAMLLayout(options)
 }
 
-func gelfThrowableString(event Event, options LayoutOptions) string {
-	if event.Throwable == nil {
-		return eventErrorString(event)
-	}
-	if options.StacktraceAsString || options.IncludeStacktrace {
-		return throwableStackString(event.Throwable)
-	}
-	return event.Throwable.String()
+// NewPatternLayout 编译 pattern，避免热路径反复解析。
+func NewPatternLayout(pattern string) (*PatternLayout, error) {
+	return internallayout.NewPatternLayout(pattern)
 }
 
-func gelfAdditionalFieldKey(key string) string {
-	key = strings.TrimSpace(key)
-	if key == "" || key == "id" || strings.HasPrefix(key, "_") {
-		return ""
-	}
-	return "_" + key
+// NewPatternLayoutWithOptions 使用指定布局参数编译 pattern。
+func NewPatternLayoutWithOptions(pattern string, options LayoutOptions) (*PatternLayout, error) {
+	return internallayout.NewPatternLayoutWithOptions(pattern, options)
 }
 
-// RFC5424Layout 输出 RFC 5424 syslog 单行事件。
-type RFC5424Layout struct {
-	Facility  int
-	AppName   string
-	MessageID string
+// WithJSONTemplateResolverRegistry 设置用于解析自定义 resolver 的插件注册表。
+func WithJSONTemplateResolverRegistry(registry *PluginRegistry) JSONTemplateLayoutOption {
+	if registry == nil {
+		registry = DefaultPluginRegistry()
+	}
+	return internallayout.WithJSONTemplateResolverLookup(registry.jsonTemplateResolverFactory)
 }
 
-// SyslogLayout 是 RFC5424Layout 的语义别名。
-type SyslogLayout = RFC5424Layout
-
-// Format 把事件编码为 RFC 5424 syslog。
-func (l RFC5424Layout) Format(buf *bytes.Buffer, event Event) error {
-	priority := syslogPriority(l.Facility, event.Level)
-	buf.WriteByte('<')
-	buf.Write(strconv.AppendInt(buf.AvailableBuffer(), int64(priority), 10))
-	buf.WriteString(">1 ")
-	buf.WriteString(layoutsupport.EventTime(event.Time).UTC().Format(time.RFC3339Nano))
-	buf.WriteByte(' ')
-	appendSyslogToken(buf, layoutsupport.HostName())
-	buf.WriteByte(' ')
-	appendSyslogToken(buf, textutil.FirstNonBlank(l.AppName, event.Logger, "goark"))
-	buf.WriteByte(' ')
-	appendSyslogToken(buf, processIDString)
-	buf.WriteByte(' ')
-	appendSyslogToken(buf, textutil.FirstNonBlank(l.MessageID, "-"))
-	buf.WriteByte(' ')
-	appendStructuredData(buf, event)
-	buf.WriteByte(' ')
-	buf.WriteString(event.Message)
-	buf.WriteByte('\n')
-	return nil
+// WithJSONTemplateLayoutOptions 设置 JSON Template 布局的通用输出参数。
+func WithJSONTemplateLayoutOptions(layoutOptions LayoutOptions) JSONTemplateLayoutOption {
+	return internallayout.WithJSONTemplateLayoutOptions(layoutOptions)
 }
 
-func syslogPriority(facility int, level slog.Level) int {
-	if facility <= 0 || facility > 23 {
-		facility = 1
-	}
-	return facility*8 + syslogSeverity(level)
+// NewJSONTemplateLayout 从 JSON 事件模板编译布局。
+func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
+	return internallayout.NewJSONTemplateLayout(template, jsonTemplateLayoutOptions(options...)...)
 }
 
-func syslogSeverity(level slog.Level) int {
-	switch {
-	case level >= slog.LevelError:
-		return 3
-	case level >= slog.LevelWarn:
-		return 4
-	case level >= slog.LevelInfo:
-		return 6
-	default:
-		return 7
-	}
+// NewJSONTemplateLayoutFromFile 从本地文件编译 JSON 事件模板。
+func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
+	return internallayout.NewJSONTemplateLayoutFromFile(path, jsonTemplateLayoutOptions(options...)...)
 }
 
-func appendSyslogToken(buf *bytes.Buffer, value string) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		buf.WriteByte('-')
-		return
-	}
-	for _, r := range value {
-		if r <= ' ' || r == ']' || r == '"' {
-			buf.WriteByte('_')
-			continue
-		}
-		buf.WriteRune(r)
-	}
+func jsonTemplateLayoutOptions(options ...JSONTemplateLayoutOption) []JSONTemplateLayoutOption {
+	merged := make([]JSONTemplateLayoutOption, 0, len(options)+1)
+	merged = append(merged, WithJSONTemplateResolverRegistry(DefaultPluginRegistry()))
+	return append(merged, options...)
 }
 
-func appendStructuredData(buf *bytes.Buffer, event Event) {
-	if len(event.Attrs) == 0 {
-		buf.WriteByte('-')
-		return
-	}
-	buf.WriteString("[goark@32473")
-	for _, attr := range event.Attrs {
-		if strings.TrimSpace(attr.Key) == "" {
-			continue
-		}
-		buf.WriteByte(' ')
-		buf.WriteString(attr.Key)
-		buf.WriteString("=\"")
-		appendStructuredDataValue(buf, logvalue.String(attr.Value))
-		buf.WriteByte('"')
-	}
-	buf.WriteByte(']')
+func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
+	internallayout.AppendJSONEvent(buf, when, level, logger, message, attrs)
 }
 
-func appendStructuredDataValue(buf *bytes.Buffer, value string) {
-	for _, r := range value {
-		switch r {
-		case '"', '\\', ']':
-			buf.WriteByte('\\')
-			buf.WriteRune(r)
-		default:
-			buf.WriteRune(r)
-		}
-	}
-}
-
-func appendLayoutHeader(buf *bytes.Buffer, options LayoutOptions) {
-	if options.Complete && strings.TrimSpace(options.Header) != "" {
-		buf.WriteString(options.Header)
-	}
-}
-
-func appendLayoutFooter(buf *bytes.Buffer, options LayoutOptions) {
-	if options.Complete && strings.TrimSpace(options.Footer) != "" {
-		buf.WriteString(options.Footer)
-	}
-}
-
-func appendLayoutTerminator(buf *bytes.Buffer, options LayoutOptions) {
-	if options.EventEOL || !options.Compact {
-		buf.WriteByte('\n')
-	}
-	if options.IncludeNullDelimiter {
-		buf.WriteByte(0)
-	}
+func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
+	internallayout.AppendJSONFixedEvent(buf, when, level, logger, message, attrs, count)
 }
 
 func writeLayoutHeader(writer io.Writer, layout Layout) (int, error) {
-	lifecycle, ok := layout.(lifecycleLayout)
-	if !ok {
-		return 0, nil
-	}
-	buf := bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer releaseBuffer(buf)
-	if err := lifecycle.AppendHeader(buf); err != nil {
-		return 0, err
-	}
-	if buf.Len() == 0 {
-		return 0, nil
-	}
-	return writer.Write(buf.Bytes())
+	return internallayout.WriteHeader(writer, layout)
 }
 
 func writeLayoutFooter(writer io.Writer, layout Layout) (int, error) {
-	lifecycle, ok := layout.(lifecycleLayout)
-	if !ok {
-		return 0, nil
-	}
-	buf := bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer releaseBuffer(buf)
-	if err := lifecycle.AppendFooter(buf); err != nil {
-		return 0, err
-	}
-	if buf.Len() == 0 {
-		return 0, nil
-	}
-	return writer.Write(buf.Bytes())
+	return internallayout.WriteFooter(writer, layout)
 }

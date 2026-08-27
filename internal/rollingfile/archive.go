@@ -1,4 +1,4 @@
-package goarklog
+package rollingfile
 
 import (
 	"errors"

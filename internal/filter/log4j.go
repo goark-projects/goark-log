@@ -1,4 +1,4 @@
-package goarklog
+package filter
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"goark.dev/log/internal/logevent"
 	"goark.dev/log/internal/logvalue"
 )
 
@@ -29,7 +30,7 @@ type CompositeFilter struct {
 
 // NewCompositeFilter 创建组合过滤器。
 func NewCompositeFilter(filters ...Filter) (*CompositeFilter, error) {
-	chain, err := normalizeFilters("composite", filters)
+	chain, err := Normalize("composite", filters)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +41,7 @@ func (f *CompositeFilter) Decide(ctx context.Context, event Event) FilterDecisio
 	if f == nil {
 		return FilterNeutral
 	}
-	return applyFilters(ctx, f.filters, event)
+	return Apply(ctx, f.filters, event)
 }
 
 // AttrFilter 按属性键和值过滤日志事件。
@@ -56,7 +57,7 @@ func NewAttrFilter(key string, value string, options ...FilterOption) (*AttrFilt
 	if key == "" {
 		return nil, fmt.Errorf("goark-log: attr filter key is empty")
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &AttrFilter{
 		key:     key,
 		value:   value,
@@ -84,7 +85,7 @@ func NewStringMatchFilter(text string, options ...FilterOption) (*StringMatchFil
 	if text == "" {
 		return nil, fmt.Errorf("goark-log: string match filter text is empty")
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &StringMatchFilter{text: text, outcome: settings.outcome}, nil
 }
 
@@ -103,7 +104,7 @@ type ThresholdFilter struct {
 
 // NewThresholdFilter 创建按级别下限过滤的过滤器。
 func NewThresholdFilter(level slog.Level, options ...FilterOption) *ThresholdFilter {
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &ThresholdFilter{level: level, outcome: settings.outcome}
 }
 
@@ -122,7 +123,7 @@ type LevelFilter struct {
 
 // NewLevelFilter 创建按单个级别匹配的过滤器。
 func NewLevelFilter(level slog.Level, options ...FilterOption) *LevelFilter {
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &LevelFilter{level: level, outcome: settings.outcome}
 }
 
@@ -145,7 +146,7 @@ func NewLevelRangeFilter(min slog.Level, max slog.Level, options ...FilterOption
 	if min > max {
 		return nil, fmt.Errorf("goark-log: filter level range min must be <= max")
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &LevelRangeFilter{min: min, max: max, outcome: settings.outcome}, nil
 }
 
@@ -168,7 +169,7 @@ func NewMarkerFilter(name string, options ...FilterOption) (*MarkerFilter, error
 	if name == "" {
 		return nil, fmt.Errorf("goark-log: marker filter name is empty")
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &MarkerFilter{name: name, outcome: settings.outcome}, nil
 }
 
@@ -186,7 +187,7 @@ type NoMarkerFilter struct {
 
 // NewNoMarkerFilter 创建无 marker 过滤器。
 func NewNoMarkerFilter(options ...FilterOption) *NoMarkerFilter {
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &NoMarkerFilter{outcome: settings.outcome}
 }
 
@@ -209,7 +210,7 @@ func NewThreadContextStackFilter(value string, options ...FilterOption) (*Thread
 	if value == "" {
 		return nil, fmt.Errorf("goark-log: thread context stack filter value is empty")
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &ThreadContextStackFilter{value: value, outcome: settings.outcome}, nil
 }
 
@@ -242,7 +243,7 @@ func NewThrowableFilter(pattern string, options ...FilterOption) (*ThrowableFilt
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: throwable filter pattern %q is invalid: %w", pattern, err)
 	}
-	settings := newFilterSettings(FilterNeutral, FilterDeny, options...)
+	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &ThrowableFilter{pattern: compiled, outcome: settings.outcome}, nil
 }
 
@@ -251,7 +252,7 @@ func (f *ThrowableFilter) Decide(_ context.Context, event Event) FilterDecision 
 	if f == nil {
 		return FilterNeutral
 	}
-	return f.outcome.decide(f.pattern.MatchString(eventErrorString(event)))
+	return f.outcome.decide(f.pattern.MatchString(errorString(event)))
 }
 
 // StructuredDataFilter 是面向结构化属性的 MapFilter 别名。
@@ -266,4 +267,20 @@ func NewStructuredDataFilter(values map[string]string, options ...MapFilterOptio
 		return nil, err
 	}
 	return &StructuredDataFilter{MapFilter: filter}, nil
+}
+
+func errorString(event Event) string {
+	if event.Throwable != nil {
+		return event.Throwable.String()
+	}
+	if throwable := logevent.ThrowableFromAttrs(event.Attrs); throwable != nil {
+		return throwable.String()
+	}
+	for _, key := range []string{"error", "err"} {
+		value, ok := event.Attr(key)
+		if ok {
+			return logvalue.String(value)
+		}
+	}
+	return ""
 }
