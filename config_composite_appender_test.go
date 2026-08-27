@@ -99,6 +99,123 @@ root:
 	}
 }
 
+func TestNewConfigured_whenCompositeAppenderHasFilter_shouldApplyBeforeDelegation(t *testing.T) {
+	tests := []struct {
+		name     string
+		register func(*PluginRegistry, *testing.T)
+		config   func(string) string
+	}{
+		{
+			name: "failover",
+			register: func(registry *PluginRegistry, t *testing.T) {
+				t.Helper()
+				if err := registry.RegisterAppender("failing", func(config AppenderBuildConfig) (Appender, error) {
+					return failingAppender{name: config.Name}, nil
+				}); err != nil {
+					t.Fatalf("RegisterAppender() error = %v", err)
+				}
+			},
+			config: func(logPath string) string {
+				return fmt.Sprintf(`
+filters:
+  deny-all:
+    type: deny
+appenders:
+  primary:
+    type: failing
+  file:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+  guarded:
+    type: failover
+    primary: primary
+    failovers: [file]
+    filters: [deny-all]
+root:
+  level: info
+  appenderRefs: [guarded]
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name: "routing",
+			config: func(logPath string) string {
+				return fmt.Sprintf(`
+filters:
+  deny-all:
+    type: deny
+appenders:
+  file:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+  guarded:
+    type: routing
+    defaultRoute: file
+    filters: [deny-all]
+root:
+  level: info
+  appenderRefs: [guarded]
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name: "rewrite",
+			config: func(logPath string) string {
+				return fmt.Sprintf(`
+filters:
+  deny-all:
+    type: deny
+appenders:
+  file:
+    type: file
+    fileName: %q
+    layout:
+      type: text
+  guarded:
+    type: rewrite
+    appenderRefs: [file]
+    filters: [deny-all]
+    rewrite:
+      attrs:
+        tenant: core
+root:
+  level: info
+  appenderRefs: [guarded]
+`, filepath.ToSlash(logPath))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := NewPluginRegistry()
+			if tt.register != nil {
+				tt.register(registry, t)
+			}
+			dir := t.TempDir()
+			logPath := filepath.Join(dir, tt.name+".log")
+			configPath := filepath.Join(dir, "goark-log.yml")
+			writeConfig(t, configPath, tt.config(logPath))
+
+			logger, handler, _, err := NewConfigured(context.Background(), WithConfigPath(configPath), WithPluginRegistry(registry))
+			if err != nil {
+				t.Fatalf("NewConfigured() error = %v", err)
+			}
+			logger.Info("blocked composite event")
+			if err := handler.Close(); err != nil {
+				t.Fatalf("Close() error = %v", err)
+			}
+			if content := readTextFile(t, logPath); strings.Contains(content, "blocked composite event") {
+				t.Fatalf("composite appender filter was ignored, content = %q", content)
+			}
+		})
+	}
+}
+
 func TestNewConfigured_whenYamlRewriteAppenderConfigured_shouldRewriteAttrs(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "rewrite.log")
@@ -175,6 +292,36 @@ rootLogger.appenderRefs=router
 	}
 }
 
+func TestLoadOptions_whenPropertiesAsyncAppenderBatchSizeConfigured_shouldApply(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "async.log")
+	configPath := filepath.Join(dir, "goark-log.properties")
+	writeConfig(t, configPath, fmt.Sprintf(`
+appender.file.type=file
+appender.file.fileName=%s
+appender.file.layout.type=text
+appender.async.type=async
+appender.async.appenderRefs=file
+appender.async.queueSize=8
+appender.async.batchSize=3
+rootLogger.level=info
+rootLogger.appenderRefs=async
+`, filepath.ToSlash(logPath)))
+
+	options, _, err := LoadOptions(context.Background(), WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppenderList(options.Appenders)
+	asyncAppender := findAsyncAppender(options.Appenders, "async")
+	if asyncAppender == nil {
+		t.Fatalf("async appender was not built: %+v", options.Appenders)
+	}
+	if asyncAppender.batchSize != 3 {
+		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.batchSize)
+	}
+}
+
 func TestNewConfigured_whenXmlCompositeAppendersConfigured_shouldBuild(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "rewrite.log")
@@ -212,4 +359,49 @@ func TestNewConfigured_whenXmlCompositeAppendersConfigured_shouldBuild(t *testin
 	if !strings.Contains(content, "tenant=xml") || strings.Contains(content, "secret=raw") {
 		t.Fatalf("xml rewrite content = %q, want tenant added and secret removed", content)
 	}
+}
+
+func TestLoadOptions_whenXMLAsyncAppenderBatchSizeConfigured_shouldApply(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "async.log")
+	configPath := filepath.Join(dir, "goark-log.xml")
+	writeConfig(t, configPath, fmt.Sprintf(`
+<Configuration>
+  <Appenders>
+    <File name="file" fileName="%s">
+      <TextLayout/>
+    </File>
+    <Async name="async" queueSize="8" batchSize="3">
+      <AppenderRef ref="file"/>
+    </Async>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="async"/>
+    </Root>
+  </Loggers>
+</Configuration>
+`, filepath.ToSlash(logPath)))
+
+	options, _, err := LoadOptions(context.Background(), WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppenderList(options.Appenders)
+	asyncAppender := findAsyncAppender(options.Appenders, "async")
+	if asyncAppender == nil {
+		t.Fatalf("async appender was not built: %+v", options.Appenders)
+	}
+	if asyncAppender.batchSize != 3 {
+		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.batchSize)
+	}
+}
+
+func findAsyncAppender(appenders []Appender, name string) *AsyncAppender {
+	for _, appender := range appenders {
+		if asyncAppender, ok := appender.(*AsyncAppender); ok && asyncAppender.Name() == name {
+			return asyncAppender
+		}
+	}
+	return nil
 }

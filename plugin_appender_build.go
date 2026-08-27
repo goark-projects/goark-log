@@ -234,6 +234,9 @@ func buildAsyncPlugin(config AppenderBuildConfig) (Appender, error) {
 	if config.QueueSize != 0 {
 		options = append(options, WithAsyncQueueSize(config.QueueSize))
 	}
+	if config.BatchSize != 0 {
+		options = append(options, WithAsyncBatchSize(config.BatchSize))
+	}
 	return NewAsyncAppender(config.Delegates, options...)
 }
 

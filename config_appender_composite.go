@@ -6,19 +6,32 @@ import (
 )
 
 func buildCompositeAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
+	var (
+		appender Appender
+		waiting  bool
+		err      error
+	)
 	switch normalizeKind(spec.Type) {
 	case "async":
-		appender, waiting, err := buildAsyncAppender(name, spec, specs, built, filters, registry)
-		return appender, waiting, err
+		appender, waiting, err = buildAsyncAppender(name, spec, specs, built, filters, registry)
 	case "failover", "failoverappender":
-		return buildFailoverAppender(name, spec, specs, built, registry)
+		appender, waiting, err = buildFailoverAppender(name, spec, specs, built, registry)
 	case "routing", "routingappender":
-		return buildRoutingAppender(name, spec, specs, built, registry)
+		appender, waiting, err = buildRoutingAppender(name, spec, specs, built, registry)
 	case "rewrite", "rewriteappender":
-		return buildRewriteAppender(name, spec, specs, built, registry)
+		appender, waiting, err = buildRewriteAppender(name, spec, specs, built, registry)
 	default:
 		return nil, false, fmt.Errorf("goark-log: unsupported composite appender %q type %q", name, spec.Type)
 	}
+	if err != nil || waiting {
+		return appender, waiting, err
+	}
+	wrapped, err := wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
+	if err != nil {
+		_ = appender.Close()
+		return nil, false, err
+	}
+	return wrapped, false, nil
 }
 
 func buildAsyncAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
@@ -56,12 +69,7 @@ func buildAsyncAppender(name string, spec appenderConfig, specs map[string]appen
 	if err != nil {
 		return nil, false, err
 	}
-	wrapped, err := wrapAppenderFilters(name, appender, spec.filterRefs(), filters)
-	if err != nil {
-		_ = appender.Close()
-		return nil, false, err
-	}
-	return wrapped, false, nil
+	return appender, false, nil
 }
 
 func buildFailoverAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, registry *PluginRegistry) (Appender, bool, error) {

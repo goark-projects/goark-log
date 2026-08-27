@@ -47,6 +47,7 @@ type AsyncAppender struct {
 	name           string
 	appenders      []Appender
 	queueSize      int
+	batchSize      int
 	waitStrategy   AsyncWaitStrategy
 	waitOptions    AsyncWaitOptions
 	strategy       AsyncOverflowStrategy
@@ -73,6 +74,7 @@ func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppen
 	appender := &AsyncAppender{
 		name:         "async",
 		queueSize:    DefaultAsyncQueueSize,
+		batchSize:    DefaultAsyncAppenderBatchSize,
 		waitStrategy: AsyncWaitBlock,
 		strategy:     AsyncOverflowBlock,
 	}
@@ -93,6 +95,9 @@ func NewAsyncAppender(appenders []Appender, options ...AsyncOption) (*AsyncAppen
 		return nil, err
 	}
 	appender.queueSize = normalizedQueueSize
+	if appender.batchSize > appender.queueSize {
+		appender.batchSize = appender.queueSize
+	}
 	appender.waitStrategy = waitStrategy
 	appender.appenders = append([]Appender(nil), appenders...)
 	appender.queue, err = disruptor.NewRingBuffer[asyncEntry](appender.queueSize, newAsyncWaitStrategyWithOptions(appender.waitStrategy, appender.waitOptions))
@@ -196,6 +201,9 @@ func (a *AsyncAppender) validate(appenders []Appender) error {
 	}
 	if a.queueSize <= 0 {
 		return fmt.Errorf("goark-log: async queue size must be > 0")
+	}
+	if a.batchSize <= 0 {
+		return fmt.Errorf("goark-log: async appender batch size must be > 0")
 	}
 	if _, err := ParseAsyncOverflowStrategy(string(a.strategy)); err != nil {
 		return err

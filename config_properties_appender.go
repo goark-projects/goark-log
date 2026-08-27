@@ -86,6 +86,12 @@ func applyAppenderProperty(config *fileConfig, aliases propertyAliases, key stri
 			return err
 		}
 		appender.QueueSize = parsed
+	case "batchSize", "batch-size":
+		parsed, err := parsePropertyInt(value, key)
+		if err != nil {
+			return err
+		}
+		appender.BatchSize = parsed
 	case "overflowStrategy", "overflow-strategy":
 		appender.OverflowStrategy = value
 	case "waitStrategy", "wait-strategy":

@@ -56,6 +56,8 @@ type appenderConfig struct {
 	Rewrite               rewriteBuildConfig `yaml:"rewrite"`
 	QueueSize             int                `yaml:"queueSize"`
 	QueueSizeKebab        int                `yaml:"queue-size"`
+	BatchSize             int                `yaml:"batchSize"`
+	BatchSizeKebab        int                `yaml:"batch-size"`
 	OverflowStrategy      string             `yaml:"overflowStrategy"`
 	OverflowStrategyKebab string             `yaml:"overflow-strategy"`
 	WaitStrategy          string             `yaml:"waitStrategy"`

@@ -65,6 +65,7 @@ type xmlAppender struct {
 	RouteKey         string             `xml:"routeKey,attr"`
 	DefaultRoute     string             `xml:"defaultRoute,attr"`
 	QueueSize        string             `xml:"queueSize,attr"`
+	BatchSize        string             `xml:"batchSize,attr"`
 	OverflowStrategy string             `xml:"overflowStrategy,attr"`
 	WaitStrategy     string             `xml:"waitStrategy,attr"`
 	WaitRetries      string             `xml:"waitRetries,attr"`

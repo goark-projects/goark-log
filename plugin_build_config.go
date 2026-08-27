@@ -21,6 +21,7 @@ type AppenderBuildConfig struct {
 	DefaultRoute     Appender
 	RouteKey         string
 	QueueSize        int
+	BatchSize        int
 	OverflowStrategy string
 	WaitStrategy     string
 	WaitOptions      AsyncWaitOptions

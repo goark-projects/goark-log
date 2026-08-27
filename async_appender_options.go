@@ -17,6 +17,13 @@ func WithAsyncQueueSize(size int) AsyncOption {
 	}
 }
 
+// WithAsyncBatchSize 设置后台协程单次批量写出上限。
+func WithAsyncBatchSize(size int) AsyncOption {
+	return func(appender *AsyncAppender) {
+		appender.batchSize = size
+	}
+}
+
 // WithAsyncOverflowStrategy 设置队列满时的处理策略。
 func WithAsyncOverflowStrategy(strategy AsyncOverflowStrategy) AsyncOption {
 	return func(appender *AsyncAppender) {

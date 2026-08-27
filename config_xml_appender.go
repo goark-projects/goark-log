@@ -14,6 +14,10 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
 	}
+	batchSize, err := parseXMLInt(a.BatchSize, "batchSize")
+	if err != nil {
+		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
+	}
 	flushOnWrite, err := parseXMLBool(a.FlushOnWrite, "flushOnWrite")
 	if err != nil {
 		return "", appenderConfig{}, fmt.Errorf("goark-log: XML appender %q: %w", name, err)
@@ -63,6 +67,7 @@ func (a xmlAppender) config() (string, appenderConfig, error) {
 			Remove: xmlRemoveAttrs(a.Remove),
 		},
 		QueueSize:        queueSize,
+		BatchSize:        batchSize,
 		OverflowStrategy: a.OverflowStrategy,
 		WaitStrategy:     a.WaitStrategy,
 		WaitRetries:      waitRetries,

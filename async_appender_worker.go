@@ -8,7 +8,7 @@ import (
 
 func (a *AsyncAppender) run() {
 	defer a.workers.Done()
-	batch := make([]asyncEntry, 0, min(a.queueSize, DefaultAsyncAppenderBatchSize))
+	batch := make([]asyncEntry, 0, a.batchSize)
 	for {
 		if a.queue.PopBatch(&batch, cap(batch)) {
 			a.flushBatch(batch)

@@ -216,6 +216,8 @@ handler, err := goarklog.NewHandler(goarklog.Options{
 
 `RollingFileAppender` 支持按大小、时间、cron 和启动滚动。压缩和删除动作可以走后台串行队列，`Close` 会等待队列清空。
 
+配置级 `type: async` appender 支持 `queueSize`、`batchSize`、`overflowStrategy` 和 `waitStrategy`，适合只把部分下游输出异步化。
+
 ## 过滤器和安全边界
 
 内置过滤器覆盖级别、属性、正则、marker、MDC、异常、时间窗口和突发限流等常见场景。顶层 `filterRefs` 是全局 filter 链，先于 logger level 裁决；root/logger/appenderRef/appender 自身 filter 在对应阶段执行。

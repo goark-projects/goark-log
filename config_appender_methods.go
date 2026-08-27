@@ -48,6 +48,13 @@ func (c appenderConfig) queueSize() int {
 	return c.QueueSizeKebab
 }
 
+func (c appenderConfig) batchSize() int {
+	if c.BatchSize != 0 {
+		return c.BatchSize
+	}
+	return c.BatchSizeKebab
+}
+
 func (c appenderConfig) overflowStrategy() string {
 	if strings.TrimSpace(c.OverflowStrategy) != "" {
 		return c.OverflowStrategy
@@ -123,6 +130,7 @@ func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegate
 		DefaultRoute:     defaultRoute,
 		RouteKey:         c.routeKey(),
 		QueueSize:        c.queueSize(),
+		BatchSize:        c.batchSize(),
 		OverflowStrategy: c.overflowStrategy(),
 		WaitStrategy:     c.waitStrategy(),
 		WaitOptions:      c.waitOptions(),

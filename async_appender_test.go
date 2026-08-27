@@ -175,6 +175,35 @@ func TestAsyncAppender_whenCloseCalled_shouldDrainQueueAndCloseDelegateWhenEnabl
 	}
 }
 
+func TestNewAsyncAppender_whenBatchSizeConfigured_shouldNormalizeAgainstQueue(t *testing.T) {
+	delegate := newRecordingAppender("delegate")
+	appender, err := NewAsyncAppender([]Appender{delegate},
+		WithAsyncQueueSize(3),
+		WithAsyncBatchSize(8),
+	)
+	if err != nil {
+		t.Fatalf("NewAsyncAppender() error = %v", err)
+	}
+	if appender.queueSize != 4 {
+		t.Fatalf("queueSize = %d, want normalized size 4", appender.queueSize)
+	}
+	if appender.batchSize != 4 {
+		t.Fatalf("batchSize = %d, want capped queue size 4", appender.batchSize)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+}
+
+func TestNewAsyncAppender_whenBatchSizeInvalid_shouldReject(t *testing.T) {
+	_, err := NewAsyncAppender([]Appender{newRecordingAppender("delegate")},
+		WithAsyncBatchSize(0),
+	)
+	if err == nil || !strings.Contains(err.Error(), "batch size") {
+		t.Fatalf("NewAsyncAppender() error = %v, want batch size rejection", err)
+	}
+}
+
 func TestNewAsyncAppender_whenWaitStrategyInvalid_shouldReject(t *testing.T) {
 	_, err := NewAsyncAppender([]Appender{newRecordingAppender("delegate")},
 		WithAsyncWaitStrategy("park-forever"),
