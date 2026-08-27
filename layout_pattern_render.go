@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/timepattern"
 )
 
 func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callerCache, options LayoutOptions) {
@@ -47,13 +49,13 @@ func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
 		when = time.Now()
 	}
 	switch token.timeUnix {
-	case timeUnixSeconds:
+	case timepattern.UnixSeconds:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.Unix(), 10))
-	case timeUnixMillis:
+	case timepattern.UnixMillis:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMilli(), 10))
-	case timeUnixMicros:
+	case timepattern.UnixMicros:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMicro(), 10))
-	case timeUnixNanos:
+	case timepattern.UnixNanos:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixNano(), 10))
 	default:
 		buf.Write(when.AppendFormat(buf.AvailableBuffer(), token.format))
@@ -68,13 +70,13 @@ func patternTokenString(token patternToken, event Event, caller *callerCache, op
 			when = time.Now()
 		}
 		switch token.timeUnix {
-		case timeUnixSeconds:
+		case timepattern.UnixSeconds:
 			return strconv.FormatInt(when.Unix(), 10)
-		case timeUnixMillis:
+		case timepattern.UnixMillis:
 			return strconv.FormatInt(when.UnixMilli(), 10)
-		case timeUnixMicros:
+		case timepattern.UnixMicros:
 			return strconv.FormatInt(when.UnixMicro(), 10)
-		case timeUnixNanos:
+		case timepattern.UnixNanos:
 			return strconv.FormatInt(when.UnixNano(), 10)
 		default:
 			return when.Format(token.format)

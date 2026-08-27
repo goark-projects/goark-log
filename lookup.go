@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/lookupguard"
+	"goark.dev/log/internal/timepattern"
 )
 
 // LookupFunc 根据键解析配置变量。
@@ -40,7 +43,7 @@ func (r *LookupResolver) Register(namespace string, lookup LookupFunc) {
 	if namespace == "" {
 		return
 	}
-	if isBlockedLookupNamespace(namespace) {
+	if lookupguard.BlockedNamespace(namespace) {
 		return
 	}
 	r.lookups[namespace] = lookup
@@ -226,16 +229,16 @@ func (r *LookupResolver) dateLookup(key string) (string, bool) {
 	if r.now != nil {
 		now = r.now
 	}
-	layout, unixMode := normalizeTimePattern(key)
+	layout, unixMode := timepattern.Normalize(key)
 	when := now()
 	switch unixMode {
-	case timeUnixSeconds:
+	case timepattern.UnixSeconds:
 		return strconv.FormatInt(when.Unix(), 10), true
-	case timeUnixMillis:
+	case timepattern.UnixMillis:
 		return strconv.FormatInt(when.UnixMilli(), 10), true
-	case timeUnixMicros:
+	case timepattern.UnixMicros:
 		return strconv.FormatInt(when.UnixMicro(), 10), true
-	case timeUnixNanos:
+	case timepattern.UnixNanos:
 		return strconv.FormatInt(when.UnixNano(), 10), true
 	default:
 		return when.Format(layout), true

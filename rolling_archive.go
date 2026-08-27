@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/logfile"
+	"goark.dev/log/internal/rolling"
 )
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
@@ -21,13 +24,13 @@ func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if exists, err := pathExists(candidate); err != nil {
+		if exists, err := logfile.Exists(candidate); err != nil {
 			return "", fmt.Errorf("goark-log: stat archive log file %q: %w", candidate, err)
 		} else if exists {
 			continue
 		}
 		if a.compress && compressedCandidate != candidate {
-			if exists, err := pathExists(compressedCandidate); err != nil {
+			if exists, err := logfile.Exists(compressedCandidate); err != nil {
 				return "", fmt.Errorf("goark-log: stat archive log file %q: %w", compressedCandidate, err)
 			} else if exists {
 				continue
@@ -70,11 +73,11 @@ func (a *RollingFileAppender) nextMinIndexArchivePath(now time.Time) (string, er
 }
 
 func archivePathAvailable(candidate string, compressedCandidate string, compressed bool) bool {
-	if exists, err := pathExists(candidate); err != nil || exists {
+	if exists, err := logfile.Exists(candidate); err != nil || exists {
 		return false
 	}
 	if compressed && compressedCandidate != candidate {
-		if exists, err := pathExists(compressedCandidate); err != nil || exists {
+		if exists, err := logfile.Exists(compressedCandidate); err != nil || exists {
 			return false
 		}
 	}
@@ -131,7 +134,7 @@ func (a *RollingFileAppender) archivePaths(now time.Time, index int) (string, st
 		}
 		return candidate, candidate, nil
 	}
-	target, err := formatRollingFilePattern(a.filePattern, now, index)
+	target, err := rolling.FormatPattern(a.filePattern, now, index)
 	if err != nil {
 		return "", "", err
 	}
@@ -171,12 +174,12 @@ func (a *RollingFileAppender) initArchiveIndex() error {
 }
 
 func (a *RollingFileAppender) initArchiveIndexByPattern() error {
-	glob := rollingPatternGlob(a.filePattern, a.compress)
+	glob := rolling.PatternGlob(a.filePattern, a.compress)
 	matches, err := filepath.Glob(glob)
 	if err != nil {
 		return fmt.Errorf("goark-log: glob rolling filePattern %q: %w", a.filePattern, err)
 	}
-	pattern, hasIndex, err := rollingPatternIndexRegexp(a.filePattern, a.compress)
+	pattern, hasIndex, err := rolling.PatternIndexRegexp(a.filePattern, a.compress)
 	if err != nil {
 		return err
 	}

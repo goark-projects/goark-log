@@ -1,4 +1,4 @@
-package goarklog
+package rolling
 
 import (
 	"errors"
@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// DeleteAction 描述归档文件删除条件。
+type DeleteAction struct {
+	BasePath string
+	MaxDepth int
+	Glob     string
+	MaxAge   time.Duration
+	MaxCount int
+	MaxSize  int64
+}
+
 type deleteCandidate struct {
 	path    string
 	name    string
@@ -18,10 +28,11 @@ type deleteCandidate struct {
 	size    int64
 }
 
-func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteAction, error) {
+// NormalizeDeleteAction 规范化并校验删除动作。
+func NormalizeDeleteAction(action DeleteAction) (DeleteAction, error) {
 	action.BasePath = strings.TrimSpace(action.BasePath)
 	if action.BasePath == "" {
-		return RollingDeleteAction{}, fmt.Errorf("basePath is empty")
+		return DeleteAction{}, fmt.Errorf("basePath is empty")
 	}
 	action.BasePath = filepath.Clean(action.BasePath)
 	action.Glob = strings.TrimSpace(action.Glob)
@@ -29,37 +40,30 @@ func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteActi
 		action.Glob = "*"
 	}
 	if _, err := filepath.Match(action.Glob, "probe"); err != nil {
-		return RollingDeleteAction{}, fmt.Errorf("glob %q is invalid: %w", action.Glob, err)
+		return DeleteAction{}, fmt.Errorf("glob %q is invalid: %w", action.Glob, err)
 	}
 	if action.MaxDepth < 0 {
-		return RollingDeleteAction{}, fmt.Errorf("maxDepth must be >= 0")
+		return DeleteAction{}, fmt.Errorf("maxDepth must be >= 0")
 	}
 	if action.MaxDepth == 0 {
 		action.MaxDepth = 1
 	}
 	if action.MaxAge < 0 {
-		return RollingDeleteAction{}, fmt.Errorf("maxAge must be >= 0")
+		return DeleteAction{}, fmt.Errorf("maxAge must be >= 0")
 	}
 	if action.MaxCount < 0 {
-		return RollingDeleteAction{}, fmt.Errorf("maxCount must be >= 0")
+		return DeleteAction{}, fmt.Errorf("maxCount must be >= 0")
 	}
 	if action.MaxSize < 0 {
-		return RollingDeleteAction{}, fmt.Errorf("maxSize must be >= 0")
+		return DeleteAction{}, fmt.Errorf("maxSize must be >= 0")
 	}
 	return action, nil
 }
 
-func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
-	var joined error
-	for _, action := range a.deleteActions {
-		joined = errors.Join(joined, deleteArchivesByAction(now, action))
-	}
-	return joined
-}
-
-func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
+// DeleteArchivesByAction 根据删除条件清理归档文件。
+func DeleteArchivesByAction(now time.Time, action DeleteAction) error {
 	var err error
-	action, err = normalizeRollingDeleteAction(action)
+	action, err = NormalizeDeleteAction(action)
 	if err != nil {
 		return err
 	}
@@ -95,7 +99,7 @@ func deleteArchivesByAction(now time.Time, action RollingDeleteAction) error {
 		if depth > action.MaxDepth {
 			return nil
 		}
-		matched, err := rollingDeleteGlobMatch(action.Glob, action.BasePath, path)
+		matched, err := deleteGlobMatch(action.Glob, action.BasePath, path)
 		if err != nil {
 			return err
 		}
@@ -178,7 +182,7 @@ func relativeDepth(basePath string, path string) int {
 	return strings.Count(filepath.ToSlash(relative), "/") + 1
 }
 
-func rollingDeleteGlobMatch(glob string, basePath string, path string) (bool, error) {
+func deleteGlobMatch(glob string, basePath string, path string) (bool, error) {
 	if matched, err := filepath.Match(glob, filepath.Base(path)); err != nil || matched {
 		return matched, err
 	}

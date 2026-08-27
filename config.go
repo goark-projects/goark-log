@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/logfile"
 )
 
 const (
@@ -241,7 +243,7 @@ func (s *configLoadSettings) resolvePath() (string, ConfigSource, error) {
 	}
 	for _, path := range s.defaultPaths {
 		candidate := s.resolveUserPath(path)
-		exists, err := pathExists(candidate)
+		exists, err := logfile.Exists(candidate)
 		if err != nil {
 			return "", "", fmt.Errorf("goark-log: stat config file %q: %w", candidate, err)
 		}

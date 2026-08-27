@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/timepattern"
 )
 
 // PatternLayout 支持常用日志 pattern 占位符。
@@ -24,7 +26,7 @@ type patternToken struct {
 	precision int
 	repeat    int
 	leftAlign bool
-	timeUnix  timeUnixMode
+	timeUnix  timepattern.UnixMode
 	child     *PatternLayout
 	regex     *regexp.Regexp
 	value     string
@@ -66,16 +68,6 @@ const (
 	tokenMaxLen
 	tokenRepeat
 	tokenSequence
-)
-
-type timeUnixMode uint8
-
-const (
-	timeUnixNone timeUnixMode = iota
-	timeUnixSeconds
-	timeUnixMillis
-	timeUnixMicros
-	timeUnixNanos
 )
 
 // NewPatternLayout 编译 pattern，避免热路径反复解析。
@@ -211,7 +203,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.kind = tokenCallerLocation
 	case normalized == "d" || normalized == "date":
 		token.kind = tokenTime
-		token.format, token.timeUnix = normalizeTimePattern(option)
+		token.format, token.timeUnix = timepattern.Normalize(option)
 	case normalized == "level" || normalized == "p":
 		token.kind = tokenLevel
 	case normalized == "pid" || normalized == "processid":

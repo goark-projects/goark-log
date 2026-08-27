@@ -1,4 +1,4 @@
-package goarklog
+package rolling
 
 import (
 	"compress/gzip"
@@ -7,11 +7,13 @@ import (
 	"os"
 )
 
-func compressFile(path string) (string, error) {
-	return compressFileTo(path, path+".gz")
+// CompressFile 把归档文件压缩为同名 .gz 文件，并删除源文件。
+func CompressFile(path string) (string, error) {
+	return CompressFileTo(path, path+".gz")
 }
 
-func compressFileTo(path string, compressedPath string) (string, error) {
+// CompressFileTo 把归档文件压缩到指定目标路径，并删除源文件。
+func CompressFileTo(path string, compressedPath string) (string, error) {
 	source, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("goark-log: open archive log file %q: %w", path, err)

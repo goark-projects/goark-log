@@ -7,6 +7,9 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"goark.dev/log/internal/logfile"
+	"goark.dev/log/internal/rolling"
 )
 
 func (a *RollingFileAppender) open() error {
@@ -25,8 +28,8 @@ func (a *RollingFileAppender) openAt(now time.Time) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
-	a.nextCron = nextCronRolloverAfter(now, a.cron)
+	a.nextRollover = rolling.NextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = rolling.NextCronRolloverAfter(now, a.cron)
 	if err := a.initArchiveIndex(); err != nil {
 		_ = a.file.Close()
 		a.file = nil
@@ -41,7 +44,7 @@ func (a *RollingFileAppender) openDirect(now time.Time) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	file, err := openLogFileWithOptions(target, a.openOptions())
+	file, err := logfile.OpenWithOptions(target, a.openOptions())
 	if err != nil {
 		return 0, err
 	}
@@ -68,13 +71,13 @@ func (a *RollingFileAppender) openDirect(now time.Time) (int64, error) {
 		}
 		a.size += int64(n)
 	}
-	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
-	a.nextCron = nextCronRolloverAfter(now, a.cron)
+	a.nextRollover = rolling.NextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = rolling.NextCronRolloverAfter(now, a.cron)
 	return existingSize, nil
 }
 
 func (a *RollingFileAppender) openActiveLocked() (int64, error) {
-	file, err := openLogFileWithOptions(a.path, a.openOptions())
+	file, err := logfile.OpenWithOptions(a.path, a.openOptions())
 	if err != nil {
 		return 0, err
 	}
@@ -103,8 +106,8 @@ func (a *RollingFileAppender) openActiveLocked() (int64, error) {
 	return existingSize, nil
 }
 
-func (a *RollingFileAppender) openOptions() logFileOpenOptions {
-	return logFileOpenOptions{
+func (a *RollingFileAppender) openOptions() logfile.OpenOptions {
+	return logfile.OpenOptions{
 		Append:         a.append,
 		Permissions:    a.permissions,
 		PermissionsSet: a.permissionsSet,
@@ -140,8 +143,8 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 		if _, err := a.openDirect(now); err != nil {
 			return err
 		}
-		a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
-		a.nextCron = nextCronRolloverAfter(now, a.cron)
+		a.nextRollover = rolling.NextRolloverAfter(now, a.interval, a.modulate)
+		a.nextCron = rolling.NextCronRolloverAfter(now, a.cron)
 		return a.runDeleteActions(now)
 	}
 	target, err := a.nextArchivePath(now)
@@ -157,8 +160,8 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 	if _, err := a.openActiveLocked(); err != nil {
 		return err
 	}
-	a.nextRollover = nextRolloverAfter(now, a.interval, a.modulate)
-	a.nextCron = nextCronRolloverAfter(now, a.cron)
+	a.nextRollover = rolling.NextRolloverAfter(now, a.interval, a.modulate)
+	a.nextCron = rolling.NextCronRolloverAfter(now, a.cron)
 	return a.runRolloverActions(now, target, archiveIndex)
 }
 

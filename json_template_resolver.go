@@ -3,9 +3,11 @@ package goarklog
 import (
 	"encoding/json"
 	"fmt"
-	"goark.dev/log/internal/jsoncodec"
 	"strconv"
 	"strings"
+
+	"goark.dev/log/internal/jsoncodec"
+	"goark.dev/log/internal/timepattern"
 )
 
 func compileJSONTemplateResolver(raw json.RawMessage, registry *PluginRegistry, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
@@ -26,7 +28,7 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage, re
 	switch normalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
-		layout, unix := normalizeTimePattern(format)
+		layout, unix := timepattern.Normalize(format)
 		return timestampJSONResolver{layout: layout, unix: unix}, nil
 	case "level":
 		return levelJSONResolver{field: jsonTemplateStringOption(options, "field")}, nil

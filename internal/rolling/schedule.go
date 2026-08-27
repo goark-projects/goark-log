@@ -1,10 +1,9 @@
-package goarklog
+package rolling
 
-import (
-	"time"
-)
+import "time"
 
-func nextRolloverAfter(now time.Time, interval time.Duration, modulate bool) time.Time {
+// NextRolloverAfter 计算固定间隔滚动的下一个触发点。
+func NextRolloverAfter(now time.Time, interval time.Duration, modulate bool) time.Time {
 	if interval <= 0 {
 		return time.Time{}
 	}
@@ -28,8 +27,9 @@ func nextRolloverAfter(now time.Time, interval time.Duration, modulate bool) tim
 	return truncated.Add(interval)
 }
 
-func nextCronRolloverAfter(now time.Time, cron *cronSchedule) time.Time {
-	next, ok := cron.next(now)
+// NextCronRolloverAfter 计算 cron 调度的下一个触发点。
+func NextCronRolloverAfter(now time.Time, cron *CronSchedule) time.Time {
+	next, ok := cron.Next(now)
 	if !ok {
 		return time.Time{}
 	}

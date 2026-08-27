@@ -3,6 +3,8 @@ package goarklog
 import (
 	"errors"
 	"time"
+
+	"goark.dev/log/internal/rolling"
 )
 
 func (a *RollingFileAppender) startActionWorker() {
@@ -57,7 +59,7 @@ func (a *RollingFileAppender) runRolloverActions(now time.Time, target string, a
 	action := func() error {
 		var joined error
 		if a.compress {
-			if _, err := compressFileTo(target, compressedTarget); err != nil {
+			if _, err := rolling.CompressFileTo(target, compressedTarget); err != nil {
 				joined = errors.Join(joined, err)
 			}
 		}
@@ -83,4 +85,38 @@ func (a *RollingFileAppender) enqueueRolloverAction(action func() error) error {
 	// 避免压缩和保留删除并发操作同一批归档文件。
 	queue <- action
 	return nil
+}
+
+func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
+	var joined error
+	for _, action := range a.deleteActions {
+		joined = errors.Join(joined, rolling.DeleteArchivesByAction(now, toRollingDeleteAction(action)))
+	}
+	return joined
+}
+
+func normalizeRollingDeleteAction(action RollingDeleteAction) (RollingDeleteAction, error) {
+	normalized, err := rolling.NormalizeDeleteAction(toRollingDeleteAction(action))
+	if err != nil {
+		return RollingDeleteAction{}, err
+	}
+	return RollingDeleteAction{
+		BasePath: normalized.BasePath,
+		MaxDepth: normalized.MaxDepth,
+		Glob:     normalized.Glob,
+		MaxAge:   normalized.MaxAge,
+		MaxCount: normalized.MaxCount,
+		MaxSize:  normalized.MaxSize,
+	}, nil
+}
+
+func toRollingDeleteAction(action RollingDeleteAction) rolling.DeleteAction {
+	return rolling.DeleteAction{
+		BasePath: action.BasePath,
+		MaxDepth: action.MaxDepth,
+		Glob:     action.Glob,
+		MaxAge:   action.MaxAge,
+		MaxCount: action.MaxCount,
+		MaxSize:  action.MaxSize,
+	}
 }

@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"goark.dev/log/internal/logfile"
+	"goark.dev/log/internal/rolling"
 )
 
 const (
@@ -49,7 +52,7 @@ type RollingFileAppender struct {
 	maxSize           int64
 	interval          time.Duration
 	cronExpression    string
-	cron              *cronSchedule
+	cron              *rolling.CronSchedule
 	modulate          bool
 	rolloverOnStartup bool
 	maxBackups        int
@@ -78,7 +81,7 @@ type RollingFileAppender struct {
 
 // NewRollingFileAppender 创建滚动文件 appender。
 func NewRollingFileAppender(path string, options ...RollingFileOption) (*RollingFileAppender, error) {
-	cleanPath, err := validateLogFilePath(path)
+	cleanPath, err := logfile.ValidatePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +91,7 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		layout:        NewDefaultLayout(),
 		bufferSize:    DefaultFileBufferSize,
 		append:        true,
-		permissions:   defaultLogFilePermissions,
+		permissions:   logfile.DefaultPermissions,
 		maxSize:       DefaultRollingMaxSize,
 		maxBackups:    DefaultRollingMaxBackups,
 		fileIndexMode: RollingFileIndexNoMax,
@@ -104,7 +107,7 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 		return nil, err
 	}
 	if !appender.permissionsSet && appender.permissions == 0 {
-		appender.permissions = defaultLogFilePermissions
+		appender.permissions = logfile.DefaultPermissions
 	}
 	appender.startActionWorker()
 	if !appender.createOnDemand {
@@ -232,7 +235,7 @@ func (a *RollingFileAppender) validate() error {
 		return fmt.Errorf("goark-log: rolling interval must be >= 0")
 	}
 	if strings.TrimSpace(a.cronExpression) != "" {
-		cron, err := parseCronSchedule(a.cronExpression)
+		cron, err := rolling.ParseCronSchedule(a.cronExpression)
 		if err != nil {
 			return fmt.Errorf("goark-log: rolling cron schedule %q is invalid: %w", a.cronExpression, err)
 		}
@@ -268,7 +271,7 @@ func (a *RollingFileAppender) validate() error {
 		return fmt.Errorf("goark-log: direct write rollover requires filePattern")
 	}
 	if a.filePattern != "" {
-		if a.maxSize > 0 && !rollingPatternHasIndex(a.filePattern) {
+		if a.maxSize > 0 && !rolling.PatternHasIndex(a.filePattern) {
 			return fmt.Errorf("goark-log: rolling filePattern requires %%i when size policy is enabled")
 		}
 		if strings.HasSuffix(strings.ToLower(a.filePattern), ".gz") {

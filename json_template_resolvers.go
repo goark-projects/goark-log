@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"strconv"
 	"time"
+
+	"goark.dev/log/internal/timepattern"
 )
 
 type rawJSONResolver struct {
@@ -21,7 +23,7 @@ func (r rawJSONResolver) AppendJSON(buf *bytes.Buffer, _ Event) {
 
 type timestampJSONResolver struct {
 	layout string
-	unix   timeUnixMode
+	unix   timepattern.UnixMode
 }
 
 func (r timestampJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
@@ -30,13 +32,13 @@ func (r timestampJSONResolver) AppendJSON(buf *bytes.Buffer, event Event) {
 		when = time.Now()
 	}
 	switch r.unix {
-	case timeUnixSeconds:
+	case timepattern.UnixSeconds:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.Unix(), 10))
-	case timeUnixMillis:
+	case timepattern.UnixMillis:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMilli(), 10))
-	case timeUnixMicros:
+	case timepattern.UnixMicros:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixMicro(), 10))
-	case timeUnixNanos:
+	case timepattern.UnixNanos:
 		buf.Write(strconv.AppendInt(buf.AvailableBuffer(), when.UnixNano(), 10))
 	default:
 		buf.WriteByte('"')

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"strings"
+
+	"goark.dev/log/internal/logfile"
 )
 
 type flushWriter interface {
@@ -26,7 +28,7 @@ func WithJSONAppenderFlushOnWrite(enabled bool) JSONAppenderOption {
 
 // NewJSONFileAppender 创建面向文件的 JSON 直写 appender。
 func NewJSONFileAppender(path string, options ...JSONAppenderOption) (*JSONAppender, error) {
-	cleanPath, err := validateLogFilePath(path)
+	cleanPath, err := logfile.ValidatePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +50,7 @@ func NewJSONFileAppender(path string, options ...JSONAppenderOption) (*JSONAppen
 	if appender.bufferSize < 0 {
 		return nil, fmt.Errorf("goark-log: JSON file buffer size must be >= 0")
 	}
-	file, err := openLogFile(cleanPath)
+	file, err := logfile.Open(cleanPath)
 	if err != nil {
 		return nil, err
 	}

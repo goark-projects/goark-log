@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"goark.dev/log/internal/lookupguard"
 )
 
 // PluginRegistry 保存显式注册的日志插件。
@@ -124,7 +126,7 @@ func (r *PluginRegistry) RegisterLookup(namespace string, lookup LookupFunc) err
 	if namespace == "" {
 		return fmt.Errorf("goark-log: lookup namespace is empty")
 	}
-	if isBlockedLookupNamespace(namespace) {
+	if lookupguard.BlockedNamespace(namespace) {
 		return fmt.Errorf("goark-log: lookup namespace %q is blocked by security policy", namespace)
 	}
 	r.mu.Lock()

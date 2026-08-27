@@ -1,4 +1,4 @@
-package goarklog
+package rolling
 
 import (
 	"fmt"
@@ -7,9 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/timepattern"
 )
 
-func formatRollingFilePattern(pattern string, now time.Time, index int) (string, error) {
+// FormatPattern 按 filePattern 生成归档路径。
+func FormatPattern(pattern string, now time.Time, index int) (string, error) {
 	var builder strings.Builder
 	builder.Grow(len(pattern) + 8)
 	for offset := 0; offset < len(pattern); {
@@ -23,7 +26,7 @@ func formatRollingFilePattern(pattern string, now time.Time, index int) (string,
 			offset += 2
 			continue
 		}
-		next, err := appendRollingPatternToken(&builder, pattern, offset, now, index)
+		next, err := appendPatternToken(&builder, pattern, offset, now, index)
 		if err != nil {
 			return "", err
 		}
@@ -32,7 +35,7 @@ func formatRollingFilePattern(pattern string, now time.Time, index int) (string,
 	return builder.String(), nil
 }
 
-func appendRollingPatternToken(builder *strings.Builder, pattern string, offset int, now time.Time, index int) (int, error) {
+func appendPatternToken(builder *strings.Builder, pattern string, offset int, now time.Time, index int) (int, error) {
 	cursor := offset + 1
 	zeroPad := false
 	width := 0
@@ -69,15 +72,15 @@ func appendRollingPatternToken(builder *strings.Builder, pattern string, offset 
 		if strings.TrimSpace(option) == "" {
 			option = "yyyyMMdd-HHmmss"
 		}
-		layout, unixMode := normalizeTimePattern(option)
+		layout, unixMode := timepattern.Normalize(option)
 		switch unixMode {
-		case timeUnixSeconds:
+		case timepattern.UnixSeconds:
 			builder.WriteString(strconv.FormatInt(now.Unix(), 10))
-		case timeUnixMillis:
+		case timepattern.UnixMillis:
 			builder.WriteString(strconv.FormatInt(now.UnixMilli(), 10))
-		case timeUnixMicros:
+		case timepattern.UnixMicros:
 			builder.WriteString(strconv.FormatInt(now.UnixMicro(), 10))
-		case timeUnixNanos:
+		case timepattern.UnixNanos:
 			builder.WriteString(strconv.FormatInt(now.UnixNano(), 10))
 		default:
 			builder.WriteString(now.Format(layout))
@@ -88,7 +91,8 @@ func appendRollingPatternToken(builder *strings.Builder, pattern string, offset 
 	}
 }
 
-func rollingPatternHasIndex(pattern string) bool {
+// PatternHasIndex 判断 filePattern 是否包含 %i 索引占位符。
+func PatternHasIndex(pattern string) bool {
 	for offset := 0; offset < len(pattern); offset++ {
 		if pattern[offset] != '%' {
 			continue
@@ -107,7 +111,8 @@ func rollingPatternHasIndex(pattern string) bool {
 	return false
 }
 
-func rollingPatternGlob(pattern string, compress bool) string {
+// PatternGlob 把 filePattern 转换为可用于 filepath.Glob 的模式。
+func PatternGlob(pattern string, compress bool) string {
 	var builder strings.Builder
 	builder.Grow(len(pattern) + 8)
 	for offset := 0; offset < len(pattern); {
@@ -155,7 +160,8 @@ func rollingPatternGlob(pattern string, compress bool) string {
 	return filepath.Clean(glob)
 }
 
-func rollingPatternIndexRegexp(pattern string, compress bool) (*regexp.Regexp, bool, error) {
+// PatternIndexRegexp 生成从归档路径提取 %i 的正则表达式。
+func PatternIndexRegexp(pattern string, compress bool) (*regexp.Regexp, bool, error) {
 	var builder strings.Builder
 	builder.WriteByte('^')
 	hasIndex := false

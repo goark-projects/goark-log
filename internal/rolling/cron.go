@@ -1,4 +1,4 @@
-package goarklog
+package rolling
 
 import (
 	"fmt"
@@ -9,7 +9,33 @@ import (
 
 const maxCronSearchSeconds = 5 * 366 * 24 * 60 * 60
 
-type cronSchedule struct {
+var monthNameValues = map[string]int{
+	"JAN": 1,
+	"FEB": 2,
+	"MAR": 3,
+	"APR": 4,
+	"MAY": 5,
+	"JUN": 6,
+	"JUL": 7,
+	"AUG": 8,
+	"SEP": 9,
+	"OCT": 10,
+	"NOV": 11,
+	"DEC": 12,
+}
+
+var weekdayNameValues = map[string]int{
+	"SUN": 0,
+	"MON": 1,
+	"TUE": 2,
+	"WED": 3,
+	"THU": 4,
+	"FRI": 5,
+	"SAT": 6,
+}
+
+// CronSchedule 是滚动文件使用的轻量 cron 调度器。
+type CronSchedule struct {
 	seconds  cronField
 	minutes  cronField
 	hours    cronField
@@ -22,7 +48,8 @@ type cronField struct {
 	allowed []bool
 }
 
-func parseCronSchedule(expression string) (*cronSchedule, error) {
+// ParseCronSchedule 解析 Log4j 风格 5、6、7 字段 cron 表达式。
+func ParseCronSchedule(expression string) (*CronSchedule, error) {
 	fields := strings.Fields(strings.TrimSpace(expression))
 	switch len(fields) {
 	case 5:
@@ -52,15 +79,15 @@ func parseCronSchedule(expression string) (*cronSchedule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("day-of-month: %w", err)
 	}
-	months, err := parseCronField(fields[4], 1, 12, monthNames(), false)
+	months, err := parseCronField(fields[4], 1, 12, monthNameValues, false)
 	if err != nil {
 		return nil, fmt.Errorf("month: %w", err)
 	}
-	weekdays, err := parseCronField(fields[5], 0, 7, weekdayNames(), true)
+	weekdays, err := parseCronField(fields[5], 0, 7, weekdayNameValues, true)
 	if err != nil {
 		return nil, fmt.Errorf("day-of-week: %w", err)
 	}
-	return &cronSchedule{
+	return &CronSchedule{
 		seconds:  seconds,
 		minutes:  minutes,
 		hours:    hours,
@@ -148,7 +175,8 @@ func parseCronNumber(value string, min int, max int, names map[string]int) (int,
 	return parsed, nil
 }
 
-func (s *cronSchedule) next(after time.Time) (time.Time, bool) {
+// Next 返回 after 之后第一个匹配时间点。
+func (s *CronSchedule) Next(after time.Time) (time.Time, bool) {
 	if s == nil {
 		return time.Time{}, false
 	}
@@ -162,7 +190,7 @@ func (s *cronSchedule) next(after time.Time) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func (s *cronSchedule) matches(value time.Time) bool {
+func (s *CronSchedule) matches(value time.Time) bool {
 	weekday := int(value.Weekday())
 	return s.seconds.match(value.Second()) &&
 		s.minutes.match(value.Minute()) &&
@@ -174,33 +202,4 @@ func (s *cronSchedule) matches(value time.Time) bool {
 
 func (f cronField) match(value int) bool {
 	return value >= 0 && value < len(f.allowed) && f.allowed[value]
-}
-
-func monthNames() map[string]int {
-	return map[string]int{
-		"JAN": 1,
-		"FEB": 2,
-		"MAR": 3,
-		"APR": 4,
-		"MAY": 5,
-		"JUN": 6,
-		"JUL": 7,
-		"AUG": 8,
-		"SEP": 9,
-		"OCT": 10,
-		"NOV": 11,
-		"DEC": 12,
-	}
-}
-
-func weekdayNames() map[string]int {
-	return map[string]int{
-		"SUN": 0,
-		"MON": 1,
-		"TUE": 2,
-		"WED": 3,
-		"THU": 4,
-		"FRI": 5,
-		"SAT": 6,
-	}
 }

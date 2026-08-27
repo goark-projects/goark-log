@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"goark.dev/log/internal/logfile"
 )
 
 func buildConsolePlugin(config AppenderBuildConfig) (Appender, error) {
@@ -43,7 +45,7 @@ func buildFilePlugin(config AppenderBuildConfig) (Appender, error) {
 		options = append(options, WithFileCreateOnDemand(true))
 	}
 	if strings.TrimSpace(config.FilePermissions) != "" {
-		permissions, err := parseLogFilePermissions(config.FilePermissions)
+		permissions, err := logfile.ParsePermissions(config.FilePermissions)
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
 		}
@@ -106,7 +108,7 @@ func buildRollingPlugin(config AppenderBuildConfig) (Appender, error) {
 		options = append(options, WithRollingFileCreateOnDemand(true))
 	}
 	if strings.TrimSpace(config.FilePermissions) != "" {
-		permissions, err := parseLogFilePermissions(config.FilePermissions)
+		permissions, err := logfile.ParsePermissions(config.FilePermissions)
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: appender %q: %w", config.Name, err)
 		}

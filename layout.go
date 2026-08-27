@@ -6,12 +6,14 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"goark.dev/log/internal/timepattern"
 )
 
 const (
 	// DefaultSpringBootPattern 是默认控制台输出格式，风格对齐 Spring Boot。
 	DefaultSpringBootPattern = "%d %5level %pid --- [%thread] %logger : %msg%attrs%n"
-	defaultTimeFormat        = "2006-01-02T15:04:05.000Z07:00"
+	defaultTimeFormat        = timepattern.DefaultLayout
 )
 
 var processIDString = strconv.Itoa(os.Getpid())

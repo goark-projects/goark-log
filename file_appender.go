@@ -9,9 +9,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
+
+	"goark.dev/log/internal/logfile"
 )
 
 const (
@@ -91,7 +92,7 @@ func WithFilePermissions(permissions fs.FileMode) FileOption {
 
 // NewFileAppender 创建普通文件 appender。
 func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) {
-	cleanPath, err := validateLogFilePath(path)
+	cleanPath, err := logfile.ValidatePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +102,7 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 		layout:      NewDefaultLayout(),
 		bufferSize:  DefaultFileBufferSize,
 		append:      true,
-		permissions: defaultLogFilePermissions,
+		permissions: logfile.DefaultPermissions,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -118,7 +119,7 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 		return nil, fmt.Errorf("goark-log: file buffer size must be >= 0")
 	}
 	if !appender.permissionsSet && appender.permissions == 0 {
-		appender.permissions = defaultLogFilePermissions
+		appender.permissions = logfile.DefaultPermissions
 	}
 	if !appender.createOnDemand {
 		if _, err := appender.openLocked(); err != nil {
@@ -172,7 +173,7 @@ func (a *FileAppender) Append(ctx context.Context, event Event) error {
 }
 
 func (a *FileAppender) openLocked() (int64, error) {
-	file, err := openLogFileWithOptions(a.path, logFileOpenOptions{
+	file, err := logfile.OpenWithOptions(a.path, logfile.OpenOptions{
 		Append:         a.append,
 		Permissions:    a.permissions,
 		PermissionsSet: a.permissionsSet,
@@ -264,58 +265,4 @@ func (a *FileAppender) outputWriterLocked() io.Writer {
 		return a.writer
 	}
 	return a.file
-}
-
-func validateLogFilePath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("goark-log: log file path is empty")
-	}
-	cleanPath := filepath.Clean(path)
-	info, err := os.Stat(cleanPath)
-	if err == nil && info.IsDir() {
-		return "", fmt.Errorf("goark-log: log file path %q is a directory", path)
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("goark-log: stat log file %q: %w", path, err)
-	}
-	return cleanPath, nil
-}
-
-type logFileOpenOptions struct {
-	Append         bool
-	Permissions    fs.FileMode
-	PermissionsSet bool
-}
-
-func openLogFile(path string) (*os.File, error) {
-	return openLogFileWithOptions(path, logFileOpenOptions{
-		Append:         true,
-		Permissions:    defaultLogFilePermissions,
-		PermissionsSet: true,
-	})
-}
-
-func openLogFileWithOptions(path string, options logFileOpenOptions) (*os.File, error) {
-	dir := filepath.Dir(path)
-	if dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("goark-log: create log directory %q: %w", dir, err)
-		}
-	}
-	flags := os.O_CREATE | os.O_WRONLY
-	if options.Append {
-		flags |= os.O_APPEND
-	} else {
-		flags |= os.O_TRUNC
-	}
-	permissions := options.Permissions.Perm()
-	if !options.PermissionsSet {
-		permissions = defaultLogFilePermissions
-	}
-	file, err := os.OpenFile(path, flags, permissions)
-	if err != nil {
-		return nil, fmt.Errorf("goark-log: open log file %q: %w", path, err)
-	}
-	return file, nil
 }

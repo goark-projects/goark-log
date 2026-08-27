@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"goark.dev/log/internal/rolling"
 )
 
 type archiveFile struct {
@@ -54,7 +56,7 @@ func (a *RollingFileAppender) deleteExpiredArchives(now time.Time) error {
 
 func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
 	if a.filePattern != "" {
-		matches, err := filepath.Glob(rollingPatternGlob(a.filePattern, a.compress))
+		matches, err := filepath.Glob(rolling.PatternGlob(a.filePattern, a.compress))
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: glob rolling filePattern %q: %w", a.filePattern, err)
 		}
