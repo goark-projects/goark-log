@@ -91,6 +91,7 @@ func (a *JSONAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: JSON appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -101,6 +102,7 @@ func (a *JSONAppender) AppendAttrs(ctx context.Context, event attrEvent) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: JSON appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -111,6 +113,7 @@ func (a *JSONAppender) appendFixedAttrs(ctx context.Context, event fixedAttrEven
 	if a == nil {
 		return fmt.Errorf("goark-log: JSON appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -118,10 +121,7 @@ func (a *JSONAppender) appendFixedAttrs(ctx context.Context, event fixedAttrEven
 	buf.Reset()
 	defer releaseBuffer(buf)
 	appendJSONFixedEvent(buf, event.Time, event.Level, event.Logger, event.Message, event.Attrs, event.Count)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, err := a.writer.Write(buf.Bytes())
-	return err
+	return a.writeBytes(buf.Bytes())
 }
 
 func (a *JSONAppender) write(when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) error {

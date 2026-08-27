@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestLookupResolver_whenEnvAndSystemLookupsUsed_shouldResolveText(t *testing.T) {
@@ -69,6 +70,27 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 	}
 	if !strings.HasPrefix(buf.String(), "1787624130123 INFO epoch\n") {
 		t.Fatalf("formatted line = %q", buf.String())
+	}
+}
+
+func TestPatternLayout_whenUnicodeValueIsTruncated_shouldKeepValidUTF8(t *testing.T) {
+	layout, err := NewPatternLayout("%.1msg|%4.2msg|%maxLen{%msg}{2}%n")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, testEvent("界abc", fixedTestTime())); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+
+	got := buf.String()
+	if !utf8.ValidString(got) {
+		t.Fatalf("formatted line is not valid UTF-8: %q", got)
+	}
+	want := "界|  界a|界a\n"
+	if got != want {
+		t.Fatalf("formatted line = %q, want %q", got, want)
 	}
 }
 

@@ -2,14 +2,11 @@ package goarklog
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
+	"goark.dev/log/internal/disruptor"
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"goark.dev/log/internal/disruptor"
 )
 
 const (
@@ -69,58 +66,6 @@ type AsyncAppender struct {
 
 type asyncEntry struct {
 	event Event
-}
-
-// AsyncOption 调整 AsyncAppender。
-type AsyncOption func(*AsyncAppender)
-
-// WithAsyncName 设置 appender 名称。
-func WithAsyncName(name string) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.name = name
-	}
-}
-
-// WithAsyncQueueSize 设置异步队列长度。
-func WithAsyncQueueSize(size int) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.queueSize = size
-	}
-}
-
-// WithAsyncOverflowStrategy 设置队列满时的处理策略。
-func WithAsyncOverflowStrategy(strategy AsyncOverflowStrategy) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.strategy = strategy
-	}
-}
-
-// WithAsyncWaitStrategy 设置异步队列等待策略。
-func WithAsyncWaitStrategy(strategy AsyncWaitStrategy) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.waitStrategy = strategy
-	}
-}
-
-// WithAsyncWaitOptions 设置异步队列等待策略参数。
-func WithAsyncWaitOptions(options AsyncWaitOptions) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.waitOptions = options
-	}
-}
-
-// WithAsyncErrorHandler 设置异步后台写入失败处理器。
-func WithAsyncErrorHandler(handler AsyncErrorHandler) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.errorHandler = handler
-	}
-}
-
-// WithAsyncCloseAppenders 设置关闭 async 时是否同时关闭下游 appender。
-func WithAsyncCloseAppenders(enabled bool) AsyncOption {
-	return func(appender *AsyncAppender) {
-		appender.closeAppenders = enabled
-	}
 }
 
 // NewAsyncAppender 创建异步 appender。
@@ -267,132 +212,4 @@ func (a *AsyncAppender) validate(appenders []Appender) error {
 		}
 	}
 	return nil
-}
-
-func (a *AsyncAppender) enqueueBlocking(ctx context.Context, entry asyncEntry) error {
-	for {
-		if a.queue.TryPublish(entry) {
-			return nil
-		}
-		err := a.queue.WaitWritable(ctx, a.closing)
-		if errors.Is(err, disruptor.ErrInterrupted) {
-			return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-		}
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func (a *AsyncAppender) enqueueOrDrop(entry asyncEntry) error {
-	select {
-	case <-a.closing:
-		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	default:
-		if a.queue.TryPublish(entry) {
-			return nil
-		}
-		a.dropped.Add(1)
-	}
-	return nil
-}
-
-func (a *AsyncAppender) enqueueDropDebug(ctx context.Context, entry asyncEntry) error {
-	select {
-	case <-a.closing:
-		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	default:
-		if a.queue.TryPublish(entry) {
-			return nil
-		}
-		if entry.event.Level <= slog.LevelDebug {
-			a.dropped.Add(1)
-			return nil
-		}
-		return a.enqueueBlocking(ctx, entry)
-	}
-}
-
-func (a *AsyncAppender) enqueueOrSync(ctx context.Context, entry asyncEntry) error {
-	select {
-	case <-a.closing:
-		return fmt.Errorf("goark-log: async appender %q is closed", a.Name())
-	default:
-		if a.queue.TryPublish(entry) {
-			return nil
-		}
-		event := entry.event
-		event.EndOfBatch = true
-		return a.appendSync(ctx, event)
-	}
-}
-
-func (a *AsyncAppender) run() {
-	defer a.workers.Done()
-	batch := make([]asyncEntry, 0, min(a.queueSize, DefaultAsyncAppenderBatchSize))
-	for {
-		if a.queue.PopBatch(&batch, cap(batch)) {
-			a.flushBatch(batch)
-			batch = batch[:0]
-			continue
-		}
-		err := a.queue.WaitReadable(context.Background(), a.done)
-		if errors.Is(err, disruptor.ErrInterrupted) {
-			a.drain(&batch)
-			a.flushBatch(batch)
-			return
-		}
-	}
-}
-
-func (a *AsyncAppender) drain(batch *[]asyncEntry) {
-	for {
-		if !a.queue.PopBatch(batch, cap(*batch)) {
-			return
-		}
-		if len(*batch) >= cap(*batch) {
-			a.flushBatch(*batch)
-			*batch = (*batch)[:0]
-		}
-	}
-}
-
-func (a *AsyncAppender) flushBatch(batch []asyncEntry) {
-	var joined error
-	for index, entry := range batch {
-		event := entry.event
-		event.EndOfBatch = index == len(batch)-1
-		if err := a.appendSync(context.Background(), event); err != nil {
-			joined = errors.Join(joined, err)
-			a.handleAsyncError(context.Background(), err, event)
-		}
-	}
-	if joined != nil {
-		a.failed.Add(1)
-	}
-}
-
-func (a *AsyncAppender) appendSync(ctx context.Context, event Event) error {
-	var joined error
-	for _, appender := range a.appenders {
-		if err := appender.Append(ctx, event); err != nil {
-			joined = errors.Join(joined, err)
-		}
-	}
-	return joined
-}
-
-func (a *AsyncAppender) closeDelegates() error {
-	var joined error
-	for _, appender := range a.appenders {
-		joined = errors.Join(joined, appender.Close())
-	}
-	return joined
-}
-
-func (a *AsyncAppender) handleAsyncError(ctx context.Context, err error, event Event) {
-	if a == nil || a.errorHandler == nil || err == nil {
-		return
-	}
-	a.errorHandler.HandleAsyncError(ctx, err, event)
 }

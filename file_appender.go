@@ -139,6 +139,7 @@ func (a *FileAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: file appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}

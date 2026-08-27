@@ -10,6 +10,13 @@ const loggerNameKey = "goark.logger"
 
 const defaultLoggerName = "goark"
 
+func normalizeContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 // Event 是一次已经快照化的日志事件。
 type Event struct {
 	Time         time.Time

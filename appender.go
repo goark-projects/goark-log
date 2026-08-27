@@ -88,6 +88,7 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: console appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}

@@ -1,0 +1,214 @@
+package goarklog
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
+	if a.fileIndexMode == RollingFileIndexMin && a.filePattern != "" && a.maxBackups > 0 {
+		return a.nextMinIndexArchivePath(now)
+	}
+	for attempt := 0; attempt < 1000; attempt++ {
+		index := a.archiveIndex
+		a.archiveIndex++
+		candidate, compressedCandidate, err := a.archivePaths(now, index)
+		if err != nil {
+			return "", err
+		}
+		if exists, err := pathExists(candidate); err != nil {
+			return "", fmt.Errorf("goark-log: stat archive log file %q: %w", candidate, err)
+		} else if exists {
+			continue
+		}
+		if a.compress && compressedCandidate != candidate {
+			if exists, err := pathExists(compressedCandidate); err != nil {
+				return "", fmt.Errorf("goark-log: stat archive log file %q: %w", compressedCandidate, err)
+			} else if exists {
+				continue
+			}
+		}
+		if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+			return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("goark-log: cannot allocate archive name for %q", a.path)
+}
+
+func (a *RollingFileAppender) nextMinIndexArchivePath(now time.Time) (string, error) {
+	for index := 1; index <= a.maxBackups; index++ {
+		candidate, compressedCandidate, err := a.archivePaths(now, index)
+		if err != nil {
+			return "", err
+		}
+		if archivePathAvailable(candidate, compressedCandidate, a.compress) {
+			a.archiveIndex = index + 1
+			if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+				return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+			}
+			return candidate, nil
+		}
+	}
+	if err := a.rotateMinIndexArchives(now); err != nil {
+		return "", err
+	}
+	candidate, _, err := a.archivePaths(now, 1)
+	if err != nil {
+		return "", err
+	}
+	a.archiveIndex = 2
+	if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+		return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+	}
+	return candidate, nil
+}
+
+func archivePathAvailable(candidate string, compressedCandidate string, compressed bool) bool {
+	if exists, err := pathExists(candidate); err != nil || exists {
+		return false
+	}
+	if compressed && compressedCandidate != candidate {
+		if exists, err := pathExists(compressedCandidate); err != nil || exists {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *RollingFileAppender) rotateMinIndexArchives(now time.Time) error {
+	for index := a.maxBackups; index >= 1; index-- {
+		_, currentCompressed, err := a.archivePaths(now, index)
+		if err != nil {
+			return err
+		}
+		current, _, err := a.archivePaths(now, index)
+		if err != nil {
+			return err
+		}
+		source := current
+		if a.compress {
+			source = currentCompressed
+		}
+		if index == a.maxBackups {
+			if err := os.Remove(source); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("goark-log: remove archive log file %q: %w", source, err)
+			}
+			continue
+		}
+		_, nextCompressed, err := a.archivePaths(now, index+1)
+		if err != nil {
+			return err
+		}
+		next, _, err := a.archivePaths(now, index+1)
+		if err != nil {
+			return err
+		}
+		target := next
+		if a.compress {
+			target = nextCompressed
+		}
+		if err := os.Rename(source, target); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("goark-log: rename archive log file %q to %q: %w", source, target, err)
+		}
+	}
+	return nil
+}
+
+func (a *RollingFileAppender) archivePaths(now time.Time, index int) (string, string, error) {
+	if a.filePattern == "" {
+		dir := filepath.Dir(a.path)
+		base := filepath.Base(a.path)
+		stamp := now.Format("20060102-150405.000")
+		candidate := filepath.Join(dir, fmt.Sprintf("%s.%s.%03d", base, stamp, index))
+		if a.compress {
+			return candidate, candidate + ".gz", nil
+		}
+		return candidate, candidate, nil
+	}
+	target, err := formatRollingFilePattern(a.filePattern, now, index)
+	if err != nil {
+		return "", "", err
+	}
+	target = filepath.Clean(target)
+	if a.compress {
+		if strings.HasSuffix(strings.ToLower(target), ".gz") {
+			return strings.TrimSuffix(target, ".gz"), target, nil
+		}
+		return target, target + ".gz", nil
+	}
+	return target, target, nil
+}
+
+func (a *RollingFileAppender) initArchiveIndex() error {
+	if a.filePattern != "" {
+		return a.initArchiveIndexByPattern()
+	}
+	dir := filepath.Dir(a.path)
+	base := filepath.Base(a.path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("goark-log: read log directory %q: %w", dir, err)
+	}
+	prefix := base + "."
+	maxIndex := -1
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		index, ok := parseArchiveIndex(entry.Name(), prefix)
+		if ok && index > maxIndex {
+			maxIndex = index
+		}
+	}
+	a.archiveIndex = maxIndex + 1
+	return nil
+}
+
+func (a *RollingFileAppender) initArchiveIndexByPattern() error {
+	glob := rollingPatternGlob(a.filePattern, a.compress)
+	matches, err := filepath.Glob(glob)
+	if err != nil {
+		return fmt.Errorf("goark-log: glob rolling filePattern %q: %w", a.filePattern, err)
+	}
+	pattern, hasIndex, err := rollingPatternIndexRegexp(a.filePattern, a.compress)
+	if err != nil {
+		return err
+	}
+	maxIndex := -1
+	for _, match := range matches {
+		if !hasIndex {
+			maxIndex++
+			continue
+		}
+		parts := pattern.FindStringSubmatch(filepath.ToSlash(match))
+		if len(parts) != 2 {
+			continue
+		}
+		index, err := strconv.Atoi(parts[1])
+		if err == nil && index > maxIndex {
+			maxIndex = index
+		}
+	}
+	a.archiveIndex = maxIndex + 1
+	return nil
+}
+
+func parseArchiveIndex(name string, prefix string) (int, bool) {
+	tail := strings.TrimPrefix(name, prefix)
+	tail = strings.TrimSuffix(tail, ".gz")
+	indexStart := strings.LastIndexByte(tail, '.')
+	if indexStart < 0 || indexStart == len(tail)-1 {
+		return 0, false
+	}
+	index, err := strconv.Atoi(tail[indexStart+1:])
+	if err != nil {
+		return 0, false
+	}
+	return index, true
+}

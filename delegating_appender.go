@@ -73,6 +73,7 @@ func (a *FailoverAppender) Append(ctx context.Context, event Event) error {
 	if a == nil || a.primary == nil {
 		return fmt.Errorf("goark-log: failover appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	primaryErr := a.primary.Append(ctx, event)
 	if primaryErr == nil {
 		return nil
@@ -188,6 +189,7 @@ func (a *RoutingAppender) Append(ctx context.Context, event Event) error {
 	if a == nil {
 		return fmt.Errorf("goark-log: routing appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	key := a.routeKey(ctx, event)
 	appender := a.routes[key]
 	if appender == nil {
@@ -288,6 +290,7 @@ func (a *RewriteAppender) Append(ctx context.Context, event Event) error {
 	if a == nil || a.delegate == nil {
 		return fmt.Errorf("goark-log: rewrite appender is nil")
 	}
+	ctx = normalizeContext(ctx)
 	if a.policy != nil {
 		rewritten, err := a.policy(ctx, event)
 		if err != nil {
