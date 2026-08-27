@@ -263,3 +263,72 @@ func newPatternUUID() string {
 	}
 	return string(out[:])
 }
+
+func eventMarkerString(event Event) string {
+	if event.Marker != nil {
+		return event.Marker.String()
+	}
+	for _, key := range []string{"marker", "goark.marker"} {
+		value, ok := event.Attr(key)
+		if ok {
+			return logvalue.String(value)
+		}
+	}
+	return ""
+}
+
+func eventThreadName(event Event) string {
+	if strings.TrimSpace(event.ThreadName) != "" {
+		return strings.TrimSpace(event.ThreadName)
+	}
+	for _, key := range []string{"goark.thread", "thread", "goroutine"} {
+		value, ok := event.Attr(key)
+		if ok {
+			name := strings.TrimSpace(logvalue.String(value))
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return defaultThreadName
+}
+
+func eventErrorString(event Event) string {
+	return eventErrorStringWithOption(event, "")
+}
+
+func eventErrorStringWithOption(event Event, option string) string {
+	option = strings.ToLower(strings.TrimSpace(option))
+	if option == "none" {
+		return ""
+	}
+	if event.Throwable != nil {
+		return throwableStringWithPatternOption(event.Throwable, option)
+	}
+	if throwable := throwableFromAttrs(event.Attrs); throwable != nil {
+		return throwableStringWithPatternOption(throwable, option)
+	}
+	for _, key := range []string{"error", "err"} {
+		value, ok := event.Attr(key)
+		if ok {
+			return logvalue.String(value)
+		}
+	}
+	return ""
+}
+
+func throwableStringWithPatternOption(throwable *Throwable, option string) string {
+	if throwable == nil {
+		return ""
+	}
+	switch option {
+	case "none":
+		return ""
+	case "short":
+		return throwable.Message
+	case "full":
+		return throwableStackString(throwable)
+	default:
+		return throwable.String()
+	}
+}

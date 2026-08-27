@@ -7,7 +7,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
+	"goark.dev/log/internal/configvalue"
+	"goark.dev/log/internal/textutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,6 +35,26 @@ func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (
 		return nil, fmt.Errorf("goark-log: parse config file %q: %w", path, err)
 	}
 	return config, nil
+}
+
+// ParseByteSize 解析日志滚动大小。
+func ParseByteSize(value string) (int64, error) {
+	return configvalue.ByteSize(value)
+}
+
+// ParseRollingInterval 解析时间滚动间隔。
+func ParseRollingInterval(value string) (time.Duration, error) {
+	return configvalue.RollingInterval(value)
+}
+
+// ParseRollingMaxAge 解析滚动档案最大保留时间。
+func ParseRollingMaxAge(value string) (time.Duration, error) {
+	return configvalue.RollingMaxAge(value)
+}
+
+// ParseMonitorInterval 解析配置监控间隔；纯数字按秒处理。
+func ParseMonitorInterval(value string) (time.Duration, error) {
+	return configvalue.MonitorInterval(value)
 }
 
 func decodeConfig(reader io.Reader, format string, lookups *LookupResolver) (*fileConfig, error) {
@@ -97,4 +120,11 @@ func filepathExt(path string) string {
 		return ""
 	}
 	return path[index:]
+}
+
+func (c *fileConfig) monitorInterval() (time.Duration, error) {
+	if c == nil {
+		return 0, nil
+	}
+	return ParseMonitorInterval(textutil.FirstNonBlank(c.MonitorInterval, c.MonitorKebab))
 }
