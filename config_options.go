@@ -209,6 +209,25 @@ func parseCustomLevelValue(value string) (int, error) {
 	return parsed, nil
 }
 
+type asyncLoggerConfig struct {
+	Enabled               *bool  `yaml:"enabled"`
+	QueueSize             int    `yaml:"queueSize"`
+	QueueSizeKebab        int    `yaml:"queue-size"`
+	BatchSize             int    `yaml:"batchSize"`
+	BatchSizeKebab        int    `yaml:"batch-size"`
+	OverflowStrategy      string `yaml:"overflowStrategy"`
+	OverflowStrategyKebab string `yaml:"overflow-strategy"`
+	WaitStrategy          string `yaml:"waitStrategy"`
+	WaitStrategyKebab     string `yaml:"wait-strategy"`
+	WaitRetries           int    `yaml:"waitRetries"`
+	WaitRetriesKebab      int    `yaml:"wait-retries"`
+	SleepTime             string `yaml:"sleepTime"`
+	SleepTimeKebab        string `yaml:"sleep-time"`
+	Timeout               string `yaml:"timeout"`
+	IncludeLocation       *bool  `yaml:"includeLocation"`
+	IncludeLocationKebab  *bool  `yaml:"include-location"`
+}
+
 func (c *fileConfig) asyncLoggerOptions() AsyncLoggerOptions {
 	config := c.asyncLoggerConfig()
 	if config.empty() {
@@ -275,4 +294,23 @@ func (c asyncLoggerConfig) includeLocation() bool {
 		return *c.IncludeLocationKebab
 	}
 	return false
+}
+
+func (c asyncLoggerConfig) empty() bool {
+	return c.Enabled == nil &&
+		c.QueueSize == 0 &&
+		c.QueueSizeKebab == 0 &&
+		c.BatchSize == 0 &&
+		c.BatchSizeKebab == 0 &&
+		strings.TrimSpace(c.OverflowStrategy) == "" &&
+		strings.TrimSpace(c.OverflowStrategyKebab) == "" &&
+		strings.TrimSpace(c.WaitStrategy) == "" &&
+		strings.TrimSpace(c.WaitStrategyKebab) == "" &&
+		c.WaitRetries == 0 &&
+		c.WaitRetriesKebab == 0 &&
+		strings.TrimSpace(c.SleepTime) == "" &&
+		strings.TrimSpace(c.SleepTimeKebab) == "" &&
+		strings.TrimSpace(c.Timeout) == "" &&
+		c.IncludeLocation == nil &&
+		c.IncludeLocationKebab == nil
 }

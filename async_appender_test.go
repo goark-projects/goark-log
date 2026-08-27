@@ -184,11 +184,11 @@ func TestNewAsyncAppender_whenBatchSizeConfigured_shouldNormalizeAgainstQueue(t 
 	if err != nil {
 		t.Fatalf("NewAsyncAppender() error = %v", err)
 	}
-	if appender.queueSize != 4 {
-		t.Fatalf("queueSize = %d, want normalized size 4", appender.queueSize)
+	if appender.QueueSize() != 4 {
+		t.Fatalf("queueSize = %d, want normalized size 4", appender.QueueSize())
 	}
-	if appender.batchSize != 4 {
-		t.Fatalf("batchSize = %d, want capped queue size 4", appender.batchSize)
+	if appender.BatchSize() != 4 {
+		t.Fatalf("batchSize = %d, want capped queue size 4", appender.BatchSize())
 	}
 	if err := appender.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)

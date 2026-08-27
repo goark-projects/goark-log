@@ -317,8 +317,8 @@ rootLogger.appenderRefs=async
 	if asyncAppender == nil {
 		t.Fatalf("async appender was not built: %+v", options.Appenders)
 	}
-	if asyncAppender.batchSize != 3 {
-		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.batchSize)
+	if asyncAppender.BatchSize() != 3 {
+		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.BatchSize())
 	}
 }
 
@@ -392,8 +392,8 @@ func TestLoadOptions_whenXMLAsyncAppenderBatchSizeConfigured_shouldApply(t *test
 	if asyncAppender == nil {
 		t.Fatalf("async appender was not built: %+v", options.Appenders)
 	}
-	if asyncAppender.batchSize != 3 {
-		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.batchSize)
+	if asyncAppender.BatchSize() != 3 {
+		t.Fatalf("async appender batchSize = %d, want 3", asyncAppender.BatchSize())
 	}
 }
 

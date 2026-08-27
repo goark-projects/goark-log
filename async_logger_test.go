@@ -328,16 +328,17 @@ rootLogger.appenderRefs = console
 	if handler.async == nil {
 		t.Fatalf("async logger is nil")
 	}
-	if handler.async.options.QueueSize != 8 || handler.async.options.BatchSize != 8 {
-		t.Fatalf("async options = %+v, want normalized queue/batch size 8", handler.async.options)
+	asyncOptions := handler.async.Options()
+	if asyncOptions.QueueSize != 8 || asyncOptions.BatchSize != 8 {
+		t.Fatalf("async options = %+v, want normalized queue/batch size 8", asyncOptions)
 	}
-	if handler.async.options.OverflowStrategy != AsyncOverflowDrop {
-		t.Fatalf("OverflowStrategy = %q, want %q", handler.async.options.OverflowStrategy, AsyncOverflowDrop)
+	if asyncOptions.OverflowStrategy != AsyncOverflowDrop {
+		t.Fatalf("OverflowStrategy = %q, want %q", asyncOptions.OverflowStrategy, AsyncOverflowDrop)
 	}
-	if handler.async.options.WaitStrategy != AsyncWaitBlock {
-		t.Fatalf("WaitStrategy = %q, want %q", handler.async.options.WaitStrategy, AsyncWaitBlock)
+	if asyncOptions.WaitStrategy != AsyncWaitBlock {
+		t.Fatalf("WaitStrategy = %q, want %q", asyncOptions.WaitStrategy, AsyncWaitBlock)
 	}
-	if !handler.async.options.IncludeLocation {
+	if !asyncOptions.IncludeLocation {
 		t.Fatalf("IncludeLocation = false, want true")
 	}
 }

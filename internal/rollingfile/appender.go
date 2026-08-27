@@ -2,11 +2,9 @@ package rollingfile
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -29,12 +27,6 @@ const (
 	// DefaultRollingActionQueueSize 是异步滚动动作队列默认长度。
 	DefaultRollingActionQueueSize = 32
 )
-
-var bufferPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
-}
 
 // Event 是滚动文件输出端处理的事件快照。
 type Event = logevent.Event
@@ -157,8 +149,7 @@ func (a *RollingFileAppender) Append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	buf := bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
+	buf := acquireBuffer()
 	defer releaseBuffer(buf)
 	if err := a.layout.Format(buf, event); err != nil {
 		return err
@@ -464,50 +455,4 @@ func (a *RollingFileAppender) rollover(now time.Time) error {
 	a.nextRollover = rolling.NextRolloverAfter(now, a.interval, a.modulate)
 	a.nextCron = rolling.NextCronRolloverAfter(now, a.cron)
 	return a.runRolloverActions(now, target, archiveIndex)
-}
-
-func (a *RollingFileAppender) flushLocked() error {
-	if a == nil || a.writer == nil {
-		return nil
-	}
-	return a.writer.Flush()
-}
-
-func (a *RollingFileAppender) writeHeaderLocked() (int, error) {
-	writer := a.outputWriterLocked()
-	if writer == nil {
-		return 0, nil
-	}
-	return internallayout.WriteHeader(writer, a.layout)
-}
-
-func (a *RollingFileAppender) writeFooterLocked() (int, error) {
-	writer := a.outputWriterLocked()
-	if writer == nil {
-		return 0, nil
-	}
-	return internallayout.WriteFooter(writer, a.layout)
-}
-
-func (a *RollingFileAppender) writeFooterErrorLocked() error {
-	_, err := a.writeFooterLocked()
-	return err
-}
-
-func (a *RollingFileAppender) outputWriterLocked() io.Writer {
-	if a == nil {
-		return nil
-	}
-	if a.writer != nil {
-		return a.writer
-	}
-	return a.file
-}
-
-func releaseBuffer(buf *bytes.Buffer) {
-	if buf.Cap() > 64*1024 {
-		return
-	}
-	buf.Reset()
-	bufferPool.Put(buf)
 }

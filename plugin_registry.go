@@ -18,6 +18,111 @@ type LayoutFactory func(config LayoutBuildConfig) (Layout, error)
 // FilterFactory 从配置构建 Filter。
 type FilterFactory func(config FilterBuildConfig) (Filter, error)
 
+// AppenderBuildConfig 是 appender 插件的构建输入。
+type AppenderBuildConfig struct {
+	Name             string
+	Type             string
+	Target           string
+	URL              string
+	Method           string
+	Address          string
+	Network          string
+	Facility         string
+	AppName          string
+	ConnectTimeout   string
+	WriteTimeout     string
+	FileName         string
+	Layout           Layout
+	AppenderRefs     []string
+	Delegates        []Appender
+	Routes           map[string]Appender
+	DefaultRoute     Appender
+	RouteKey         string
+	QueueSize        int
+	BatchSize        int
+	OverflowStrategy string
+	WaitStrategy     string
+	WaitOptions      AsyncWaitOptions
+	BufferSize       string
+	FlushOnWrite     bool
+	Append           *bool
+	CreateOnDemand   bool
+	FilePermissions  string
+	Rolling          RollingBuildConfig
+	Rewrite          RewriteBuildConfig
+}
+
+// RewriteBuildConfig 是 rewrite appender 的内置重写策略配置。
+type RewriteBuildConfig struct {
+	Attrs       map[string]string
+	RemoveAttrs []string
+}
+
+// RollingBuildConfig 是滚动文件插件的构建输入。
+type RollingBuildConfig struct {
+	FilePattern     string
+	MaxSize         string
+	Interval        string
+	CronSchedule    string
+	TimeModulate    *bool
+	OnStartup       bool
+	MaxBackups      *int
+	MaxAge          string
+	FileIndex       string
+	DirectWrite     bool
+	Gzip            bool
+	AsyncActions    bool
+	DeleteActions   []RollingDeleteBuildConfig
+	ActionQueueSize int
+}
+
+// RollingDeleteBuildConfig 是 YAML 删除动作的中间配置。
+type RollingDeleteBuildConfig struct {
+	BasePath string
+	MaxDepth int
+	Glob     string
+	MaxAge   string
+	MaxCount int
+	MaxSize  string
+}
+
+// LayoutBuildConfig 是 layout 插件的构建输入。
+type LayoutBuildConfig struct {
+	Type             string
+	Pattern          string
+	EventTemplate    string
+	EventTemplateURI string
+	Options          LayoutOptions
+	Registry         *PluginRegistry
+}
+
+// FilterBuildConfig 是 filter 插件的构建输入。
+type FilterBuildConfig struct {
+	Name             string
+	Type             string
+	Level            string
+	MinLevel         string
+	MaxLevel         string
+	Marker           string
+	Text             string
+	Operator         string
+	Start            string
+	End              string
+	Timezone         string
+	Rate             string
+	MaxBurst         int
+	Field            string
+	Key              string
+	Value            string
+	Values           map[string]string
+	Thresholds       map[string]string
+	Filters          []Filter
+	DefaultThreshold string
+	Pattern          string
+	OnMatch          string
+	OnMismatch       string
+}
+
 // PluginRegistrar 把一个外部模块的插件注册到指定注册表。
 type PluginRegistrar interface {
 	RegisterLogPlugins(registry *PluginRegistry) error

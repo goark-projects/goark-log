@@ -173,12 +173,13 @@ root:
 	if asyncAppender == nil {
 		t.Fatalf("async appender was not built: %+v", options.Appenders)
 	}
-	if asyncAppender.batchSize != 2 ||
-		asyncAppender.waitStrategy != AsyncWaitBlock ||
-		asyncAppender.waitOptions.Retries != 9 ||
-		asyncAppender.waitOptions.SleepTime != time.Millisecond ||
-		asyncAppender.waitOptions.Timeout != 5*time.Millisecond {
-		t.Fatalf("async appender options = batch %d strategy %s options %+v", asyncAppender.batchSize, asyncAppender.waitStrategy, asyncAppender.waitOptions)
+	waitOptions := asyncAppender.WaitOptions()
+	if asyncAppender.BatchSize() != 2 ||
+		asyncAppender.WaitStrategy() != AsyncWaitBlock ||
+		waitOptions.Retries != 9 ||
+		waitOptions.SleepTime != time.Millisecond ||
+		waitOptions.Timeout != 5*time.Millisecond {
+		t.Fatalf("async appender options = batch %d strategy %s options %+v", asyncAppender.BatchSize(), asyncAppender.WaitStrategy(), waitOptions)
 	}
 }
 
