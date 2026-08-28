@@ -1,0 +1,58 @@
+<Configuration status="warn" monitorInterval="30s">
+  <Properties>
+    <Property name="LOG_DIR">${env:GOARK_LOG_DIR:-logs}</Property>
+    <Property name="PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n</Property>
+  </Properties>
+  <Appenders>
+    <Console name="console" target="SYSTEM_ERR">
+      <PatternLayout pattern="${PATTERN}" disableAnsi="true"/>
+    </Console>
+    <RollingFile name="appRolling"
+                 fileName="${LOG_DIR}/log4j2-app.log"
+                 filePattern="${LOG_DIR}/archive/log4j2-app-%d{yyyyMMdd-HHmmss}-%06i.log.gz"
+                 bufferSize="256KiB"
+                 createOnDemand="true"
+                 filePermissions="0644">
+      <JSONLayout eventEol="true" includeStacktrace="true"/>
+      <Policies>
+        <SizeBasedTriggeringPolicy size="100MiB"/>
+        <TimeBasedTriggeringPolicy interval="daily" modulate="true"/>
+        <OnStartupTriggeringPolicy enabled="true"/>
+      </Policies>
+      <DefaultRolloverStrategy max="30" fileIndex="nomax">
+        <Delete basePath="${LOG_DIR}/archive" maxDepth="1">
+          <IfFileName glob="*.log.gz"/>
+          <IfLastModified age="30d"/>
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingFile>
+    <Routing name="tenantRouter" routeKey="tenant" defaultRoute="console">
+      <Route key="tenant-a" ref="appRolling"/>
+      <Route key="tenant-b">
+        <AppenderRef ref="appRolling"/>
+      </Route>
+    </Routing>
+    <Async name="fanout" queueSize="1024" batchSize="64" overflowStrategy="block">
+      <AppenderRef ref="console"/>
+      <AppenderRef ref="tenantRouter"/>
+    </Async>
+    <Rewrite name="redacted">
+      <AppenderRef ref="fanout"/>
+      <KeyValuePair key="service" value="orders"/>
+      <Remove key="password"/>
+      <Remove key="token"/>
+    </Rewrite>
+  </Appenders>
+  <Filters>
+    <StringMatchFilter name="dropHealthCheck" text="/health" onMatch="deny" onMismatch="neutral"/>
+  </Filters>
+  <Loggers>
+    <Logger name="goark.demo.sql" level="debug" additivity="true">
+      <AppenderRef ref="appRolling" level="debug"/>
+    </Logger>
+    <Root level="info">
+      <FilterRef ref="dropHealthCheck"/>
+      <AppenderRef ref="redacted"/>
+    </Root>
+  </Loggers>
+</Configuration>

@@ -13,15 +13,20 @@ import (
 
 func main() {
 	registry := goarklog.NewPluginRegistry()
-	if err := registry.RegisterPlugins(goarklog.NewPluginSet(
+	plugins := goarklog.NewPluginSet(
+		goarklog.WithPluginLookup("tenant", tenantLookup),
 		goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
-	)); err != nil {
+	)
+	if err := registry.RegisterPlugins(plugins); err != nil {
 		panic(err)
 	}
 
 	layout, err := goarklog.NewJSONTemplateLayout(`{
-  "message": {"$resolver": "message"},
+  "timestamp": {"$resolver": "timestamp", "format": "RFC3339NANO"},
+  "level": {"$resolver": "level"},
+  "logger": {"$resolver": "logger"},
   "component": {"$resolver": "constant", "value": "extensibility"},
+  "message": {"$resolver": "message"},
   "contextMap": {"$resolver": "mdc"}
 }`, goarklog.WithJSONTemplateResolverRegistry(registry))
 	if err != nil {
@@ -48,9 +53,15 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	_ = logger.AtInfo().
-		WithContext(goarklog.WithContextAttrs(context.Background(), slog.String("trace_id", "trace-1"))).
-		Logf("factory keeps this literal")
+	ctx := goarklog.WithContextAttrs(context.Background(), slog.String("tenant", "tenant-a"))
+	_ = logger.AtInfo().WithContext(ctx).Logf("literal message from custom message factory")
+}
+
+func tenantLookup(key string) (string, bool) {
+	if key == "default" {
+		return "tenant-a", true
+	}
+	return "", false
 }
 
 func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {

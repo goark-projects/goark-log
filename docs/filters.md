@@ -1,366 +1,166 @@
-# Filter Reference
+# Filters
 
 [简体中文](filters.zh-CN.md)
 
-Filters decide whether a log event should continue through the pipeline. Every
-filter must be concurrency-safe.
+Filters decide whether an event should continue through the logging pipeline.
+They are designed to match Log4j2's `ACCEPT`, `DENY`, and `NEUTRAL` model while
+remaining explicit Go interfaces.
 
 ## Decisions
 
-| Decision | Meaning |
+| Decision | Effect |
 | --- | --- |
-| `neutral` | The filter has no final decision; the next filter or level gate decides. |
-| `accept` | The filter explicitly accepts the event. A global `accept` can bypass the route level gate. |
-| `deny` | The event is dropped immediately at the current stage. |
+| `neutral` | The next filter or normal level routing decides. |
+| `accept` | In global filters, bypasses the logger level threshold. In route/appender filters, stops filter evaluation and allows the event. |
+| `deny` | Drops the event immediately for that filter chain. |
 
-Decision parsing accepts empty string as `neutral`.
+Most configured filters default to `onMatch: neutral` and
+`onMismatch: deny`. Set `onMismatch: neutral` when a filter should only deny or
+only accept a subset without blocking other events.
 
-Most built-in filters default to:
+## Placement
 
-- `onMatch: neutral`
-- `onMismatch: deny`
-
-Script filters created through the API additionally default `onError` to
-`deny`. The core configuration does not register a script filter plugin or any
-script engine.
-
-## Evaluation Order
-
-1. Handler receives a `slog.Record` or native logger event.
-2. Global filters from top-level `filterRefs` are evaluated before level checks.
-3. Route level is checked unless a global filter returned `accept`.
-4. Logger/root route filters are evaluated.
-5. Appender-ref controls are evaluated for each referenced appender.
-6. Appender wrapper filters are evaluated.
-7. The appender writes the event.
-
-Any `deny` stops the event at that stage. `neutral` lets the event continue.
-
-## Config Shape
-
-```yaml
-filters:
-  onlyWarn:
-    type: threshold
-    level: warn
-    onMatch: neutral
-    onMismatch: deny
-
-filterRefs: [onlyWarn]
-```
-
-Top-level `filterRefs` defines global filters. `root`, named loggers, appender
-refs, and appenders can each define `filters`, `filterRefs`, or `filter-refs`.
-
-## Built-In Filter Types
-
-| Type | Aliases | Purpose |
+| Placement | Config field | Execution point |
 | --- | --- | --- |
-| `threshold` | `thresholdFilter` | Matches events at or above a level. |
-| `level` | `levelFilter` | Matches exactly one level. |
-| `levelRange` | `levelRangeFilter` | Matches a closed level range. |
-| `regex` | `regexFilter` | Matches message, logger, or one attribute by regexp. |
-| `attr` | `attribute`, `attrFilter`, `attributeFilter` | Matches one attribute key and value. |
-| `deny` | `denyAll`, `denyFilter`, `denyAllFilter` | Always denies. |
-| `composite` | `compositeFilter` | Runs a nested filter chain. |
-| `marker` | `markerFilter` | Matches marker or parent marker name. |
-| `noMarker` | `noMarkerFilter` | Matches events without marker. |
-| `map` | `mapFilter` | Matches multiple event attributes. |
-| `threadContextMap` | `threadContextMapFilter` | Alias of map filter for MDC use. |
-| `threadContextStack` | `threadContextStackFilter` | Matches a context stack value. |
-| `structuredData` | `structuredDataFilter` | Alias of map filter for structured data fields. |
-| `throwable` | `throwableFilter` | Matches throwable text by regexp. |
-| `stringMatch` | `stringMatchFilter` | Matches message substring. |
-| `time` | `timeFilter` | Matches a time-of-day window. |
-| `burst` | `burstFilter` | Token-bucket limiter for lower-level events. |
-| `dynamicThreshold` | `dynamicThresholdFilter` | Selects a threshold from an event attribute value. |
+| Global | top-level `filterRefs` | Before logger level checks. |
+| Root logger | `root.filterRefs` | After route selection. Additive named loggers inherit root filters. |
+| Named logger | `loggers.NAME.filterRefs` | After route selection for matching logger names. |
+| Appender | `appenders.NAME.filterRefs` | Wraps that appender. |
+| Appender ref | `appenderRefs[].filterRefs` | Applies only to one reference to an appender. |
+| Composite filter | `filters.NAME.filterRefs` | Nested filter chain. Cycles are rejected. |
 
-Filter type names are normalized by lowercasing and removing `-` and `_`.
+Filter chains run in order. The first `DENY` or `ACCEPT` terminates the chain.
+
+## Built-In Filters
+
+| Type | Aliases | Required fields | Match |
+| --- | --- | --- | --- |
+| `threshold` | `thresholdFilter` | `level` | Event level is at or above level. |
+| `level` | `levelFilter` | `level` | Event level equals level. |
+| `levelRange` | `levelRangeFilter` | `minLevel`, `maxLevel` | Event level is in the inclusive range. |
+| `regex` | `regexFilter` | `pattern`; `key` when `field=attr` | Regex over message, logger, or attr. |
+| `attr` | `attribute`, `attrFilter`, `attributeFilter` | `key` | Attribute exists and string value equals `value`. |
+| `deny` | `denyAll`, `denyFilter`, `denyAllFilter` | none | Always denies. |
+| `composite` | `compositeFilter` | `filterRefs` | Runs nested filters. |
+| `marker` | `markerFilter` | `marker` or `value` | Marker name or parent marker matches. |
+| `noMarker` | `noMarkerFilter` | none | Event has no marker. |
+| `map` | `mapFilter` | values | Event attrs match all or any configured key/value pairs. |
+| `threadContextMap` | `threadContextMapFilter` | values | MDC-style alias of map filter. |
+| `threadContextStack` | `threadContextStackFilter` | `value`, `text`, or `pattern` | Context stack contains the value. |
+| `structuredData` | `structuredDataFilter` | values | Alias of map filter for structured data attrs. |
+| `throwable` | `throwableFilter` | `pattern`, `text`, or `value` | Regex over throwable text or error attrs. |
+| `stringMatch` | `stringMatchFilter` | `text`, `value`, or `pattern` | Message contains text. |
+| `time` | `timeFilter` | optional | Event time-of-day is in range. |
+| `burst` | `burstFilter` | optional | Token bucket for events at or below level. |
+| `dynamicThreshold` | `dynamicThresholdFilter` | `key` | Threshold selected by an event attribute. |
+
+`ScriptFilter` exists in the Go API only. The core module does not ship an
+embedded script runtime or configured script language.
 
 ## Common Fields
 
-| Field | Aliases | Description |
-| --- | --- | --- |
-| `type` | none | Required filter type. |
-| `level` | none | Level used by threshold, level, burst, or dynamic threshold fallback. |
-| `minLevel` | `min-level` | Lower bound for level range. |
-| `maxLevel` | `max-level` | Upper bound for level range. |
-| `marker` | none | Marker filter target. |
-| `text` | none | String match or stack target. |
-| `operator` | none | Map filter operator: `and` or `or`. |
-| `start` | none | Time filter start. |
-| `end` | none | Time filter end. |
-| `timezone` | none | IANA timezone for time filter, for example `Asia/Shanghai`. |
-| `rate` | none | Burst tokens per second. |
-| `maxBurst` | `max-burst` | Burst token bucket capacity. |
-| `field` | none | Regex field: `message`, `logger`, or `attr`. |
-| `key` | none | Attribute key. |
-| `value` | none | Attribute value. |
-| `values` | none | Map of expected attribute key/value pairs. |
-| `thresholds` | none | Dynamic-threshold map from attribute value to level. |
-| `filters` | `filterRefs`, `filter-refs` | Nested filters for composite. |
-| `defaultThreshold` | `default-threshold` | Dynamic threshold fallback. |
-| `pattern` | none | Regex pattern for regex/throwable or fallback text for some filters. |
-| `onMatch` | `on-match` | Decision when matched. |
-| `onMismatch` | `on-mismatch` | Decision when not matched. |
-| `KeyValuePair` | `keyValuePairs`, `key-value-pairs` | Log4j-style key/value entries for map-like filters. |
+| Field | Notes |
+| --- | --- |
+| `type` | Required for configured filters. Kind matching ignores case, hyphen, and underscore. |
+| `onMatch`, `on-match` | `neutral`, `accept`, or `deny`; default `neutral`. |
+| `onMismatch`, `on-mismatch` | `neutral`, `accept`, or `deny`; default `deny`. |
+| `filters`, `filterRefs`, `filter-refs` | Nested refs, mainly for composite filters. |
 
-## ThresholdFilter
+## Level Filters
 
 ```yaml
 filters:
-  warnAndAbove:
+  warnings:
     type: threshold
     level: warn
 ```
 
-Required field: `level`.
+`levelRange` rejects configs where `minLevel > maxLevel`. Level names use the
+same parser as logger levels: `ALL`, `TRACE`, `DEBUG`, `INFO`, `WARN`,
+`ERROR`, `FATAL`, `OFF`, `WARNING`, or integers.
 
-Matches when `event.Level >= level`.
-
-## LevelFilter
-
-```yaml
-filters:
-  onlyError:
-    type: level
-    level: error
-```
-
-Required field: `level`.
-
-Matches when `event.Level == level`.
-
-## LevelRangeFilter
+## Regex And String Filters
 
 ```yaml
 filters:
-  businessNoise:
-    type: levelRange
-    minLevel: info
-    maxLevel: warn
-```
-
-Required fields: `minLevel`, `maxLevel`. `minLevel` must be less than or equal
-to `maxLevel`.
-
-## RegexFilter
-
-```yaml
-filters:
-  routeByLogger:
+  dropHealth:
+    type: stringMatch
+    text: "/health"
+    onMatch: deny
+    onMismatch: neutral
+  tenantLogger:
     type: regex
     field: logger
-    pattern: "^goark\\.orm(\\.|$)"
-    onMatch: accept
-    onMismatch: neutral
-
-  rejectHealthChecks:
-    type: regex
-    field: attr
-    key: path
-    pattern: "^/healthz$"
-    onMatch: deny
-    onMismatch: neutral
+    pattern: "^goark\\.tenant\\."
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `pattern` | required | Go regular expression. |
-| `field` | `message` | `message`, `msg`, `logger`, `name`, `attr`, or `attribute`. |
-| `key` | required for `attr` | Attribute key to read. |
+Regex field values are `message`, `msg`, `logger`, `name`, `attr`, and
+`attribute`. `field: attr` requires `key`.
 
-## AttrFilter
+## Attribute And Map Filters
 
 ```yaml
 filters:
-  auditOnly:
-    type: attr
-    key: channel
-    value: audit
-```
-
-Required fields: `key`, `value`.
-
-Matches when the latest event attribute with `key` has the exact string value.
-
-## DenyFilter
-
-```yaml
-filters:
-  disabled:
-    type: deny
-```
-
-Always returns `deny`.
-
-## CompositeFilter
-
-```yaml
-filters:
-  onlyProd:
-    type: attr
-    key: profile
-    value: prod
-    onMatch: neutral
-    onMismatch: deny
-  noHealthChecks:
-    type: regex
-    field: attr
-    key: path
-    pattern: "^/healthz$"
-    onMatch: deny
-    onMismatch: neutral
-  prodTraffic:
-    type: composite
-    filterRefs: [onlyProd, noHealthChecks]
-```
-
-Required field: `filters`, `filterRefs`, or `filter-refs`.
-
-Nested filter references are resolved by name. Cycles are rejected.
-
-## MarkerFilter and NoMarkerFilter
-
-```yaml
-filters:
-  securityMarker:
-    type: marker
-    marker: SECURITY
-    onMatch: accept
-    onMismatch: neutral
-  unmarkedOnly:
-    type: noMarker
-```
-
-Marker matching uses `Marker.Contains`, so a child marker can match a configured
-parent marker.
-
-Markers can be added through context or attributes:
-
-```go
-ctx := goarklog.WithMarker(context.Background(), goarklog.NewMarker("SECURITY"))
-logger.InfoContext(ctx, "login failed")
-```
-
-## MapFilter
-
-```yaml
-filters:
-  tenantAudit:
+  tenantA:
     type: map
     operator: and
     values:
-      tenant: acme
-      channel: audit
-    onMatch: accept
-    onMismatch: neutral
+      tenant: tenant-a
+      region: cn-east
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `values` | empty | Map of expected event attributes. |
-| `KeyValuePair` | empty | Alternative key/value pair list. |
-| `key`, `value` | empty | Single pair shortcut. |
-| `operator` | `and` | `and` requires every pair. `or` requires at least one pair. |
+`operator` is `and` by default; `or` accepts any matching pair. Values may also
+be supplied with a single `key` and `value`, with `KeyValuePair`, with
+`keyValuePairs`, or with `key-value-pairs`.
 
-At least one value is required.
+`threadContextMap` and `structuredData` use the same matching behavior.
 
-`threadContextMap` and `structuredData` are aliases backed by the same map
-filter behavior.
-
-## ThreadContextStackFilter
+## Marker And Context Stack
 
 ```yaml
 filters:
-  paymentScope:
+  audit:
+    type: marker
+    marker: AUDIT
+  requestStack:
     type: threadContextStack
-    value: payment
+    value: request
 ```
 
-The target value can be configured by `value`, `text`, or `pattern`.
+Markers can have parents in Go. A marker filter matches the marker itself or
+any parent marker.
 
-Context stack values can be added with:
-
-```go
-ctx := goarklog.WithContextStack(context.Background(), "payment", "checkout")
-```
-
-## ThrowableFilter
+## Time Filter
 
 ```yaml
 filters:
-  networkError:
-    type: throwable
-    pattern: "(?i)timeout|connection reset"
-```
-
-The pattern is matched against:
-
-1. `event.Throwable`, when present.
-2. A throwable extracted from `goark.throwable`, `throwable`, `error`, or `err`.
-3. A plain `error` or `err` attribute string.
-
-## StringMatchFilter
-
-```yaml
-filters:
-  skipHealthText:
-    type: stringMatch
-    text: health check
-    onMatch: deny
-    onMismatch: neutral
-```
-
-The target text can be configured by `text`, `value`, or `pattern`. Matching is
-case-sensitive substring matching against `event.Message`.
-
-## TimeFilter
-
-```yaml
-filters:
-  officeHours:
+  businessHours:
     type: time
     start: "09:00"
-    end: "18:00:00"
+    end: "18:00"
     timezone: Asia/Shanghai
-    onMatch: neutral
-    onMismatch: deny
 ```
 
-Supported time-of-day formats:
+Accepted time-of-day formats are `HH:MM`, `HH:MM:SS`, and
+`HH:MM:SS.NNNNNNNNN`. When start is later than end, the interval wraps across
+midnight. Defaults are full day: `00:00:00` to `23:59:59.999999999`.
 
-- `15:04`
-- `15:04:05`
-- `15:04:05.999999999`
-
-Windows that cross midnight are supported. For example `start: "22:00"` and
-`end: "06:00"` matches events from 22:00 to midnight and from midnight to
-06:00.
-
-## BurstFilter
+## Burst Filter
 
 ```yaml
 filters:
-  noisyWarnings:
+  debugBurst:
     type: burst
-    level: warn
+    level: debug
     rate: "10"
     maxBurst: 100
-    onMatch: neutral
-    onMismatch: deny
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `level` | `warn` | Events at or below this level consume tokens. Higher levels are always neutral. |
-| `rate` | `10` | Tokens per second. Must be greater than zero. |
-| `maxBurst` | `rate * 10`, minimum `1` | Bucket capacity. Must be greater than zero when explicitly set. |
+Burst applies only to events at or below `level`; higher levels remain neutral.
+Default level is `warn`, default rate is `10`, and default max burst is
+`rate * 10` with a minimum of 1.
 
-Use `burst` as an appender or route filter when you want to protect a slow sink
-from repeated low-value messages.
-
-## DynamicThresholdFilter
+## Dynamic Threshold
 
 ```yaml
 filters:
@@ -369,74 +169,33 @@ filters:
     key: tenant
     defaultThreshold: error
     thresholds:
-      acme: debug
-      globex: warn
-    onMatch: neutral
-    onMismatch: deny
+      tenant-a: debug
+      tenant-b: info
 ```
 
-Required field: `key`.
+The event attribute value selects a threshold. If no value matches, the default
+threshold is used. `defaultThreshold` falls back to `level`, then `error`.
 
-For each event, the filter reads attribute `key`. If the value exists in
-`thresholds`, that level is used; otherwise `defaultThreshold` is used. If
-`defaultThreshold` is omitted, `level` is used; if both are omitted, the fallback
-is `error`.
+## Throwable Filter
 
-## Properties Examples
+Throwable filter checks `goark.throwable`, `throwable`, `error`, or `err`
+attributes and the event throwable snapshot.
 
-```properties
-filter.warn.type=threshold
-filter.warn.level=warn
-filter.warn.onMismatch=deny
-
-filter.audit.type=map
-filter.audit.operator=and
-filter.audit.values.channel=audit
-filter.audit.values.tenant=acme
-filter.audit.onMatch=accept
-filter.audit.onMismatch=neutral
-
-filter.dynamic.type=dynamicThreshold
-filter.dynamic.key=tenant
-filter.dynamic.defaultThreshold=error
-filter.dynamic.thresholds.acme=debug
-filter.dynamic.thresholds.globex=warn
+```yaml
+filters:
+  networkErrors:
+    type: throwable
+    pattern: "timeout|refused"
 ```
 
-For Log4j-style key/value pairs in properties:
+## Composite Filter
 
-```properties
-filter.audit.type=map
-filter.audit.keyValuePair1.key=channel
-filter.audit.keyValuePair1.value=audit
-filter.audit.keyValuePair2.key=tenant
-filter.audit.keyValuePair2.value=acme
+```yaml
+filters:
+  auditTenantA:
+    type: composite
+    filterRefs: [auditMarker, tenantA]
 ```
 
-## XML Examples
-
-```xml
-<Filters>
-  <ThresholdFilter name="warn" level="warn" onMismatch="deny"/>
-  <MapFilter name="audit" operator="and" onMatch="accept" onMismatch="neutral">
-    <KeyValuePair key="channel" value="audit"/>
-    <KeyValuePair key="tenant" value="acme"/>
-  </MapFilter>
-  <DynamicThresholdFilter name="tenantThreshold" key="tenant" defaultThreshold="error">
-    <KeyValuePair key="acme" value="debug"/>
-    <KeyValuePair key="globex" value="warn"/>
-  </DynamicThresholdFilter>
-</Filters>
-```
-
-## Operational Guidance
-
-- Use level gates for cheap coarse filtering.
-- Use global filters only when an `accept` decision must bypass normal levels or
-  a `deny` decision must apply to every route.
-- Use appender-ref filters for sink-specific behavior, such as sending only
-  `WARN+` to rolling files while keeping console at `INFO`.
-- Use appender wrapper filters when the appender should carry the filter no
-  matter which logger references it.
-- Avoid expensive regex filters on the highest-volume path unless a cheaper
-  attribute or level filter can reduce the candidate set first.
+Composite filters require at least one nested filter. Cyclic references fail
+configuration loading.

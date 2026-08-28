@@ -276,6 +276,24 @@ func TestRollingFileAppender_whenCreateOnDemandEnabled_shouldDelayActiveFileCrea
 	}
 }
 
+func TestRollingFileAppender_whenCreateOnDemandClosedBeforeAppend_shouldNotOpenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "lazy-complete.json")
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(NewJSONLayout(LayoutOptions{Complete: true})),
+		WithRollingFileCreateOnDemand(true),
+		WithRollingMaxSize(1024),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("active file should not be created before first append, stat error = %v", err)
+	}
+}
+
 func TestRollingFileAppender_whenRolloverOccurs_shouldPreserveLayoutLifecycle(t *testing.T) {
 	now := fixedTestTime()
 	path := filepath.Join(t.TempDir(), "lifecycle.log")

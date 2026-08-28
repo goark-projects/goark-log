@@ -2,71 +2,63 @@
 
 [简体中文](README.zh-CN.md)
 
-The `examples/` directory contains small runnable programs that compile against
-the core module only. They do not require external services.
+These examples are production-shaped smoke demos for the current
+`goark.dev/log` API and configuration model. They do not require external
+services.
 
-## Commands
+## Run All
 
 ```bash
-GOWORK=off go test ./examples/...
 GOWORK=off go run ./examples/console
 GOWORK=off go run ./examples/file
 GOWORK=off go run ./examples/rolling
 GOWORK=off go run ./examples/async
 GOWORK=off go run ./examples/reload
 GOWORK=off go run ./examples/extensibility
+GOWORK=off go run ./examples/production
+GOWORK=off go run ./examples/slf4j
+GOWORK=off go run ./examples/log4j2_config
 ```
 
-PowerShell:
+## Demos
 
-```powershell
-$env:GOWORK='off'
-go test ./examples/...
-go run ./examples/console
-go run ./examples/file
-go run ./examples/rolling
-go run ./examples/async
-go run ./examples/reload
-go run ./examples/extensibility
+| Directory | Demonstrates |
+| --- | --- |
+| [console](console) | `ConfigureDefault`, named `slog` logger, and minimal console config. |
+| [file](file) | Configured file output with complete JSON layout lifecycle. |
+| [rolling](rolling) | Native logger fast path writing through the production rolling configuration. |
+| [async](async) | Appender-level async queue, failover chain, and async counters. |
+| [reload](reload) | Explicit `ConfigReloader` level change. |
+| [extensibility](extensibility) | Isolated plugin registry, custom lookup, custom JSON Template resolver, and message factory. |
+| [production](production) | Production-shaped service logging with MDC, NDC, marker, audit, health filtering, throwable stack, rolling files, and async appender. |
+| [slf4j](slf4j) | SLF4J-style parameterized logging plus standard `slog` interop. |
+| [log4j2_config](log4j2_config) | Log4j2-style XML configuration with rolling, async fan-out, routing, rewrite, filters, and named loggers. |
+
+## Log Directory
+
+File-writing demos call `examples/internal/exampleutil.PrepareLogDir`.
+
+If `GOARK_LOG_DIR` is set, that directory is used:
+
+```bash
+GOARK_LOG_DIR=/tmp/goark-log-demo GOWORK=off go run ./examples/production
 ```
 
-## Example Programs
+If it is not set, the demo creates a temporary directory and prints
+`logDir=...`. Temporary directories are removed when the demo exits.
 
-| Directory | Purpose | Output |
-| --- | --- | --- |
-| `console` | Default console logger and named logger usage. | stderr. |
-| `file` | Plain file appender with explicit close. | `goark-log-example/file.log` under the system temp directory. |
-| `rolling` | Size rollover, startup rollover, archive pattern, and gzip compression. | `goark-log-example/rolling.log` and archive files under the system temp directory. |
-| `async` | AsyncAppender wrapping a rolling appender. | `goark-log-example/async-rolling.log` and archives under the system temp directory. |
-| `reload` | Config file loading and runtime reload. | Temporary config plus console output. |
-| `extensibility` | `PluginRegistry`, custom JSON Template resolver, and message factory. | stdout JSON. |
+## Config Sources
 
-## Config Examples
+The demos load files from [../docs/examples](../docs/examples). That directory
+is also covered by integration tests, so the examples and docs share one source
+of truth.
 
-Copyable configuration files live under [../docs/examples](../docs/examples/README.md):
+## Smoke Test
 
-- [console.yml](../docs/examples/console.yml)
-- [json-stdout.yml](../docs/examples/json-stdout.yml)
-- [production-rolling.yml](../docs/examples/production-rolling.yml)
-- [split-audit.yml](../docs/examples/split-audit.yml)
-- [async-appender.yml](../docs/examples/async-appender.yml)
-- [rewrite-routing.yml](../docs/examples/rewrite-routing.yml)
-- [goark-log.properties](../docs/examples/goark-log.properties)
-- [goark-log.toml](../docs/examples/goark-log.toml)
-- [log4j2-style.xml](../docs/examples/log4j2-style.xml)
+There is no single command in the module that runs every `go run` demo. For a
+release candidate, run the commands listed in "Run All" and then run:
 
-## Reading Order
-
-1. `console`: minimal integration.
-2. `file`: file write lifecycle and close behavior.
-3. `rolling`: archive, compression, and retention behavior.
-4. `async`: async wrapper and shutdown drain.
-5. `reload`: config reload entry points.
-6. `extensibility`: plugin registration and resolver extension.
-
-## Rules for New Examples
-
-- They must compile with `go test ./examples/...`.
-- File output must use a temp directory and must not write into the repository.
-- They should demonstrate core capabilities only.
-- Keep program code short; put detailed explanations in `docs/`.
+```bash
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+```

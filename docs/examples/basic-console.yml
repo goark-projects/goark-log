@@ -1,0 +1,12 @@
+configuration:
+  status: warn
+  appenders:
+    console:
+      type: console
+      target: stderr
+      layout:
+        type: pattern
+        pattern: "%d{ISO8601} %5p %pid --- [%thread] %c : %m%attrs%n"
+  root:
+    level: info
+    appenderRefs: [console]

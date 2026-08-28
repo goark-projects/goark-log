@@ -1,288 +1,255 @@
-# Programmatic API Guide
+# Programmatic API
 
 [简体中文](api.zh-CN.md)
 
-This guide covers the public programmatic API. Configuration files are covered
-in [Configuration](configuration.md).
+This page documents the public Go API implemented by `goark.dev/log`. The
+configuration file structs under `internal/configfile` are not public API.
 
-## Default Logger
-
-```go
-logger, handler := goarklog.NewDefault()
-defer handler.Close()
-
-logger.Info("service started", slog.String("profile", "dev"))
-```
-
-`NewDefault` creates:
-
-- one console appender named `console`,
-- stderr target,
-- default Spring Boot pattern layout,
-- root level `INFO`.
-
-`NewDefaultHandler` returns only the handler. `DefaultOptions` returns the
-equivalent options object.
-
-## Handler Construction
+## Import
 
 ```go
-appender := goarklog.NewConsoleAppender()
-handler, err := goarklog.NewHandler(goarklog.Options{
-	Appenders: []goarklog.Appender{appender},
-	Root: goarklog.RootLogger{
-		Level:        slog.LevelInfo,
-		AppenderRefs: []string{"console"},
-	},
-})
-if err != nil {
-	return err
-}
-defer handler.Close()
+import goarklog "goark.dev/log"
 ```
 
-`Options` fields:
+The module targets Go 1.25 or newer and implements the standard `log/slog`
+handler contract.
 
-| Field | Description |
+## Construction
+
+| Function | Use |
 | --- | --- |
-| `Appenders` | Required unless using default options. Names must be non-empty and unique. |
-| `Filters` | Global filters. |
-| `Root` | Root route. If no root appender is set, the first appender is used. |
-| `Loggers` | Named logger rules. |
-| `Async` | Handler-level async logger options. |
-
-If you construct appenders manually and `NewHandler` returns an error, close
-those appenders yourself. Once `NewHandler` succeeds, `Handler.Close` owns the
-configured appenders.
-
-## Named slog Logger
-
-```go
-logger := goarklog.NewLogger(handler, "goark.http")
-logger.InfoContext(ctx, "request done", slog.Int("status", 200))
-```
-
-`NewLogger` attaches an internal `goark.logger` attribute that the handler uses
-for routing. `WithName` can rename an existing `slog.Logger`:
+| `DefaultOptions()` | Returns stderr console logging at `INFO` with the Spring Boot style pattern. |
+| `NewHandler(options)` | Builds a `*Handler` from programmatic `Options`. |
+| `New(options)` | Builds a default-named `*slog.Logger` and its `*Handler`. |
+| `NewDefaultHandler()` | Builds the default stderr handler and panics only if the built-in defaults are invalid. |
+| `NewDefault()` | Builds the default `*slog.Logger` and `*Handler`. |
+| `LoadOptions(ctx, opts...)` | Resolves and parses configuration into `Options`. |
+| `NewConfiguredHandler(ctx, opts...)` | Loads config and builds a handler. |
+| `NewConfigured(ctx, opts...)` | Loads config and builds a default-named `*slog.Logger` plus handler. |
+| `ConfigureDefault(ctx, opts...)` | Loads config and installs the logger through `slog.SetDefault`. |
+| `NewLoggerContext(options, opts...)` | Owns a handler and status logger from explicit options. |
+| `NewConfiguredLoggerContext(ctx, opts...)` | Loads config, owns the handler, and starts reload polling when configured. |
 
 ```go
-logger = goarklog.WithName(logger, "goark.orm")
-```
-
-## Configure Default slog
-
-```go
-handler, result, err := goarklog.ConfigureDefault(context.Background(),
+loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
 	goarklog.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
 }
-defer handler.Close()
+defer loggerContext.Close()
 
-slog.Info("configured", slog.String("source", string(result.Source)))
+logger := loggerContext.Logger("goark.http")
+logger.InfoContext(ctx, "ready", slog.String("source", string(result.Source)))
 ```
 
-`ConfigureDefault` installs the configured logger with `slog.SetDefault`.
-
-## LoggerContext
-
-`LoggerContext` is the managed runtime for services that need reload and
-centralized shutdown.
+## Handler Options
 
 ```go
-logging, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-)
-if err != nil {
-	return err
+type Options struct {
+	Appenders []Appender
+	Filters   []Filter
+	Root      RootLogger
+	Loggers   []LoggerRule
+	Async     AsyncLoggerOptions
 }
-defer logging.Close()
-
-logger := logging.Logger("goark.service")
-logger.Info("ready", slog.String("source", string(result.Source)))
 ```
 
-Useful methods:
-
-| Method | Description |
+| Field | Runtime meaning |
 | --- | --- |
-| `Logger(name)` | Returns a named `slog.Logger`. |
-| `Handler()` | Returns the underlying `*Handler`. |
-| `StatusLogger()` | Returns the internal status logger. |
-| `ConfigResult()` | Returns the last loaded config result snapshot. |
-| `Reload(options)` | Reloads from explicit `Options`. |
-| `ReloadConfigured(ctx, options...)` | Reloads from config loading options. |
-| `Close()` | Stops config monitor, drains async, closes appenders. |
+| `Appenders` | Final sinks. At least one appender is required after defaults are applied. |
+| `Filters` | Global filters. They run before route level checks. |
+| `Root` | Root logger level, appender refs, filters, and location policy. |
+| `Loggers` | Named logger rules. The most specific prefix wins. |
+| `Async` | Handler-level bounded async queue. |
 
-`NewConfiguredLoggerContext` starts file polling only when the config file has a
-positive `monitorInterval`.
+`Handler.Close()` drains async work, closes appenders, flushes files, and writes
+layout footers. `Handler.Reload(options)` atomically swaps the router after the
+new runtime builds successfully.
 
-## Config Reloader
+## Logger Names
 
-Use `ConfigReloader` when an application has its own lifecycle or file watcher.
+`NewLogger(handler, name)` returns a `*slog.Logger` with the internal
+`goark.logger` attribute bound. `WithName(logger, name)` does the same for an
+existing logger and uses `slog.Default()` when the input is nil.
 
 ```go
-reloader, err := goarklog.NewConfigReloader(handler,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-)
-if err != nil {
-	return err
-}
-
-changed, result, err := reloader.ReloadIfChanged(ctx)
+logger := goarklog.NewLogger(handler, "goark.orm.mapper")
+logger.Info("query finished", slog.Int("rows", 12))
 ```
 
-`Watch(ctx, interval, onError)` starts a polling loop and returns a channel that
-closes when the context is done.
+The default logger name is `goark`.
 
 ## Native Logger
 
-The native logger avoids parts of the standard `slog.Record` facade and gives a
-fixed three-attribute fast path.
+`NewNativeLogger(handler, name, opts...)` builds a low-allocation logger for hot
+paths while still using the same handler, appenders, filters, and layouts.
 
-```go
-logger, err := goarklog.NewNativeLogger(handler, "goark.http")
-if err != nil {
-	return err
-}
-
-_ = logger.LogAttrs3(ctx, slog.LevelInfo, "request done",
-	slog.String("method", "GET"),
-	slog.Int("status", 200),
-	slog.Duration("elapsed", elapsed),
-)
-```
-
-Native logger methods:
-
-| Method | Description |
+| Method | Notes |
 | --- | --- |
-| `Name()` | Logger name. |
-| `Enabled(ctx, level)` | Checks current route/global-filter state. |
+| `Name()` | Returns the effective logger name. |
+| `Enabled(ctx, level)` | Checks the current route level. |
+| `WithAttrs(attrs...)` | Returns a new logger with bound attributes. |
+| `WithGroup(name)` | Returns a new logger with grouped attributes. |
 | `Slog()` | Returns an equivalent `*slog.Logger`. |
-| `WithAttrs(attrs...)` | Returns a logger with bound attrs. |
-| `WithGroup(name)` | Returns a logger with a flattened group prefix. |
-| `LogAttrs(ctx, level, message, attrs...)` | Writes a dynamic attr slice. |
-| `LogAttrs3(ctx, level, message, a0, a1, a2)` | Writes exactly three attrs with the lowest overhead. |
-| `Debug`, `Info`, `Warn`, `Error`, `Fatal` | Convenience methods using background context. |
+| `LogAttrs(ctx, level, message, attrs...)` | Writes a structured event. |
+| `LogAttrs3(ctx, level, message, a0, a1, a2)` | Fixed three-attribute fast path. |
+| `Debug`, `Info`, `Warn`, `Error`, `Fatal` | Convenience methods. |
 | `DebugContext`, `InfoContext`, `WarnContext`, `ErrorContext`, `FatalContext` | Context-aware convenience methods. |
-| `At(level)`, `AtTrace`, `AtDebug`, `AtInfo`, `AtWarn`, `AtError`, `AtFatal` | Creates a builder. |
+| `At(level)`, `AtTrace`, `AtDebug`, `AtInfo`, `AtWarn`, `AtError`, `AtFatal` | Fluent event builder entry points. |
 
-`WithLoggerCaller(true)` captures caller PC for native events. Avoid it on hot
-paths unless layouts need caller converters or JSON Template source resolver.
+Native logger options:
 
-## Log Builder
+| Option | Notes |
+| --- | --- |
+| `WithLoggerCaller(enabled)` | Captures call site when true. Location-enabled routes also force caller capture. |
+| `WithLoggerMessageFactory(factory)` | Replaces the default `{}` parameterized message factory. |
+
+## Fluent Builder
+
+`LogBuilder` skips attribute construction when the level is disabled.
+
+| Method | Notes |
+| --- | --- |
+| `Enabled()` | Reports whether the event can write. |
+| `WithContext(ctx)` | Sets the event context. |
+| `WithGroup(name)` | Prefixes later attributes with a group. |
+| `WithAttr`, `WithAttrs` | Adds `slog.Attr` values. |
+| `WithString`, `WithInt`, `WithBool`, `WithAny` | Typed helpers. |
+| `WithMarker(marker)` | Adds a marker. |
+| `WithError`, `WithThrowable` | Adds a throwable snapshot without stack capture. |
+| `WithErrorStack(err)` | Adds a throwable snapshot with stack capture. |
+| `Log(message)` | Writes a simple string message. |
+| `Logf(pattern, args...)` | Uses `{}` placeholders. |
+| `LogMessage(message)` | Writes a `Message`; attributed messages also add attrs. |
 
 ```go
-err := logger.AtInfo().
+_ = logger.AtInfo().
 	WithContext(ctx).
 	WithGroup("http").
 	WithString("method", "GET").
 	WithInt("status", 200).
-	WithBool("cached", false).
-	Log("request done")
+	Logf("request {} completed", requestID)
 ```
 
-Builder methods:
+## Context, Markers, And Throwables
 
-| Method | Description |
+| API | Notes |
 | --- | --- |
-| `Enabled()` | Whether the event would be emitted. |
-| `WithContext(ctx)` | Sets event context. |
-| `WithGroup(name)` | Adds a flattened group prefix for following attrs. |
-| `WithAttr(attr)` | Adds one attr. |
-| `WithAttrs(attrs...)` | Adds multiple attrs. |
-| `WithString`, `WithInt`, `WithBool`, `WithAny` | Typed attr helpers. |
-| `WithMarker(marker)` | Adds a marker attr. |
-| `WithError(err)`, `WithThrowable(err)` | Adds throwable without stack capture. |
-| `WithErrorStack(err)` | Adds throwable with stack capture. |
-| `Log(message)` | Writes a simple string message. |
-| `Logf(pattern, args...)` | Uses the configured message factory with `{}` placeholders by default. |
-| `LogMessage(message)` | Writes a custom message object. |
+| `WithContextAttrs`, `WithContextAttr`, `ContextAttrs` | MDC-style request attributes. |
+| `NewMarker`, `MarkerAttr`, `WithMarker`, `ContextMarker` | Marker values with parent matching. |
+| `ThreadNameAttr`, `WithThreadName`, `ContextThreadName` | Logical thread name for Go goroutines. |
+| `WithContextStack`, `ContextStack` | NDC-style stack values. |
+| `NewThrowable`, `NewThrowableWithStack` | Converts Go errors to throwable snapshots. |
+| `ThrowableAttr`, `ThrowableWithStackAttr` | Adds throwable data to slog events. |
 
-The builder stores up to eight attrs inline before allocating a backing slice.
+Standard attribute keys are `goark.throwable`, `goark.marker`,
+`goark.thread`, `goark.contextStack`, `goark.structuredData.id`, and
+`goark.structuredData.type`.
 
-## Context Attributes
+## Messages
+
+| Type | Function | Notes |
+| --- | --- | --- |
+| `SimpleMessage` | `NewSimpleMessage(text)` | Immutable text. |
+| `ParameterizedMessage` | `NewParameterizedMessage(pattern, args...)` | Replaces `{}` in order; `\{}` keeps a literal placeholder. |
+| `MapMessage` | `NewMapMessage(attrs...)` | Message text is key/value text and attrs are exposed to layouts/filters. |
+| `StructuredDataMessage` | `NewStructuredDataMessage(id, type, message, attrs...)` | RFC5424-style structured fields plus normal attrs. |
+| `MessageFactoryFunc` | adapter | Allows custom parameterized message behavior. |
+
+## Levels
+
+Built-in levels are `ALL`, `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`,
+and `OFF`. `WARNING` parses as `WARN`; integer levels are accepted.
+
+| API | Notes |
+| --- | --- |
+| `ParseLevel(value)` | Parses names or integers. |
+| `LevelName(level)` | Returns a registered exact name or the nearest built-in bucket. |
+| `NewLevelRegistry()` | Creates an independent level registry. |
+| `DefaultLevelRegistry()` | Returns the process default registry. |
+| `RegisterLevel(name, level)` | Registers a process-wide custom level. |
+
+## Appender API
+
+All appenders implement:
 
 ```go
-ctx = goarklog.WithContextAttrs(ctx,
-	slog.String("trace_id", "trace-1"),
-	slog.String("span_id", "span-1"),
-)
-ctx = goarklog.WithThreadName(ctx, "worker-1")
-ctx = goarklog.WithMarker(ctx, goarklog.NewMarker("HTTP"))
-ctx = goarklog.WithContextStack(ctx, "tenant-a", "checkout")
+type Appender interface {
+	Name() string
+	Append(ctx context.Context, event Event) error
+	Close() error
+}
 ```
 
-Context helpers:
+Constructors include `NewConsoleAppender`, `NewFileAppender`,
+`NewJSONAppender`, `NewJSONFileAppender`, `NewRollingFileAppender`,
+`NewAsyncAppender`, `NewFailoverAppender`, `NewRoutingAppender`,
+`NewRewriteAppender`, and `NewFilteredAppender`.
 
-| Helper | Description |
+`NewAppenderRef` plus `WithAppenderRefLevel`, `WithAppenderRefLocation`, and
+`WithAppenderRefFilters` models Log4j2-style appender references in code.
+
+## Layout API
+
+`Layout` formats an event into a caller-owned buffer. Built-in constructors are
+`NewDefaultLayout`, `NewPatternLayout`, `NewPatternLayoutWithOptions`,
+`NewJSONLayout`, `NewJSONTemplateLayout`, `NewJSONTemplateLayoutFromFile`,
+`NewXMLLayout`, `NewYAMLLayout`, `NewCSVLayout`, `NewHTMLLayout`, and
+`NewGELFLayout`. `TextLayout`, `RFC5424Layout`, and `SyslogLayout` are direct
+types.
+
+`LayoutOptions` contains `Compact`, `EventEOL`, `Complete`,
+`IncludeStacktrace`, `StacktraceAsString`, `PropertiesAsList`,
+`IncludeNullDelimiter`, `DisableANSI`, `Header`, and `Footer`.
+
+## Filter API
+
+All filters implement `Decide(ctx, event) FilterDecision`. Decisions are
+`FilterNeutral`, `FilterAccept`, and `FilterDeny`.
+
+Constructors include threshold, level, level range, regex, attr, marker,
+no-marker, map, thread context map, thread context stack, structured data,
+throwable, string match, time, burst, dynamic threshold, deny, composite, and
+script filters. `ScriptFilter` is code-only and needs a caller-provided
+`ScriptEvaluator`.
+
+## Configuration API
+
+Config load options:
+
+| Option | Notes |
 | --- | --- |
-| `WithContextAttrs` | Adds immutable attr snapshot to context. |
-| `WithContextAttr` | Adds one context attr. |
-| `ContextAttrs` | Returns context attr snapshot. |
-| `NewMarker` | Creates a marker with optional parents. |
-| `MarkerAttr` | Converts a marker to a slog attr. |
-| `WithMarker`, `ContextMarker` | Stores and reads context marker. |
-| `ThreadNameAttr` | Converts logical thread name to attr. |
-| `WithThreadName`, `ContextThreadName` | Stores and reads logical thread name. |
-| `WithContextStack`, `ContextStack` | Stores and reads NDC-style stack values. |
+| `WithConfigPath(path)` | Highest precedence explicit path. |
+| `WithConfigEnvKey(key)` | Overrides `GOARK_LOG_CONFIG`. |
+| `WithConfigWorkingDir(dir)` | Base directory for relative paths and default discovery. |
+| `WithBootPropertyResolver(resolver)` | Reads `goark.log.config`, `goark.logging.config`, and `logging.config`. |
+| `WithDefaultConfigPaths(paths...)` | Replaces default discovery paths. |
+| `WithConfigLookups(resolver)` | Uses a custom lookup resolver. |
+| `WithPluginRegistry(registry)` | Uses an explicit plugin registry. |
 
-Event attributes are merged in this order:
+`ConfigResult` reports `Source`, `Path`, and `MonitorInterval`.
 
-1. handler-bound attrs,
-2. context attrs,
-3. record/native attrs.
+Parser helpers are `ParseByteSize`, `ParseRollingInterval`,
+`ParseRollingMaxAge`, and `ParseMonitorInterval`.
 
-When the same key appears more than once, `Event.Attr(key)` returns the latest
-value.
+## Reload And Status
 
-## Throwable and Message APIs
+`ConfigReloader.Reload(ctx)` always reloads. `ReloadIfChanged(ctx)` checks the
+configuration path, mod time, and size. `Watch(ctx, interval, onError)` polls
+until the context is canceled.
 
-Throwable helpers:
+`StatusLogger` records internal configuration and reload events. Use
+`NewStatusLogger`, `WithStatusLevel`, `WithStatusWriter`, and
+`WithStatusBufferSize`.
 
-| Helper | Description |
-| --- | --- |
-| `NewThrowable(err)` | Captures error type/message/cause chain without stack. |
-| `NewThrowableWithStack(err)` | Captures throwable plus current stack. |
-| `ThrowableAttr(err)` | Adds standard `goark.throwable` attr. |
-| `ThrowableWithStackAttr(err)` | Adds standard throwable attr with stack. |
+## Plugin API
 
-Message helpers:
+Use `NewPluginRegistry` for isolated registries or `DefaultPluginRegistry` for
+process-wide registration. Register explicit plugins with `RegisterAppender`,
+`RegisterLayout`, `RegisterFilter`, `RegisterLookup`,
+`RegisterJSONTemplateResolver`, or `RegisterPlugins`.
 
-| Helper | Description |
-| --- | --- |
-| `NewSimpleMessage(text)` | Immutable string message. |
-| `NewParameterizedMessage(pattern, args...)` | `{}` placeholder message. |
-| `NewMapMessage(attrs...)` | Structured message represented by attrs. |
-| `NewStructuredDataMessage(id, type, message, attrs...)` | RFC5424-style structured message. |
-| `WithLoggerMessageFactory(factory)` | Replaces native logger parameterized message factory. |
-
-## Status Logger
-
-```go
-status := goarklog.NewStatusLogger(
-	goarklog.WithStatusLevel(slog.LevelWarn),
-	goarklog.WithStatusWriter(os.Stderr),
-	goarklog.WithStatusBufferSize(128),
-)
-
-logging, err := goarklog.NewLoggerContext(options,
-	goarklog.WithLoggerContextStatus(status),
-)
-```
-
-`StatusLogger` records internal config, reload, and close errors. The config
-file `status` field is parsed for compatibility but does not currently tune
-`StatusLogger`.
-
-## Closing Rules
-
-- Always call `Close` on `Handler` or `LoggerContext`.
-- `Close` drains Handler-level async before closing appenders.
-- Runtime close order closes async appenders before their delegates.
-- File and rolling appenders flush buffers and write layout footers where
-  applicable.
-- Rolling async actions are drained before `Close` returns.
-- Calling `Close` more than once is safe.
+`NewPluginSet` with `WithPluginAppender`, `WithPluginLayout`,
+`WithPluginFilter`, `WithPluginLookup`, and
+`WithPluginJSONTemplateResolver` creates a reusable `PluginRegistrar`.

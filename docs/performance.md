@@ -1,218 +1,108 @@
-# Performance and Stress Testing
+# Performance
 
 [简体中文](performance.zh-CN.md)
 
-This document records the performance budget, validation commands, and tuning
-rules for `goark-log`. Benchmark numbers depend on CPU, Go version, operating
-system scheduler, disk cache, antivirus software, and CI runner noise. Always
-rerun the commands on the current worktree before making release claims.
+This page documents how `goark-log` is designed and measured. It does not make
+release performance claims without benchmark output from the exact commit being
+published.
 
-## Short Validation
+## Hot-Path Design
 
-Unix shell:
+| Area | Current behavior |
+| --- | --- |
+| Facade | The standard `slog.Handler` path is supported for ordinary application code. |
+| Native logger | `NewNativeLogger` provides a lower-allocation path and level-aware builder. |
+| Fixed attr path | `LogAttrs3` avoids variadic slice construction for the common three-attribute event. |
+| JSON direct | `NewJSONAppender` and configured `type: json` bypass generic layouts. |
+| Caller data | `slog.Record.PC` and source formatting are used only when location is requested. |
+| Async | Handler-level and appender-level queues use bounded ring buffers and explicit overflow strategies. |
+| Rolling actions | Compression and deletion can run on a serial background worker. |
+| Plugin boundary | Heavy optional dependencies stay outside the core module. |
 
-```bash
-GOWORK=off go test ./...
-GOWORK=off go vet ./...
-```
+## Benchmark Suites
 
-PowerShell:
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go vet ./...
-```
-
-Comparison module:
+Core benchmarks:
 
 ```bash
-cd benchmarks/compare
-GOWORK=off go test ./...
+GOWORK=off go test -run '^$' -bench . -benchmem ./benchmarks/core
 ```
 
-PowerShell:
-
-```powershell
-Push-Location benchmarks\compare
-$env:GOWORK='off'
-go test ./...
-Pop-Location
-```
-
-## Benchmark Commands
-
-Core benchmarks live in `./benchmarks/core`.
-
-Focused zero-allocation JSON path:
+Focused hot-path benchmarks:
 
 ```bash
 GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 ```
 
-Core pressure benchmarks:
+Pressure benchmarks:
 
 ```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16 ./benchmarks/core
+GOWORK=off go test -run '^$' -bench 'BenchmarkPressure' -benchmem ./benchmarks/core
 ```
 
-Internal data-structure benchmarks:
-
-```bash
-GOWORK=off go test -run '^$' -bench . -benchmem ./internal/disruptor ./internal/jsoncodec
-```
-
-Independent comparison benchmarks:
+Comparison benchmarks live in a separate module so zap and zerolog do not
+become core dependencies:
 
 ```bash
 cd benchmarks/compare
-GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+GOWORK=off go test ./...
+GOWORK=off go test -run '^$' -bench . -benchmem
 ```
 
-PowerShell equivalent:
-
-```powershell
-$env:GOWORK='off'
-go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
-go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16 ./benchmarks/core
-go test -run '^$' -bench . -benchmem ./internal/disruptor ./internal/jsoncodec
-Push-Location benchmarks\compare
-go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
-Pop-Location
-```
-
-## Long Stress Tests
-
-Stress tests are skipped by default. Enable them explicitly:
+Use the proxy only when dependencies must be downloaded:
 
 ```bash
-GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+HTTP_PROXY=http://172.16.8.171:9444 HTTPS_PROXY=http://172.16.8.171:9444 ALL_PROXY=http://172.16.8.171:9444 go test ./...
 ```
 
-PowerShell:
+## Interpreting Results
 
-```powershell
-$env:GOARK_LOG_STRESS='1'
-$env:GOWORK='off'
-go test -race -run 'TestStress' -count=1 -timeout=20m ./...
-```
+Benchmark numbers are valid only for the same machine, OS, Go version, commit,
+and command. Report at least:
 
-## CI Layers
+| Field | Example |
+| --- | --- |
+| Commit | `git rev-parse HEAD` |
+| Go version | `go version` |
+| OS and architecture | `go env GOOS GOARCH` |
+| Command | Exact benchmark command. |
+| Result | `ns/op`, `B/op`, and `allocs/op`. |
 
-Short CI: `.github/workflows/ci.yml`
-
-- Runs root-module tests.
-- Runs comparison-module tests.
-- Runs a focused race subset for async, rolling, file, and JSON paths.
-- Runs a short benchmark smoke to catch broken benchmark entry points.
-
-Long pressure workflow: `.github/workflows/pressure.yml`
-
-- Manual `workflow_dispatch`.
-- Daily scheduled run.
-- Sets `GOARK_LOG_STRESS=1`.
-- Runs `TestStress` under race.
-- Uploads core, internal, and comparison benchmark artifacts.
-
-Manual trigger:
-
-```bash
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-```
-
-If an HTTP proxy is required:
-
-```powershell
-$env:HTTP_PROXY='http://172.16.8.171:9444'
-$env:HTTPS_PROXY='http://172.16.8.171:9444'
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-```
-
-## Hot-Path Design
-
-- `JSONLayout` hand-encodes common `slog.Value` kinds.
-- The direct JSON appender writes a fixed JSON event shape without general
-  layout dispatch.
-- `NewNativeLogger` bypasses the general `slog.Record` facade.
-- `LogAttrs3` writes a fixed three-attribute event and avoids variadic slice
-  allocation on the common path.
-- `JSONTemplateLayout` compiles resolvers once; built-in resolvers append JSON
-  directly.
-- The internal JSON fallback uses Sonic only on supported Go/architecture
-  combinations; Go 1.27+ or unsupported architectures use the standard library
-  path to avoid runtime warnings from unsupported Sonic fast paths.
-- `LevelName` uses a no-lock path for built-in levels and falls back to the
-  registry only after custom levels are registered.
-- `AsyncLogger` and `AsyncAppender` use the internal bounded ring buffer.
-- Rolling compression and delete actions can be serialized on a background
-  worker to avoid concurrent archive mutation.
-- File appenders use a mutex around each writer; this preserves line integrity
-  under concurrent callers.
-
-## Performance Budget
-
-| Scenario | Budget | Notes |
-| --- | --- | --- |
-| JSONLayout with common fields | `0 B/op`, `0 allocs/op` | Must not regress to reflection JSON encoding. |
-| JSONTemplate default template | `0 B/op`, `0 allocs/op` | Built-in resolvers should append directly. |
-| Direct native logger JSON with three attrs | `0 B/op`, `0 allocs/op` | Main API budget for high-throughput paths. |
-| Direct native JSON file parallel path | `0 B/op`, `0 allocs/op` | Buffered file write must keep full event lines. |
-| Internal ring buffer publish/pop | `0 B/op`, `0 allocs/op` | Must not be replaced by an allocation-heavy queue. |
-| `slog.Any` fallback | Faster than stdlib where Sonic fast path is available; no unsupported runtime warnings elsewhere | Platform fallback can vary; keep behavior correct first. |
-| Async logger block strategy | no dropped events | `AsyncDropped` should stay zero for `block`. |
-| Rolling file parallel writes | complete lines | Active and archive files must contain complete log events. |
-| Compare module | no core dependency pollution | zap/zerolog dependencies stay in `benchmarks/compare`. |
+Do not claim superiority over zap, zerolog, slog, or another logger unless the
+comparison benchmark was run on the exact release candidate and the workload is
+named.
 
 ## Tuning Guide
 
-| Need | Preferred setting |
+| Goal | Setting |
 | --- | --- |
-| Lowest allocation structured output | Direct JSON appender plus native `LogAttrs3`. |
-| Human-readable local logs | Console appender with PatternLayout. |
-| Container logs | JSON appender to stdout. |
-| Durable VM logs | Rolling file, `overflowStrategy: block`, explicit `Close`. |
-| High burst tolerance | Increase async `queueSize` and `batchSize`. |
-| Better tail latency under queue pressure | Use `drop-debug` or `sync-fallback` after deciding loss semantics. |
-| Compliance/audit logs | Avoid lossy overflow; consider `flushOnWrite` only for audit sink. |
-| Caller fields | Enable `includeLocation` only on the narrow logger or appender ref that needs it. |
-| Expensive dynamic payloads | Prefer typed `slog` values; avoid large `slog.Any` on the hottest path. |
+| Lowest stdout overhead | Use JSON direct appender with `target: stdout`. |
+| Lowest file overhead | Use JSON direct file or JSON layout with buffering enabled. |
+| Stable latency for required logs | Use async overflow `block` and enough queue capacity. |
+| Keep service moving for non-critical debug logs | Use async overflow `drop` or `drop-debug` with counters. |
+| Preserve audit logs | Use `block` or synchronous file writes, `flushOnWrite: true`, and restrictive permissions. |
+| Reduce caller overhead | Keep `includeLocation` disabled unless the route or layout needs caller data. |
+| Reduce layout cost | Prefer JSON direct or simple pattern/text layouts for hot paths. |
+| Reduce archive contention | Use rolling `compression.async: true` or `asyncActions: true`. |
 
-## Sample Numbers
+## Async Metrics
 
-The following sample numbers are historical local regression references from a
-Windows i9-11900KF run with Go 1.25 and `GOWORK=off`. They are not release
-claims; rerun current-worktree commands for v0.0.2.
+`Handler` exposes async counters for handler-level async:
 
-| Scenario | Sample result |
+| Counter | Meaning |
 | --- | --- |
-| `BenchmarkLayout/json` | about `708 ns/op`, `0 B/op`, `0 allocs/op` |
-| `BenchmarkNativeLoggerDirectJSON3` | about `770.6 ns/op`, `0 B/op`, `0 allocs/op` |
-| `BenchmarkNativeLoggerDirectJSONParallel3` | about `153.4 ns/op`, `0 B/op`, `0 allocs/op` |
-| `BenchmarkFileAppenderParallel` | about `286.9 ns/op`, `0 B/op`, `0 allocs/op` |
-| `BenchmarkPressureAsyncLoggerQueueMatrix/q8192-b256-block-yield` | about `1303 ns/op`, `257 B/op`, `2 allocs/op`, `0 dropped`, `0 failed` |
-| `BenchmarkPressureJSONFileParallel/buffered-256k` | about `270.5 ns/op`, `0 B/op`, `0 allocs/op` |
-| `BenchmarkPressureRollingFileParallel/plain` | about `482.5 ns/op`, `140 B/op`, `1 alloc/op` |
-| `internal/disruptor` publish/pop | about `18 ns/op`, `0 B/op`, `0 allocs/op` |
-| `internal/jsoncodec` goark fallback on Go 1.25 amd64 | about `630 ns/op`, `341 B/op`, `4 allocs/op` |
-| `internal/jsoncodec` stdlib comparison on Go 1.25 amd64 | about `1335 ns/op`, `640 B/op`, `17 allocs/op` |
-| `benchmarks/compare` goark direct file parallel | about `262.7 ns/op`, `0 B/op`, `0 allocs/op` |
-| `benchmarks/compare` zap file parallel | about `317.8 ns/op`, `193 B/op`, `1 alloc/op` |
-| `benchmarks/compare` zerolog file parallel | about `197.1 ns/op`, `0 B/op`, `0 allocs/op` |
+| `AsyncDropped()` | Events dropped by overflow policy. |
+| `AsyncFailed()` | Events that failed during asynchronous delivery. |
 
-## Stress Coverage
+Appender-level async supports an error handler through programmatic options.
+Configured appender-level async writes through the selected overflow behavior
+and drains on close.
 
-Stress tests cover:
+## Release Gate
 
-- multi-producer async logger block-strategy drain,
-- concurrent close wakeups when async queues are full,
-- rolling file multi-producer writes to real files,
-- complete JSON/text line validation,
-- async gzip rolling action completion after `Close`.
+Before publishing a release that mentions performance:
 
-Pressure benchmarks cover:
-
-- async queue, batch, overflow, and wait-strategy combinations,
-- JSON file parallel write with and without buffering,
-- rolling file plain, gzip sync, and gzip async,
-- caller-location cost,
-- direct native logger JSON file paths.
+1. Run correctness tests first: `GOWORK=off go test ./...`.
+2. Run `GOWORK=off go vet ./...`.
+3. Run core benchmarks on the release candidate.
+4. Run comparison benchmarks only from `benchmarks/compare`.
+5. Record the exact command and environment in the release notes.

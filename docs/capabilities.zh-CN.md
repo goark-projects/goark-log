@@ -1,103 +1,112 @@
-# 能力边界
+# 能力矩阵
 
 [English](capabilities.md)
 
-本文记录 `goark.dev/log` core module 当前提供什么、什么故意不放入 core，以及发布前应该使用哪些验证关卡。
+本矩阵描述当前核心模块，不描述未来配套模块。用它判断功能是核心直接可用、需要扩展边界、
+还是有意不放入核心。
 
-## 设计原则
+## 运行时 API
 
-- Go-native API：显式 construction、interfaces、options 和 plugin registration。
-- 低分配热路径：常见 JSON、file、direct native logging 和 ring-buffer paths 避免 reflection-heavy work。
-- Core 依赖轻量：comparison dependencies 保持在独立 `benchmarks/compare` module。
-- 确定性 shutdown：async logger、async appender、rolling compression 和 delete actions 都在 `Close` 时 drain。
-- 安全默认值：core 不提供 remote lookup、不嵌入 script engine、不内置 external-system appender，也不内置 observability exporter。
-
-## Core 已支持
-
-| 范围 | 状态 | 说明 |
+| 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| `slog.Handler` | supported | 实现 `Enabled`、`Handle`、`WithAttrs` 和 `WithGroup`；可安装为 `slog.Default()`。 |
-| Native logger | supported | `NewNativeLogger`、`LogAttrs`、`LogAttrs3`、builder API 和 message factories。 |
-| Logger routing | supported | Root logger、named rules、prefix matching、additivity、appender-ref level/filter 和 includeLocation。 |
-| Custom levels | supported | 内置 `ALL`、`TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`、`FATAL`、`OFF` 和 `RegisterLevel`。 |
-| Context attributes | supported | `WithContextAttrs`、`ContextAttrs`、MDC/NDC-style layout output。 |
-| Marker and throwable | supported | Context marker、marker attr、throwable attr 和 optional throwable stack snapshots。 |
-| Async logger | supported | Bounded ring buffer、batch drain、block/drop/drop-debug/sync-fallback、wait strategies、counters 和 close drain。 |
-| Async appender | supported | 带 bounded queue、batch drain、counters、error handler 和 close drain 的 appender wrapper。 |
-| File appender | supported | Append/truncate、create-on-demand、permissions、buffering 和 flush-on-write。 |
-| JSON appender | supported | Direct single-line JSON 到 stdout/stderr 或 file；file mode 支持 buffering。 |
-| Rolling file appender | supported | Size/time/cron/startup triggers、`%d`/`%i`、gzip、max count、max age、delete actions 和 async action worker。 |
-| PatternLayout | supported | Time、level、logger、message、attrs、MDC、marker、NDC、caller、throwable、host、sequence、ANSI style 和 nested converters。 |
-| Structured layouts | supported | JSON、JSON Template、XML、CSV、GELF、RFC5424/Syslog、YAML 和 HTML。 |
-| Filters | supported | Level、range、regex、attrs、marker、MDC、structured data、throwable、time windows、burst limiter 和 dynamic thresholds。 |
-| Composite appenders | supported | Async、Failover、Routing 和 Rewrite 可通过配置构建。 |
-| Lookups | supported local subset | `env`、`sys`、`go`、`date`、`prop` 和 `property`。 |
-| Configuration formats | supported | YAML、JSON、TOML、XML 和 properties。 |
-| Reload | supported with constraints | 轮询实际配置文件；async logger queue/runtime shape 不能 hot-replace。 |
-| Plugins | supported | `PluginRegistry`、`PluginRegistrar`、`PluginSet`、package helpers、lookup plugins、JSON Template resolvers 和 registrar generator。 |
+| `slog.Handler` 实现 | 内置 | 支持标准 `slog.Logger`、`WithAttrs`、`WithGroup` 和 `LogAttrs`。 |
+| 命名 logger | 内置 | `NewLogger`、`WithName` 和 `LoggerContext.Logger`。 |
+| 原生 logger | 内置 | 低分配 builder、固定三属性路径和 `slog` 互操作。 |
+| 参数化消息 | 内置 | 通过 `ParameterizedMessageFactory` 支持 `{}` 占位符。 |
+| Map 与结构化数据消息 | 内置 | 消息属性同时对 layout 和 filter 可见。 |
+| Marker | 内置 | 支持父 marker 匹配。 |
+| MDC 风格 context 属性 | 内置 | `WithContextAttrs` 和 pattern `%X{}` / JSON Template `mdc`。 |
+| NDC 风格 context stack | 内置 | `WithContextStack`、`%ndc` 和 JSON Template `contextStack`。 |
+| Throwable snapshot | 内置 | Go error 可选择捕获 stack。 |
+| Status logger | 内置 | 内部配置和重载事件。 |
 
-## 不在 Core
+## 配置
 
-| 范围 | 原因 | 推荐方式 |
+| 能力 | 状态 | 说明 |
 | --- | --- | --- |
-| HTTP appender | Connection lifecycle、retry、timeout、TLS 和 response handling 因部署而异。 | 构建外部模块并注册 appender plugin。 |
-| Socket appender | Framing、reconnect、backpressure 和 protocol choices 差异很大。 | 构建外部模块。 |
-| Syslog network appender | Transport、TLS、facility/app name mapping 和 retry policy 与环境强相关。 | 构建外部模块；core 只提供 RFC5424/Syslog layout。 |
-| Kafka, Pulsar, RabbitMQ | Broker clients 和 delivery semantics 是重依赖。 | 保持在专门的 Goark integration modules。 |
-| SMTP appender | Slow network I/O 和 credential handling 不属于 core hot path。 | 构建带 explicit queue 和 retry behavior 的 plugin module。 |
-| Database appender | Schema、transactions、batching 和 failure handling 都是 database-specific。 | 构建 database-specific plugin module。 |
-| OpenTelemetry, Prometheus | Observability design 应在 Goark modules 间一致，并保持可选。 | 独立 observability design 后再添加。 |
-| Script runtime | JavaScript/Lua/expr/Starlark runtime 和 sandbox 决策有安全影响。 | Core 只暴露 `ScriptEvaluator` API。 |
-| Remote lookup namespaces | JNDI/LDAP/RMI-style lookups 对 config-time resolution 不安全。 | 默认阻止。 |
-| Runtime plugin scanning | Scanning 增加隐式 startup behavior 和成本。 | 使用 explicit registration 或 generated registrars。 |
+| YAML | 内置 | 结构化解码启用严格字段检查。 |
+| JSON | 内置 | 与 YAML 共享逻辑模型。 |
+| TOML | 内置 | 与 YAML 共享逻辑模型。 |
+| XML | 内置 | Log4j2 风格根元素和子元素。 |
+| Java properties | 内置 | 实用 key 映射；rolling policy 覆盖少于 YAML/TOML/XML。 |
+| 包装层 | 内置 | 顶层、`configuration` 或 `goark.log`；不能混用。 |
+| 配置发现 | 内置 | 显式路径、环境变量、boot property、默认文件、内置默认。 |
+| Lookup 展开 | 内置且可扩展 | 内置 `env`、`sys`、`go`、`date`，以及文件 `prop` / `property`。 |
+| 阻断 lookup namespace | 内置 | `jndi`、`ldap`、`rmi` 被阻断。 |
+| 重载 | 内置 | 显式 `ConfigReloader` 和 `LoggerContext` 基于 `monitorInterval` 的轮询。 |
 
-## Dependency Boundary
+## Appenders
 
-Core `go.mod` 依赖限制为：
+| Appender | 状态 | 说明 |
+| --- | --- | --- |
+| Console | 内置 | stdout/stderr，支持 layout。 |
+| File | 内置 | 缓冲、权限、追加/截断、按需创建、header、footer。 |
+| JSON direct | 内置 | stdout/stderr 或文件，优化事件 JSON 路径。 |
+| Rolling file | 内置 | size/time/cron/startup、gzip、保留策略、删除动作、异步归档动作。 |
+| Async | 内置 | appender 级队列代理下游 appender。 |
+| Failover | 内置 | primary 加有序 failover。 |
+| Routing | 内置 | 按事件属性选路，支持默认 route。 |
+| Rewrite | 内置 | 委托前添加和删除属性。 |
+| HTTP | 插件边界 | 字段可传给已注册插件；核心无 client。 |
+| Socket | 插件边界 | 字段可传给已注册插件；核心无 client。 |
+| 网络 syslog | 插件边界 | 核心提供 RFC5424/syslog layout，不提供网络 client。 |
+| Kafka、Pulsar、RabbitMQ | 插件边界 | Broker 依赖留在核心之外。 |
+| SMTP、数据库 sink | 插件边界 | 作为外部 appender 模块实现。 |
 
-- `github.com/bytedance/sonic`
-- `github.com/pelletier/go-toml/v2`
-- `gopkg.in/yaml.v3`
+## Layouts
 
-Zap 和 zerolog comparison dependencies 位于 `benchmarks/compare/go.mod`，不得移入 core module。
+| Layout | 状态 | 说明 |
+| --- | --- | --- |
+| Pattern | 内置 | Log4j 风格 converter 和 ANSI style/highlight。 |
+| Text | 内置 | 稳定文本 key/value 输出。 |
+| JSON | 内置 | 结构化事件 JSON，带生命周期选项。 |
+| JSON Template | 内置且可扩展 | 内置 resolver 加插件 resolver registry。 |
+| XML | 内置 | 单事件 XML fragment。 |
+| CSV | 内置 | 固定事件 CSV 行。 |
+| GELF | 内置 | Graylog Extended Log Format JSON。 |
+| RFC5424 | 内置 | Syslog 文本行 layout。 |
+| Syslog layout | 内置 | RFC5424 layout 的别名。 |
+| YAML | 内置 | 单事件 YAML document。 |
+| HTML | 内置 | HTML table row。 |
 
-## 验证关卡
+## Filters
 
-短关卡：
+| Filter 家族 | 状态 | 说明 |
+| --- | --- | --- |
+| Threshold、level、level range | 内置 | 日志级别门控。 |
+| Regex 和 string match | 内置 | message/logger/attr 或子串匹配。 |
+| Attr、map、thread context map、structured data | 内置 | 属性 key/value 匹配。 |
+| Marker 和 no-marker | 内置 | marker 存在性和层级匹配。 |
+| Thread context stack | 内置 | NDC 风格 stack 匹配。 |
+| Throwable | 内置 | throwable 和 error 属性匹配。 |
+| Time | 内置 | 一天内时间区间，可选 IANA 时区。 |
+| Burst | 内置 | 低严重度事件的 token bucket 限流。 |
+| Dynamic threshold | 内置 | 按属性选择阈值。 |
+| Deny 和 composite | 内置 | 恒定拒绝和嵌套链。 |
+| Script filter | 仅 Go API | 需要调用方提供 evaluator；核心无配置化脚本运行时。 |
 
-```bash
-GOWORK=off go test ./...
-GOWORK=off go vet ./...
-GOWORK=off go test ./... ./cmd/goark-log-plugin-gen ./internal/disruptor ./internal/jsoncodec
-```
+## 滚动文件
 
-Focused hot-path benchmark：
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| Size policy | 内置 | 启用时 `filePattern` 必须包含 `%i`。 |
+| Time policy | 内置 | 支持 interval 和 modulate。 |
+| Cron policy | 内置 | 支持 5、6、7 字段；year 字段必须是通配形式。 |
+| Startup policy | 内置 | 可选启动时滚动。 |
+| Gzip 归档 | 内置 | 用于归档文件；direct write 不允许 gzip。 |
+| 最大归档数量 | 内置 | `strategy.max` 或 legacy `maxBackups`。 |
+| 最大归档年龄 | 内置 | `strategy.maxAge` 或 legacy `maxAge`。 |
+| 删除动作 | 内置 | 路径深度、glob、年龄、累计数量和累计大小。 |
+| 异步归档动作 | 内置 | 压缩和删除使用串行后台 worker。 |
+| Direct write strategy | 内置 | 需要 `filePattern`；拒绝 gzip。 |
 
-```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
-```
+## 生产边界
 
-Long stress gate：
-
-```bash
-GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
-```
-
-Independent comparison module：
-
-```bash
-cd benchmarks/compare
-GOWORK=off go test ./...
-GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=5s -count=3 -cpu=1,4,16
-```
-
-## 发布边界
-
-发布 tag 前确认：
-
-- `dev` 包含所有预期变更。
-- `main` 通过批准的 release flow 更新。
-- Core tests 和 compare-module tests 通过。
-- Race 和 stress checks 已执行，或明确记录为 deferred。
-- Benchmark paths 在 benchmark package split 后对 core benchmark 使用 `./benchmarks/core`。
-- README 和 docs 没有声称支持未内置的 external appenders 或 observability exporters。
+| 关注点 | 当前支持 |
+| --- | --- |
+| 背压 | Handler 级和 appender 级异步支持 block、drop、drop-debug、sync-fallback。 |
+| 关闭 | Handler 和 logger context close 会 drain 队列并关闭 appender。 |
+| Caller location 成本 | 只有 logger/options/route 需要时才捕获。 |
+| 热点格式化 | JSON direct 和原生 logger 快路径已存在；性能结论必须基于当前 benchmark。 |
+| Observability exporter | 插件边界；核心没有 OpenTelemetry 或 Prometheus exporter。 |
+| 远程投递重试 | 远程 appender 插件边界。 |

@@ -1,53 +1,63 @@
-# Documentation Index
+# goark-log Documentation
 
 [简体中文](index.zh-CN.md)
 
-This directory is the reference documentation for `goark.dev/log` v0.0.2
-preparation. The root README stays short; detailed configuration, operational
-scenarios, and release checks live here.
+This documentation is written from the current `goark.dev/log` source. English
+is the default public language; every public Markdown page has a Simplified
+Chinese counterpart.
 
-## Start Here
+## Read First
 
-| Document | Purpose |
+| Need | Document |
 | --- | --- |
-| [Programmatic API](api.md) | Handler construction, native logger, context attributes, reload, status logger, and close ownership. |
-| [Configuration](configuration.md) | Full configuration model, load order, YAML/JSON/XML/properties forms, lookups, levels, reload, and routing. |
-| [Appenders](appenders.md) | Console, file, JSON, rolling file, async, failover, routing, rewrite, and plugin appender parameters. |
-| [Layouts](layouts.md) | Pattern, JSON, JSON Template, Text, XML, CSV, GELF, RFC5424/Syslog, YAML, HTML, converter tables, and resolver tables. |
-| [Filters](filters.md) | Filter chain semantics, decisions, built-in filters, parameters, and examples. |
-| [Scenarios](scenarios.md) | Copyable scenarios for development, containers, production rolling logs, audit split, reload, routing, redaction, and extension. |
-| [Extensibility](extensibility.md) | Explicit plugin registration for appenders, layouts, filters, lookups, and JSON Template resolvers. |
-| [Capability Boundary](capabilities.md) | What the core module supports and what belongs in external modules. |
-| [Performance](performance.md) | Performance budgets, benchmark commands, pressure tests, and tuning notes. |
-| [v0.0.2 Release Checklist](release-v0.0.2.md) | Local and remote checks before publishing v0.0.2. |
+| Install and run a logger in one minute | [README](../README.md) |
+| Use a production-ready service configuration | [Production guide](production-guide.md) |
+| Understand configuration discovery and wrappers | [Configuration model](configuration.md) |
+| Find every supported field and alias | [Configuration reference](configuration-reference.md) |
+| Migrate Log4j2 or SLF4J usage | [Log4j2 and SLF4J parity](log4j2-slf4j-parity.md) |
 
-## Copyable Configuration Examples
+## Reference
 
-| File | Scenario |
+| Area | Document |
 | --- | --- |
-| [examples/README.md](examples/README.md) | Directory guide for copyable configuration examples. |
-| [examples/console.yml](examples/console.yml) | Human-readable development console output. |
-| [examples/json-stdout.yml](examples/json-stdout.yml) | Container and Kubernetes stdout JSON logs. |
-| [examples/production-rolling.yml](examples/production-rolling.yml) | Production JSON rolling file with gzip and retention. |
-| [examples/split-audit.yml](examples/split-audit.yml) | Separate application and audit logs. |
-| [examples/async-appender.yml](examples/async-appender.yml) | Appender-level async wrapping only selected sinks. |
-| [examples/rewrite-routing.yml](examples/rewrite-routing.yml) | Attribute rewrite and routing by tenant. |
-| [examples/goark-log.properties](examples/goark-log.properties) | Properties configuration equivalent for simpler deployments. |
-| [examples/goark-log.toml](examples/goark-log.toml) | TOML configuration using the same structured model as YAML and JSON. |
-| [examples/log4j2-style.xml](examples/log4j2-style.xml) | XML configuration using Log4j2-style element names supported by the parser. |
+| Public Go API | [Programmatic API](api.md) |
+| Appender behavior and fields | [Appenders](appenders.md) |
+| Output formats and pattern syntax | [Layouts](layouts.md) |
+| Filter decisions and filter types | [Filters](filters.md) |
+| Recipes for real services | [Scenarios](scenarios.md) |
+| Plugins and generated registrars | [Extensibility](extensibility.md) |
+| Implemented and unsupported features | [Capabilities](capabilities.md) |
+| Benchmarks and hot-path constraints | [Performance](performance.md) |
+| Release validation | [v0.0.2 checklist](release-v0.0.2.md) |
 
-## Supported Formats
+## Examples
 
-- YAML: recommended for service configuration.
-- JSON: supported through the same structured decoder and field names.
-- XML: supports Log4j2-style appender, layout, filter, policy, strategy, and logger elements.
-- properties: supported with flat keys such as `appender.console.type` and `rootLogger.level`.
-- TOML: supported through the same structured schema as YAML and JSON.
+| Example set | Contents |
+| --- | --- |
+| [Configuration examples](examples/README.md) | YAML, TOML, XML, and properties files loaded by tests. |
+| [Runnable examples](../examples/README.md) | `go run` demos for console, file, rolling, async, reload, plugins, production, SLF4J-style usage, and Log4j2-style XML. |
 
-## Non-Core Scope
+## Source-Backed Boundaries
 
-The core module intentionally does not include HTTP, Socket, Syslog network
-output, Kafka, SMTP, database sinks, OpenTelemetry, Prometheus, or embedded
-script engines. These integrations require connection lifecycle, credentials,
-retry, batching, and failure semantics that should live in dedicated modules
-and register plugins explicitly.
+The core module currently implements local file and console outputs, direct JSON
+output, rolling files, appender composition, layouts, filters, configuration,
+reload, and explicit plugins.
+
+The core module does not implement HTTP appenders, socket appenders, network
+syslog clients, Kafka, Pulsar, RabbitMQ, SMTP, database sinks, OpenTelemetry
+exporters, Prometheus exporters, or embedded script execution. These are
+intentional external module boundaries.
+
+## Validation Commands
+
+```bash
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
+```
+
+Use the proxy below only when a command needs network access:
+
+```bash
+HTTP_PROXY=http://172.16.8.171:9444 HTTPS_PROXY=http://172.16.8.171:9444 ALL_PROXY=http://172.16.8.171:9444 go test ./...
+```

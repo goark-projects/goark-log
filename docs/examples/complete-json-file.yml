@@ -1,0 +1,22 @@
+configuration:
+  properties:
+    LOG_DIR: "${env:GOARK_LOG_DIR:-logs}"
+  appenders:
+    complete:
+      type: file
+      fileName: "${prop:LOG_DIR}/complete-events.json"
+      bufferSize: 0
+      append: false
+      createOnDemand: true
+      filePermissions: "0644"
+      layout:
+        type: json
+        complete: true
+        compact: false
+        eventEol: true
+        includeStacktrace: true
+        header: "["
+        footer: "]"
+  root:
+    level: info
+    appenderRefs: [complete]

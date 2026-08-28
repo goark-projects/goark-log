@@ -1,357 +1,204 @@
-# Extensibility Guide
+# Extensibility
 
 [简体中文](extensibility.zh-CN.md)
 
-`goark-log` uses explicit plugin registration. It does not scan packages,
-struct tags, file paths, or registries at runtime. This keeps startup
-deterministic and keeps the core hot path dependency-light.
+`goark-log` extension points are explicit. Applications and companion modules
+register plugins during startup; the core never scans the filesystem,
+classpath, module cache, or package graph at runtime.
 
 ## Extension Points
 
-| Extension point | Factory type | Register with |
+| Extension point | Registration API | Config/runtime use |
 | --- | --- | --- |
-| Appender | `AppenderFactory` | `RegisterAppender`, `WithPluginAppender` |
-| Layout | `LayoutFactory` | `RegisterLayout`, `WithPluginLayout` |
-| Filter | `FilterFactory` | `RegisterFilter`, `WithPluginFilter` |
-| Lookup | `LookupFunc` | `RegisterLookup`, `WithPluginLookup` |
-| JSON Template resolver | `JSONTemplateResolverFactory` | `RegisterJSONTemplateResolver`, `WithPluginJSONTemplateResolver` |
+| Appender | `RegisterAppender` or `WithPluginAppender` | Creates configured sinks such as external network or broker appenders. |
+| Layout | `RegisterLayout` or `WithPluginLayout` | Creates custom event encoders. |
+| Filter | `RegisterFilter` or `WithPluginFilter` | Creates custom event gates. |
+| Lookup | `RegisterLookup` or `WithPluginLookup` | Resolves `${namespace:key}` in configuration before runtime build. |
+| JSON Template resolver | `RegisterJSONTemplateResolver` or `WithPluginJSONTemplateResolver` | Adds resolver names for JSON Template fields. |
 
-Use the process default registry for simple applications. Use a dedicated
-registry when a framework, test, or embedded runtime needs isolated plugin
-state.
+Plugin kind matching ignores case, hyphen, and underscore. Lookup namespaces
+are lower-case strings.
 
-## Registry Usage
+## Registry Choices
 
-Default registry:
+Use `DefaultPluginRegistry()` when plugins are process-wide and should behave
+like built-ins.
 
-```go
-err := goarklog.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", lookupTenant),
-	goarklog.WithPluginLayout("line", buildLineLayout),
-))
-```
-
-Isolated registry:
+Use `NewPluginRegistry()` when tests, demos, or applications need isolated
+registrations:
 
 ```go
 registry := goarklog.NewPluginRegistry()
-err := registry.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginAppender("http", buildHTTPAppender),
-	goarklog.WithPluginFilter("tenant", buildTenantFilter),
-))
-if err != nil {
+plugins := goarklog.NewPluginSet(
+	goarklog.WithPluginLookup("tenant", tenantLookup),
+	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+)
+if err := registry.RegisterPlugins(plugins); err != nil {
 	return err
 }
+```
 
-handler, _, err := goarklog.NewConfiguredHandler(ctx,
+Pass the registry to config loading:
+
+```go
+loggerContext, _, err := goarklog.NewConfiguredLoggerContext(ctx,
 	goarklog.WithConfigPath("conf/goark-log.yml"),
 	goarklog.WithPluginRegistry(registry),
 )
 ```
 
-## Appender Plugin
+## Appender Plugins
 
-Factory signature:
+Appender plugins receive `AppenderBuildConfig` and return an `Appender`.
+The build config includes common fields, remote-oriented fields, layout,
+rolling config, appender references, filters, and the registry.
 
-```go
-type AppenderFactory func(config goarklog.AppenderBuildConfig) (goarklog.Appender, error)
-```
+Use this boundary for HTTP, socket, network syslog, Kafka, Pulsar, RabbitMQ,
+SMTP, database, or cloud sink modules. The core parses several fields for these
+uses but does not implement the clients.
 
-Minimal appender:
-
-```go
-type discardAppender struct {
-	name string
-}
-
-func (a *discardAppender) Name() string {
-	if a.name == "" {
-		return "discard"
-	}
-	return a.name
-}
-
-func (a *discardAppender) Append(ctx context.Context, event goarklog.Event) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *discardAppender) Close() error {
-	return nil
-}
-
-func buildDiscardAppender(config goarklog.AppenderBuildConfig) (goarklog.Appender, error) {
-	if strings.TrimSpace(config.Name) == "" {
-		return nil, fmt.Errorf("discard appender name is empty")
-	}
-	return &discardAppender{name: config.Name}, nil
-}
-```
-
-Registration:
+Appender contract:
 
 ```go
-registry := goarklog.NewPluginRegistry()
-err := registry.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginAppender("discard", buildDiscardAppender),
-))
-```
-
-Configuration:
-
-```yaml
-appenders:
-  discard:
-    type: discard
-root:
-  level: info
-  appenderRefs: [discard]
-```
-
-Appender plugin rules:
-
-- Validate the appender name and required fields.
-- Respect `ctx.Err()` before expensive work.
-- Make `Append` safe for concurrent callers.
-- Make `Close` idempotent.
-- Own external connection lifecycle inside the appender.
-- Do not block forever on network writes; use timeouts, bounded queues, or
-  caller-visible errors.
-- Keep external dependencies in the plugin module, not in `goark.dev/log`.
-
-## AppenderBuildConfig Fields
-
-`AppenderBuildConfig` receives normalized inputs from configuration:
-
-| Field | Source |
-| --- | --- |
-| `Name`, `Type` | Appender map key and configured type. |
-| `Target` | `target`. |
-| `URL`, `Method`, `Address`, `Network`, `Facility`, `AppName` | External appender fields. |
-| `ConnectTimeout`, `WriteTimeout` | External timeout strings. |
-| `FileName` | `fileName`, `file-name`, or `path`. |
-| `Layout` | Built layout object. |
-| `AppenderRefs` | Simple appender ref names. |
-| `Delegates` | Resolved downstream appenders for composite plugins. |
-| `Routes`, `DefaultRoute`, `RouteKey` | Resolved routing config. |
-| `QueueSize`, `BatchSize`, `OverflowStrategy`, `WaitStrategy`, `WaitOptions` | Async fields. |
-| `BufferSize`, `FlushOnWrite`, `Append`, `CreateOnDemand`, `FilePermissions` | File-style fields. |
-| `Rolling` | Rolling build config. |
-| `Rewrite` | Built-in rewrite policy config. |
-
-The factory still owns semantic validation. A field being present in
-`AppenderBuildConfig` does not mean the core module has a built-in appender for
-that transport.
-
-## Layout Plugin
-
-Factory signature:
-
-```go
-type LayoutFactory func(config goarklog.LayoutBuildConfig) (goarklog.Layout, error)
-```
-
-Example:
-
-```go
-type lineLayout struct{}
-
-func (lineLayout) Format(buf *bytes.Buffer, event goarklog.Event) error {
-	buf.WriteString(event.Message)
-	buf.WriteByte('\n')
-	return nil
-}
-
-func buildLineLayout(config goarklog.LayoutBuildConfig) (goarklog.Layout, error) {
-	return lineLayout{}, nil
+type Appender interface {
+	Name() string
+	Append(ctx context.Context, event Event) error
+	Close() error
 }
 ```
 
-Configuration:
+`Append` must be safe for concurrent callers. `Close` must release all owned
+resources and flush buffered data.
 
-```yaml
-appenders:
-  console:
-    type: console
-    layout:
-      type: line
-```
+## Layout Plugins
 
-Layout plugin rules:
-
-- Compile expensive templates or regex values in the factory, not in `Format`.
-- Do not retain mutable event slices without copying.
-- Write to the provided buffer only.
-- Keep `Format` deterministic and free of network or filesystem side effects.
-
-## Filter Plugin
-
-Factory signature:
+Layout plugins receive `LayoutBuildConfig` and return a `Layout`.
 
 ```go
-type FilterFactory func(config goarklog.FilterBuildConfig) (goarklog.Filter, error)
-```
-
-Example:
-
-```go
-type tenantFilter struct {
-	tenant string
-}
-
-func (f tenantFilter) Decide(ctx context.Context, event goarklog.Event) goarklog.FilterDecision {
-	value, ok := event.Attr("tenant")
-	if ok && value.String() == f.tenant {
-		return goarklog.FilterNeutral
-	}
-	return goarklog.FilterDeny
-}
-
-func buildTenantFilter(config goarklog.FilterBuildConfig) (goarklog.Filter, error) {
-	if strings.TrimSpace(config.Value) == "" {
-		return nil, fmt.Errorf("tenant filter value is empty")
-	}
-	return tenantFilter{tenant: strings.TrimSpace(config.Value)}, nil
+type Layout interface {
+	Append(buf *bytes.Buffer, event Event) error
 }
 ```
 
-Configuration:
+Layout plugins should use caller-owned buffers and avoid retaining event
+references. If a layout has complete-mode lifecycle state, keep that state
+owned by the appender or clone it per appender.
 
-```yaml
-filters:
-  tenantA:
-    type: tenant
-    value: tenant-a
-root:
-  level: info
-  filters: [tenantA]
-```
+## Filter Plugins
 
-Filter plugin rules:
-
-- Return `neutral` for pass-through unless the plugin intentionally accepts.
-- Return `deny` for policy rejection.
-- Avoid allocations, regex compilation, map construction, and reflection in
-  `Decide`.
-- Make shared state immutable or lock-protected.
-
-## Lookup Plugin
-
-Lookup signature:
+Filter plugins receive `FilterBuildConfig` and return a `Filter`.
 
 ```go
-type LookupFunc func(key string) (string, bool)
+type Filter interface {
+	Decide(ctx context.Context, event Event) FilterDecision
+}
 ```
 
-Example:
+Return `FilterNeutral` for "no opinion", `FilterAccept` to allow within the
+current chain, and `FilterDeny` to drop.
+
+## Lookup Plugins
+
+Lookup plugins resolve config text before appenders, layouts, filters, and
+logger rules are built.
 
 ```go
-func lookupTenant(key string) (string, bool) {
-	switch key {
-	case "id":
+func tenantLookup(key string) (string, bool) {
+	if key == "default" {
 		return "tenant-a", true
-	default:
-		return "", false
 	}
+	return "", false
 }
 ```
 
-Configuration:
+Security policy blocks `jndi`, `ldap`, and `rmi` namespaces. Missing lookups
+without defaults fail configuration loading. Defaults use the form
+`${namespace:key:-fallback}`.
+
+## JSON Template Resolver Plugins
+
+Resolvers append raw JSON into the event output.
+
+```go
+type constantResolver string
+
+func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
+	data, err := json.Marshal(string(r))
+	if err != nil {
+		buf.WriteString("null")
+		return
+	}
+	buf.Write(data)
+}
+```
+
+Factory options are raw JSON values from the resolver object:
+
+```go
+func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
+	var value string
+	if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
+	}
+	return constantResolver(value), nil
+}
+```
+
+Config:
 
 ```yaml
-properties:
-  LOG_DIR: "logs/${tenant:id}"
+layout:
+  type: jsonTemplate
+  eventTemplate: >
+    {
+      "component": {"$resolver": "constant", "value": "billing"},
+      "message": {"$resolver": "message"}
+    }
 ```
 
-Lookup plugin rules:
-
-- Return `(value, true)` only when the value exists.
-- Keep lookups local and deterministic.
-- Do not perform unbounded network calls during configuration loading.
-- Namespaces `jndi`, `ldap`, and `rmi` are blocked and cannot be registered.
-
-## JSON Template Resolver Plugin
-
-Factory signature:
-
-```go
-type JSONTemplateResolverFactory func(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error)
-```
-
-Example resolver:
-
-```go
-type constantResolver struct {
-	value string
-}
-
-func (r constantResolver) AppendJSON(buf *bytes.Buffer, event goarklog.Event) {
-	_ = event
-	buf.WriteString(strconv.Quote(r.value))
-}
-
-func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
-	raw := config.Options["value"]
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, fmt.Errorf("constant resolver value must be a string")
-	}
-	return constantResolver{value: value}, nil
-}
-```
-
-Template:
-
-```json
-{
-  "service": {"$resolver": "constant", "value": "billing"},
-  "message": {"$resolver": "message"}
-}
-```
-
-Resolver plugin rules:
-
-- Parse and validate options in the factory.
-- Append valid JSON values only.
-- Avoid allocating in `AppendJSON` on hot paths.
-- Do not mutate the event.
-
-## Registrar Generator
-
-The module includes a small generator for registrar boilerplate:
+Runnable demo:
 
 ```bash
-go run goark.dev/log/cmd/goark-log-plugin-gen \
-  -package mylog \
-  -appender discard=buildDiscardAppender \
-  -layout line=buildLineLayout \
-  -filter tenant=buildTenantFilter \
-  -lookup tenant=lookupTenant \
-  -json-template-resolver constant=buildConstantResolver \
-  -out zz_generated_plugins.go
+GOWORK=off go run ./examples/extensibility
 ```
 
-Use generated registrars when a plugin package exports several extension
-points. Keep generated files committed so consumers do not need to run
-generators during normal builds.
+## Generated Registrars
 
-## Dependency Boundary
+`cmd/goark-log-plugin-gen` generates a small registrar so extension modules can
+avoid hand-written registration glue.
 
-External integrations should live outside the core module:
+```bash
+GOWORK=off go run ./cmd/goark-log-plugin-gen \
+  -package mylogplugin \
+  -appender kafka=goark.dev/log/contrib/kafka.NewAppender \
+  -lookup tenant=goark.dev/myapp/logging.TenantLookup \
+  -json-template-resolver build=goark.dev/myapp/logging.BuildResolver \
+  -output plugins_gen.go
+```
 
-| Integration | Reason to keep external |
+Generated files contain a `PluginRegistrar` compatible with
+`RegisterPlugins`.
+
+## Plugin Boundaries
+
+Keep plugin modules narrow:
+
+| Module type | Should contain |
 | --- | --- |
-| HTTP, Socket, Syslog network output | Connection management, retries, deadlines, TLS, and backpressure differ by deployment. |
-| Kafka, Pulsar, RabbitMQ | Client dependencies and delivery semantics are heavy and broker-specific. |
-| SMTP | Slow network I/O and credential handling should not enter the core logging path. |
-| Database sinks | Transactions, batching, schema, and failure modes vary by database. |
-| OpenTelemetry and Prometheus | Observability design should be consistent across Goark modules, not forced into the logging core. |
-| Script engines | Runtime and sandbox choices have security implications. |
+| Network sink | Connection lifecycle, retries, timeouts, batching, and appender factory. |
+| Broker sink | Producer lifecycle, serialization, backpressure, and appender factory. |
+| Cloud exporter | Authentication, transport, resource mapping, and appender factory. |
+| Custom layout | Encoding only; do not open files or network connections from a layout. |
+| Custom filter | Predicate and optional small state only. |
 
-This boundary keeps `goark.dev/log` small, predictable, and suitable for low
-level packages.
+Do not add heavyweight dependencies to the core for optional destinations.
+
+## Validation Checklist
+
+| Check | Command or expectation |
+| --- | --- |
+| Registry rejects nil factories and empty kinds. | Unit tests in the plugin module. |
+| Config examples load. | `GOWORK=off go test ./internal/integration -run TestDocsExamples -count=1`. |
+| Race behavior is clean. | `GOWORK=off go test -race ./...` for the module that owns concurrency. |
+| Hot path claims are measured. | Benchmarks in the owning module. |
+| Shutdown is deterministic. | `Close` drains and returns transport errors. |

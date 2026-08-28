@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 
 	goarklog "goark.dev/log"
+	"goark.dev/log/examples/internal/exampleutil"
 )
 
 func main() {
-	ctx := context.Background()
 	dir, err := os.MkdirTemp("", "goark-log-reload-*")
 	if err != nil {
 		panic(err)
@@ -22,7 +22,7 @@ func main() {
 	logPath := filepath.Join(dir, "reload.log")
 	writeConfig(configPath, logPath, "info")
 
-	logger, handler, _, err := goarklog.NewConfigured(ctx, goarklog.WithConfigPath(configPath))
+	logger, handler, _, err := goarklog.NewConfigured(context.Background(), goarklog.WithConfigPath(configPath))
 	if err != nil {
 		panic(err)
 	}
@@ -36,25 +36,24 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := reloader.Reload(ctx); err != nil {
+	if _, err := reloader.Reload(context.Background()); err != nil {
 		panic(err)
 	}
 	logger.Debug("visible after reload", slog.String("path", logPath))
+	slog.Info("reload demo completed", slog.String("template", exampleutil.ConfigPath("production-service.yml")))
 }
 
 func writeConfig(configPath string, logPath string, level string) {
-	content := `
-appenders:
-  file:
-    type: file
-    fileName: "` + filepath.ToSlash(logPath) + `"
-    layout:
-      type: text
-root:
-  level: ` + level + `
-  appenderRefs: [file]
-`
-	if err := os.WriteFile(configPath, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+	content := "configuration:\n" +
+		"  appenders:\n" +
+		"    json:\n" +
+		"      type: json\n" +
+		"      fileName: " + strconv.Quote(filepath.ToSlash(logPath)) + "\n" +
+		"      flushOnWrite: true\n" +
+		"  root:\n" +
+		"    level: " + level + "\n" +
+		"    appenderRefs: [json]\n"
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		panic(err)
 	}
 }

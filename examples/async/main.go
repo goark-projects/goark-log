@@ -1,44 +1,35 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
+	"time"
 
 	goarklog "goark.dev/log"
+	"goark.dev/log/examples/internal/exampleutil"
 )
 
 func main() {
-	path := filepath.Join(os.TempDir(), "goark-log-example", "async-rolling.log")
-	rolling, err := goarklog.NewRollingFileAppender(path,
-		goarklog.WithRollingFileName("rolling"),
-		goarklog.WithRollingFileLayout(goarklog.TextLayout{}),
-		goarklog.WithRollingMaxSize(10*1024*1024),
-		goarklog.WithRollingMaxBackups(7),
-		goarklog.WithRollingGzip(true),
-	)
+	logDir, cleanup, err := exampleutil.PrepareLogDir("async")
 	if err != nil {
 		panic(err)
 	}
-	async, err := goarklog.NewAsyncAppender([]goarklog.Appender{rolling},
-		goarklog.WithAsyncName("async"),
-		goarklog.WithAsyncQueueSize(8192),
-		goarklog.WithAsyncOverflowStrategy(goarklog.AsyncOverflowBlock),
+	defer cleanup()
+
+	logger, handler, _, err := goarklog.NewConfigured(context.Background(),
+		goarklog.WithConfigPath(exampleutil.ConfigPath("async-failover.yml")),
 	)
-	if err != nil {
-		panic(err)
-	}
-	handler, err := goarklog.NewHandler(goarklog.Options{
-		Appenders: []goarklog.Appender{rolling, async},
-		Root: goarklog.RootLogger{
-			Level:        slog.LevelInfo,
-			AppenderRefs: []string{"async"},
-		},
-	})
 	if err != nil {
 		panic(err)
 	}
 	defer handler.Close()
 
-	goarklog.NewLogger(handler, "goark.async").Info("async rolling ready", slog.String("path", path))
+	logger = goarklog.WithName(logger, "goark.demo.async")
+	for index := 0; index < 5; index++ {
+		logger.Info("queued event", slog.Int("index", index), slog.Duration("elapsed", time.Duration(index)*time.Millisecond))
+	}
+	fmt.Println("dropped=" + fmt.Sprint(handler.AsyncDropped()))
+	fmt.Println("failed=" + fmt.Sprint(handler.AsyncFailed()))
+	fmt.Println("logDir=" + logDir)
 }

@@ -1,30 +1,30 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 
 	goarklog "goark.dev/log"
+	"goark.dev/log/examples/internal/exampleutil"
 )
 
 func main() {
-	path := filepath.Join(os.TempDir(), "goark-log-example", "file.log")
-	appender, err := goarklog.NewFileAppender(path, goarklog.WithFileLayout(goarklog.TextLayout{}))
+	logDir, cleanup, err := exampleutil.PrepareLogDir("file")
 	if err != nil {
 		panic(err)
 	}
-	handler, err := goarklog.NewHandler(goarklog.Options{
-		Appenders: []goarklog.Appender{appender},
-		Root: goarklog.RootLogger{
-			Level:        slog.LevelInfo,
-			AppenderRefs: []string{"file"},
-		},
-	})
+	defer cleanup()
+
+	logger, handler, result, err := goarklog.NewConfigured(context.Background(),
+		goarklog.WithConfigPath(exampleutil.ConfigPath("complete-json-file.yml")),
+	)
 	if err != nil {
 		panic(err)
 	}
 	defer handler.Close()
 
-	goarklog.NewLogger(handler, "goark.file").Info("file appender ready", slog.String("path", path))
+	logger = goarklog.WithName(logger, "goark.demo.file")
+	logger.Info("complete JSON file stream is ready", slog.String("source", string(result.Source)))
+	fmt.Println("logDir=" + logDir)
 }

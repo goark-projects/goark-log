@@ -1,0 +1,32 @@
+configuration:
+  properties:
+    LOG_DIR: "${env:GOARK_LOG_DIR:-logs}"
+  appenders:
+    primaryFile:
+      type: file
+      fileName: "${prop:LOG_DIR}/primary.log"
+      bufferSize: 256KiB
+      layout:
+        type: json
+        eventEol: true
+    fallbackConsole:
+      type: console
+      target: stderr
+      layout:
+        type: pattern
+        pattern: "%d{ISO8601} %5p %c : %m%attrs%n"
+    failover:
+      type: failover
+      primary: primaryFile
+      failovers: [fallbackConsole]
+    asyncReliable:
+      type: async
+      appenderRefs: [failover]
+      queueSize: 8192
+      batchSize: 256
+      overflowStrategy: sync-fallback
+      waitStrategy: block
+      timeout: 2s
+  root:
+    level: info
+    appenderRefs: [asyncReliable]

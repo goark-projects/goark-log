@@ -1,0 +1,27 @@
+configuration:
+  appenders:
+    stdout:
+      type: console
+      target: stdout
+      layout:
+        type: jsonTemplate
+        eventTemplate: >
+          {
+            "ts": {"$resolver": "timestamp", "format": "RFC3339NANO"},
+            "severity": {"$resolver": "level", "field": "severity"},
+            "level": {"$resolver": "level"},
+            "logger": {"$resolver": "logger", "precision": 3},
+            "message": {"$resolver": "message"},
+            "source": {"$resolver": "source"},
+            "process": {"$resolver": "process"},
+            "attrs": {"$resolver": "mdc", "flatten": true},
+            "trace_id": {"$resolver": "attr", "key": "trace_id"},
+            "error": {"$resolver": "throwable", "field": "stackTraceAsString"},
+            "endOfBatch": {"$resolver": "endOfBatch"}
+          }
+        eventEol: true
+        stacktraceAsString: true
+  root:
+    level: info
+    includeLocation: true
+    appenderRefs: [stdout]

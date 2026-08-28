@@ -1,67 +1,28 @@
-# 变更日志
+# 更新日志
 
 [English](CHANGELOG.md)
 
-本项目遵循 Go module 语义化版本规则。
+本文件只记录基于源码确认的用户可见变更。当前工作分支为 `dev`；release tag
+应在验证完成后从 `main` 打出。
 
-## v0.0.2 - 未发布
+## Unreleased
 
-### 新增
+### Added
 
-- 新增默认英文 README 和独立简体中文 README。
-- 新增编程式 API、配置、Appender、Layout、Filter、场景、扩展、能力边界、性能、v0.0.2 发布验证等详细文档。
-- 在 `docs/examples` 下新增可复制配置示例，覆盖 console、JSON stdout、生产滚动文件、审计拆分、异步 appender、rewrite/routing、properties 和 XML。
-- 新增集成测试，加载每一个可复制的 `docs/examples` 配置文件。
-- 为所有公开文档页面新增简体中文版本，同时保持英文作为默认文档路径。
-- 新增公开 Markdown 文档 localization 覆盖测试。
-- 新增 TOML 配置加载，复用 YAML/JSON 使用的严格 structured configuration contract。
+- 重写双语文档体系，公共默认语言为英文，每个公开 Markdown 文件都有简体中文对应版本。
+- 新增完整配置参考，覆盖包装结构、发现顺序、lookup namespace、async 选项、appender 字段、layout 字段、filter 字段、rolling policy、XML 元素和 properties 键。
+- 新增基于当前实现的生产级 demo 和场景文档：`examples/production`、`examples/slf4j`、`examples/log4j2_config`。
+- 新增可加载配置示例：console、容器 JSON、完整 JSON 流、生产滚动文件、审计路由、异步 failover、filter、JSON Template、TOML、properties 和 Log4j2 风格 XML。
+- 文档示例测试改为扫描 `docs/examples` 下所有受支持配置文件，后续新增示例会自动进入校验。
 
-### 变更
+### Changed
 
-- 将根包测试移动到更聚焦的子包，降低 public root package 的文件密度并提升边界清晰度。
-- benchmark 文档改为使用 `./benchmarks/core` 执行 core benchmark，以匹配 benchmark 包拆分后的结构。
-- CI 和 pressure workflow 的 benchmark 命令改为执行 `./benchmarks/core`，不再从根包运行 core benchmark。
-- 明确外部系统 appender 和 observability exporter 不属于 core module，必须由显式插件模块提供。
-- internal JSON fallback 在 Go 1.27+ 或不受 Sonic 支持的架构上改用标准库，避免底层依赖输出不受控的 runtime warning。
+- 现有可运行示例尽量改为真实配置文件驱动，不再只是零散片段。
+- 公共文档明确区分核心已实现能力和外部集成扩展边界。
 
-### 修复
+## v0.0.1
 
-- Complete JSON 和 JSON Template layout 的生命周期状态按 appender 隔离，并将有状态格式化与流写入同步，确保 console、file、create-on-demand、共享 layout 和 rolling 输出都是合法 JSON 数组。
-- 非有限 `slog.Float64` 值改为 JSON 字符串编码，避免输出非法 `NaN`/`Inf` token。
+`goark.dev/log` 下 Goark 日志核心的初始 tag 版本。
 
-### 验证
-
-- 发布验证清单：`docs/release-v0.0.2.zh-CN.md`。
-- 必需本地关卡：`GOWORK=off go test ./...`、`GOWORK=off go vet ./...`、focused race tests、`./benchmarks/core` 下的 core benchmark，以及 `benchmarks/compare` 下的对比模块测试。
-
-## v0.0.1 - 2026-08-27
-
-### 新增
-
-- 新增并发安全的 `slog.Handler`、默认 logger 组装逻辑和低分配 native `Logger`。
-- 新增 Console、File、RollingFile、JSONFile、Async、Failover、Routing 和 Rewrite appenders。
-- 新增 Pattern、Text、JSON、JSONTemplate、XML、CSV、GELF、RFC5424、YAML 和 HTML layouts。
-- 新增 root/logger 层级路由、additivity、appender-ref level、global filters 和 local filters。
-- 新增 context attributes、context stack、custom levels、marker、throwable 和可选 caller location capture。
-- 新增 YAML、JSON、XML 和 properties 配置加载，以及文件轮询 reload。
-- 新增 size/time/cron/startup rolling policies、gzip compression、retained count、retained age 和 delete actions。
-- 新增 bounded async queues、batch drain、overflow strategies、wait strategies 和 shutdown drain。
-- 新增显式插件注册、plugin set helpers、JSON Template resolver extension 和 registrar generator。
-
-### 性能
-
-- 常见 JSON 路径使用手写 `bytes.Buffer` 编码，避免 built-in `slog.Value` 类型走反射。
-- 复杂 `slog.Any` fallback 使用 ByteDance Sonic。
-- internal ring buffer、native three-attribute logging、direct JSON file output 和关键 layouts 均有 benchmark 覆盖。
-- zap 和 zerolog 对比依赖隔离在 `benchmarks/compare`。
-
-### 安全边界
-
-- 默认 lookup 限制为本地 `env`、`sys`、`go`、`date` 和 `property` namespace。
-- remote lookup namespace、script runtime、external-system appender 和 observability exporter 均不属于 core module。
-- 默认搜索路径保留了 `toml`；在 v0.0.2 支持前，TOML 输入会显式失败，不会被静默忽略。
-
-### 验证
-
-- root module unit tests、focused race tests、benchmark smoke tests 和 compare module tests 已纳入发布验证路径。
-- long stress coverage 可通过 `pressure` workflow 执行。
+该版本包含 `slog.Handler` 运行时、命名 logger 路由、核心 appender 和 layout、
+滚动文件、异步队列、filter、配置加载和显式插件注册。

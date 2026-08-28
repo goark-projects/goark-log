@@ -1,8 +1,0 @@
-configuration:
-  appenders:
-    json:
-      type: json
-      target: stdout
-  root:
-    level: info
-    appenderRefs: [json]

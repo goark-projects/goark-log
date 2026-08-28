@@ -1,30 +1,32 @@
 configuration:
+  properties:
+    LOG_DIR: "${env:GOARK_LOG_DIR:-logs}"
   appenders:
-    defaultJson:
+    stdout:
       type: json
       target: stdout
     tenantA:
       type: file
-      fileName: logs/tenant-a.log
+      fileName: "${prop:LOG_DIR}/tenant-a.log"
       layout:
         type: json
         eventEol: true
     tenantB:
       type: file
-      fileName: logs/tenant-b.log
+      fileName: "${prop:LOG_DIR}/tenant-b.log"
       layout:
         type: json
         eventEol: true
-    tenantRouter:
+    router:
       type: routing
       routeKey: tenant
-      defaultRoute: defaultJson
+      defaultRoute: stdout
       routes:
         tenant-a: tenantA
         tenant-b: tenantB
     redacted:
       type: rewrite
-      appenderRefs: [tenantRouter]
+      appenderRefs: [router]
       rewrite:
         attrs:
           service: billing

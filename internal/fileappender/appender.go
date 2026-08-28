@@ -453,6 +453,9 @@ func (a *FileAppender) outputWriterLocked() io.Writer {
 	if a.writer != nil {
 		return a.writer
 	}
+	if a.file == nil {
+		return nil
+	}
 	return a.file
 }
 

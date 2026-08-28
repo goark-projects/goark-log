@@ -1,62 +1,45 @@
-# Layout 参考
+# Layouts
 
 [English](layouts.md)
 
-Layout 将 immutable log event snapshot 转为 bytes。Console、file 和 rolling file appenders 使用 layouts。Direct JSON appender 使用自己的固定 JSON encoder，不使用配置中的 layout。
+Layout 将快照化的 `Event` 编码为字节。Console、file 和 rolling-file appender 使用
+layout；JSON direct appender 为热点 JSON 路径绕过 layout。
 
-## 内置 Layouts
+## Layout Options
 
-| Type | Aliases | 输出 |
+| 字段 | 说明 |
+| --- | --- |
+| `compact` | 禁用默认事件换行。 |
+| `eventEol`, `event-eol` | 即使 compact 为 true，也为事件追加换行。 |
+| `complete` | 启用流 header/footer。JSON layout 默认用数组式 complete 模式。 |
+| `includeStacktrace`, `include-stacktrace` | 在支持的布局中输出结构化栈信息。 |
+| `stacktraceAsString`, `stacktrace-as-string` | 在支持的布局中把异常栈输出为字符串。 |
+| `propertiesAsList`, `properties-as-list` | 在支持的布局中将上下文属性输出为键值列表。 |
+| `includeNullDelimiter`, `include-null-delimiter` | 每条事件后追加 NUL。 |
+| `disableAnsi`, `disable-ansi` | 禁用 pattern `highlight` 和 `style` 的 ANSI 输出。 |
+| `header` | complete 模式自定义 header。 |
+| `footer` | complete 模式自定义 footer。 |
+
+Complete JSON 和 JSON Template layout 会为每个 appender 克隆生命周期状态，因此不同文件会
+生成独立有效的流。
+
+## 内置 Layout 类型
+
+| 类型 | 别名 | 输出 |
 | --- | --- | --- |
-| `pattern` | none | Log4j/Spring Boot style pattern text。 |
-| `text` | none | 稳定 key-value text。 |
-| `json` | none | Structured JSON event。 |
-| `jsonTemplate` | `json-template` after normalization | 基于 event template 生成的 JSON event。 |
-| `xml` | `xmlLayout` | 单个 XML event。 |
-| `csv` | `csvLayout` | 单行 CSV。 |
+| `pattern` | 无 | Log4j 风格文本 pattern。空 pattern 使用 `DefaultSpringBootPattern`。 |
+| `text` | 无 | 稳定 `key=value` 文本。 |
+| `json` | 无 | 包含事件字段和属性的 JSON 对象。 |
+| `jsonTemplate` | 无 | 由 resolver 模板定义的 JSON 对象。 |
+| `xml` | `xmlLayout` | 单个 `<Event>` XML 片段。 |
+| `csv` | `csvLayout` | CSV 行：time、level、logger、thread、message、attrs。 |
 | `gelf` | `gelfLayout` | Graylog Extended Log Format JSON。 |
-| `rfc5424` | `rfc5424Layout` | RFC 5424 syslog text event。 |
-| `syslog` | `syslogLayout` | RFC 5424 layout 的 alias。 |
-| `yaml` | `yamlLayout` | YAML event document。 |
-| `html` | `htmlLayout` | HTML table row。 |
+| `rfc5424` | `rfc5424Layout` | RFC 5424 syslog 文本行。 |
+| `syslog` | `syslogLayout` | RFC5424 layout 别名。 |
+| `yaml` | `yamlLayout` | 单个 YAML 文档。 |
+| `html` | `htmlLayout` | HTML 表格行。 |
 
-Layout 和 plugin kinds 会先 trim spaces、lowercase，再移除 `-` 和 `_`。
-
-## 通用 Layout 字段
-
-```yaml
-layout:
-  type: json
-  compact: false
-  eventEol: true
-  complete: false
-  includeStacktrace: true
-  stacktraceAsString: false
-  propertiesAsList: false
-  includeNullDelimiter: false
-  disableAnsi: false
-  header: ""
-  footer: ""
-```
-
-| 字段 | Aliases | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `type` | none | appender default pattern | Layout kind。 |
-| `pattern` | none | default Spring Boot pattern | PatternLayout format string。 |
-| `eventTemplate` | `event-template` | default template | Inline JSON Template event template。 |
-| `eventTemplateUri` | `event-template-uri`, `eventTemplatePath`, `event-template-path` | empty | Local JSON Template file。 |
-| `compact` | none | false | 禁用默认 event newline。 |
-| `eventEol` | `event-eol` | false | 即使 `compact` 为 true，也添加 event newline。 |
-| `complete` | none | false | 启用 lifecycle header/footer output。JSON layouts 在 complete 模式默认使用 array header/footer。 |
-| `includeStacktrace` | `include-stacktrace` | false | 在支持的 layout 中输出 structured stack information。 |
-| `stacktraceAsString` | `stacktrace-as-string` | false | 将 stacktrace 输出为一个 string，而不是 structured object/list。 |
-| `propertiesAsList` | `properties-as-list` | false | 在支持的 layout 中把 context attributes 输出为 `[{"key":...,"value":...}]`。 |
-| `includeNullDelimiter` | `include-null-delimiter` | false | 每个 event 后追加 NUL。适合需要 frame delimiter 的协议。 |
-| `disableAnsi` | `disable-ansi` | false | 禁用 PatternLayout `%highlight` 和 `%style` ANSI output。 |
-| `header` | none | empty | `complete` 为 true 时使用的自定义 lifecycle header。 |
-| `footer` | none | empty | `complete` 为 true 时使用的自定义 lifecycle footer。 |
-
-## PatternLayout
+## Pattern Layout
 
 默认 pattern：
 
@@ -64,130 +47,79 @@ layout:
 %d %5level %pid --- [%thread] %logger : %msg%attrs%n
 ```
 
-示例：
+字段宽度和截断使用 Log4j 风格语法：`%5p`、`%-5p`、`%.30c` 以及组合形式。
 
-```yaml
-layout:
-  type: pattern
-  pattern: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%thread] %c{2} trace=%X{trace_id} %m%notEmpty{ %ex{short}}%n"
-```
-
-### Width Modifiers
-
-Pattern converters 支持：
-
-| 形式 | 含义 |
-| --- | --- |
-| `%5p` | 最小宽度 5，右对齐。 |
-| `%-5p` | 最小宽度 5，左对齐。 |
-| `%.40logger` | 最大宽度 40。 |
-| `%20.40logger` | 最小宽度 20，最大宽度 40。 |
-
-### Converters
-
-| Converter | Aliases | 说明 |
+| 转换器 | 别名 | 输出 |
 | --- | --- | --- |
-| `%d{format}` | `%date{format}` | Event time。Empty/default 使用 `2006-01-02T15:04:05.000Z07:00`。 |
-| `%level` | `%p` | Level registry 中的 level name。 |
-| `%pid` | `%processId` | 当前 process ID。 |
-| `%thread` | `%t` | context/attrs 中的 logical thread name，默认 `main`。 |
-| `%logger{precision}` | `%c{precision}` | Logger name。Precision 保留最后 N 个 dot-separated components。 |
-| `%msg` | `%message`, `%m` | Event message。 |
-| `%attrs` | `%kvp`, `%map` | Event attributes，key-value text。 |
-| `%X{key}` | `%mdc{key}` | 按 key 输出 attribute value。空 `%X` 或 `%mdc` 输出所有 attrs。 |
-| `%ex{option}` | `%throwable`, `%exception` | Throwable text。Options：empty、`short`、`full`、`none`。 |
-| `%marker` | none | Marker value。 |
-| `%ndc` | `%x` | Context stack values。 |
-| `%C` | `%class` | Caller class/function owner。要求 caller PC。 |
-| `%M` | `%method` | Caller method/function。要求 caller PC。大小写敏感：`%M` 是 method，`%m` 是 message。 |
-| `%F` | `%file` | Caller file。要求 caller PC。 |
-| `%L` | `%line` | Caller line。要求 caller PC。 |
-| `%l` | `%location` | Caller location string。要求 caller PC。 |
-| `%n` | none | Newline。 |
-| `%uuid` | none | 每次 event render 生成 random UUID v4 style value。 |
-| `%relative` | `%r` | 自 layout package initialization 起的毫秒数。 |
-| `%host` | `%hostname` | 进程启动时解析的 host name。 |
-| `%sequenceNumber` | `%sn` | Atomic sequence number。 |
-| `%highlight{pattern}` | none | 按 level 应用默认 ANSI color。可由 `disableAnsi` 禁用。 |
-| `%style{pattern}{style}` | none | 应用指定 ANSI style。可由 `disableAnsi` 禁用。 |
-| `%notEmpty{pattern}` | none | Nested output trim 后非空时才输出。 |
-| `%replace{pattern}{regex}{replacement}` | none | 对 nested output 做 regex replacement。 |
-| `%enc{pattern}{mode}` | `%encode` | 转义 nested output。Modes：`json`、`html`、`xml`、`crlf`；未知 mode 保持原值。 |
-| `%equals{pattern}{test}{substitution}` | none | nested output 等于 `test` 时替换。 |
-| `%equalsIgnoreCase{pattern}{test}{substitution}` | none | `%equals` 的 case-insensitive 版本。 |
-| `%maxLen{pattern}{length}` | `%maxLength` | 按 display width 截断 nested output。 |
-| `%repeat{pattern}{count}` | none | 重复 nested output。 |
-| `%%` | none | Literal percent sign。 |
+| `%d{format}` | `%date{format}` | 事件时间。 |
+| `%p` | `%level` | 级别名称。 |
+| `%pid` | `%processId` | 进程 ID。 |
+| `%thread` | `%t` | 逻辑线程名，默认 `main`。 |
+| `%logger{precision}` | `%c{precision}` | logger 名称，可保留尾部段数。 |
+| `%msg` | `%message`, `%m` | 消息文本。 |
+| `%attrs` | `%kvp`, `%map` | 事件属性的 pattern key/value 文本。 |
+| `%X{key}` | `%mdc{key}` | 单个属性值。不带 key 时输出全部 attrs。 |
+| `%ex{option}` | `%throwable{option}`, `%exception{option}` | Throwable 或 `error`/`err` 属性。选项：空、`none`、`short`、`full`。 |
+| `%marker` | 无 | Marker 名称。 |
+| `%ndc` | `%x` | Context stack，以空格连接。 |
+| `%n` | 无 | 换行。 |
+| `%C` | `%class` | 调用方 class/function owner。 |
+| `%M` | `%method` | 调用方 method/function。 |
+| `%F` | `%file` | 调用方文件名。 |
+| `%L` | `%line` | 调用方行号。 |
+| `%l` | `%location` | 组合调用位置。 |
+| `%uuid` | 无 | 随机 version 4 UUID。 |
+| `%relative` | `%r` | layout 包初始化以来的毫秒数。 |
+| `%host` | `%hostname` | 主机名。 |
+| `%sequenceNumber` | `%sn` | 全局递增序号。 |
+| `%highlight{pattern}` | 无 | 按级别输出 ANSI 颜色，除非 `disableAnsi` 为 true。 |
+| `%style{pattern}{style}` | 无 | 输出 ANSI style，除非 `disableAnsi` 为 true。 |
+| `%notEmpty{pattern}` | 无 | 子 pattern 非空时输出。 |
+| `%replace{pattern}{regex}{replacement}` | 无 | 对子输出做正则替换。 |
+| `%enc{pattern}{mode}` | `%encode{pattern}{mode}` | 转义子输出。 |
+| `%equals{pattern}{test}{substitution}` | `%equalsIgnoreCase{pattern}{test}{substitution}` | 子输出匹配时替换。 |
+| `%maxLen{pattern}{length}` | `%maxLength{pattern}{length}` | 截断子输出。 |
+| `%repeat{pattern}{count}` | 无 | 重复子输出。 |
+| `%%` | 无 | 字面 `%`。 |
 
-Caller converters 读取 `slog.Record.PC`。除非满足以下任一条件，否则为空：
+调用位置转换器需要通过 logger 选项、logger 配置、async 配置或 appender-ref
+`includeLocation` 开启位置采集。
 
-- Handler/root/logger/appender-ref `includeLocation` 为 true。
-- Handler-level async `includeLocation` 为 true。
-- Native logger 通过 `WithLoggerCaller(true)` 创建。
+## 时间格式
 
-Caller capture 有可测量成本，只应在需要 caller converters 或 JSON Template source resolver 的 logger/appender ref 上启用。
+`%d{...}`、date lookup 和 JSON Template timestamp resolver 支持：
 
-### ANSI Styles
-
-`%highlight` 默认 level styles：
-
-| Level | Style |
+| 格式 | 输出 |
 | --- | --- |
-| `FATAL` and above | `red,bold` |
-| `ERROR` | `red` |
-| `WARN` | `yellow` |
-| `INFO` | `green` |
-| `DEBUG` | `cyan` |
-| lower | `faint` |
+| 空、`DEFAULT`、`ISO8601`、`ISO8601_OFFSET_DATE_TIME` | `2006-01-02T15:04:05.000Z07:00` 布局。 |
+| `RFC3339` | Go `time.RFC3339`。 |
+| `RFC3339NANO` | Go `time.RFC3339Nano`。 |
+| `UNIX`, `UNIX_SECONDS` | Unix 秒。 |
+| `UNIX_MILLIS`, `UNIX_MS` | Unix 毫秒。 |
+| `UNIX_MICROS`, `UNIX_US` | Unix 微秒。 |
+| `UNIX_NANOS`, `UNIX_NS` | Unix 纳秒。 |
+| Java 风格日期 pattern | 常用 Java token 会转换为 Go reference-time layout。 |
 
-`%style` 支持 `bold`、`faint`、`underline`、`blink`、`reverse`、foreground colors（`red`、`green`、`yellow`、`blue`、`magenta`、`cyan`、`white`、`gray`）、bright colors，以及 `bgRed` 或 `backgroundRed` 这类 background forms。
+支持的 Java token 包括 `yyyy`、`yy`、`MM`、`dd`、`HH`、`mm`、`ss`、
+`SSS`、`SSSSSS`、`XXX`、`XX` 和 `X`。
 
-## JSONLayout
+## JSON Layout
+
+JSON layout 输出 `time`、`level`、`logger`、`msg`、attrs 和可选 `thrown`。
+开启 `propertiesAsList` 时，attrs 放入 `contextMap` 键值列表。开启 `complete` 时，
+默认 header/footer 是 `[` 和 `]`。
 
 ```yaml
 layout:
   type: json
   eventEol: true
-  propertiesAsList: false
   includeStacktrace: true
 ```
 
-默认字段：
+## JSON Template Layout
 
-| 字段 | 说明 |
-| --- | --- |
-| `time` | 使用 default layout format 的 event time。 |
-| `level` | Level name。 |
-| `logger` | Logger name。 |
-| `msg` | Message。 |
-| event attributes | `propertiesAsList` 为 false 时作为 top-level fields 输出。 |
-| `contextMap` | `propertiesAsList` 为 true 时输出 attribute list。 |
-| `thrown` | 启用 stacktrace output 且存在 throwable 时输出 throwable object 或 string。 |
-
-常见 `slog.Value` kinds 由手写编码处理：string、bool、int、uint、float、duration、time、groups 和 errors/stringers。复杂 `Any` values 使用内部 JSON fallback codec，marshal error 时 fallback 到 `fmt.Sprint`。Fallback codec 会在受支持的 Go/architecture 组合上使用 Sonic；Go 1.27+ 或不受 Sonic 支持的架构上使用标准库。
-
-`complete: true` 时，JSONLayout 写 JSON array stream。默认 header 为 `[`，默认 footer 为 `]`，events 之间自动插入 commas。
-
-## JSONTemplateLayout
-
-默认 event template：
-
-```json
-{
-  "timestamp": {"$resolver": "timestamp"},
-  "level": {"$resolver": "level"},
-  "loggerName": {"$resolver": "logger"},
-  "message": {"$resolver": "message"},
-  "thread": {"$resolver": "thread"},
-  "marker": {"$resolver": "marker"},
-  "thrown": {"$resolver": "throwable"},
-  "contextStack": {"$resolver": "contextStack"},
-  "endOfBatch": {"$resolver": "endOfBatch"},
-  "contextMap": {"$resolver": "mdc"}
-}
-```
-
-Inline template 示例：
+JSON Template 使用对象模板。字段可以是原始 JSON 常量，也可以是 resolver 对象。空模板
+使用内置默认事件模板。
 
 ```yaml
 layout:
@@ -195,107 +127,49 @@ layout:
   eventTemplate: >
     {
       "ts": {"$resolver": "timestamp", "format": "UNIX_MILLIS"},
-      "lvl": {"$resolver": "level"},
-      "logger": {"$resolver": "logger", "precision": 2},
-      "msg": {"$resolver": "message"},
-      "traceId": {"$resolver": "attr", "key": "trace_id"},
-      "attrs": {"$resolver": "mdc", "flatten": true}
+      "level": {"$resolver": "level"},
+      "logger": {"$resolver": "logger", "precision": 3},
+      "message": {"$resolver": "message"},
+      "trace_id": {"$resolver": "attr", "key": "trace_id"}
     }
   eventEol: true
 ```
 
-Template file 示例：
+模板字段：
 
-```yaml
-layout:
-  type: jsonTemplate
-  eventTemplateUri: conf/log-event-template.json
-  stacktraceAsString: true
-```
-
-没有 `$resolver` 的 JSON field value 会作为 raw JSON 输出。
-
-### JSON Template Resolvers
-
-| Resolver | Aliases | Options | 输出 |
+| Resolver | 别名 | 选项 | 输出 |
 | --- | --- | --- | --- |
-| `timestamp` | `time` | `format` | 使用 time-pattern mapper 的 event time。 |
-| `level` | none | `field` | 默认输出 text level。`int`、`integer` 或 `value` 输出 slog numeric level。`severity` 或 `syslogSeverity` 输出 syslog severity。 |
-| `logger` | `loggerName` | `precision` | Logger name，可缩短为最后 N 个 components。 |
-| `message` | `msg` | none | Event message。 |
-| `thread` | `threadName` | none | Logical thread name。 |
-| `marker` | none | none | Marker string 或 `null`。 |
-| `throwable` | `exception`, `thrown` | `field` | 默认 throwable object。Fields：`object`、`type`、`message`、`string`、`formatted`、`rootCause`、`rootCauseMessage`、`stackTrace`、`stackTraceAsString`。 |
-| `rootCause` | none | none | Throwable root cause object。 |
-| `stackTrace` | none | none | Stack array；`stacktraceAsString` 启用时输出 string。 |
-| `source` | `location` | none | Caller object，包含 class、method、file、line 和 location。要求 caller PC。 |
-| `process` | none | none | 包含 `pid` 的 object。 |
-| `contextStack` | `ndc` | none | Context stack array。 |
-| `mdc` | `contextMap`, `attrs` | `flatten`, `propertiesAsList` | Event attributes object 或 list。 |
-| `attr` | none | `key` required | 单个 attribute value 或 `null`。 |
-| `endOfBatch` | none | none | Async batching 设置的 boolean。 |
+| `timestamp` | `time` | `format` | 时间字符串或 Unix 数值。 |
+| `level` | 无 | `field=int`, `integer`, `value`, `severity`, `syslogSeverity` | 级别名称、整数值或 syslog severity。 |
+| `logger` | `loggerName` | `precision` | Logger 名称。 |
+| `message` | `msg` | 无 | 消息文本。 |
+| `thread` | `threadName` | 无 | 逻辑线程名。 |
+| `marker` | 无 | 无 | Marker 名称或 `null`。 |
+| `throwable` | `exception`, `thrown` | `field` | Throwable 对象、类型、消息、字符串、root cause、stack trace 或 stack string。 |
+| `rootCause` | 无 | 无 | Throwable root cause 对象。 |
+| `stackTrace` | 无 | 无 | 栈帧，或开启布局选项后的栈字符串。 |
+| `source` | `location` | 无 | 包含 class、method、file、line、location 的调用方对象。 |
+| `process` | 无 | 无 | 包含 `pid` 的进程对象。 |
+| `contextStack` | `ndc` | 无 | Context stack 数组。 |
+| `mdc` | `contextMap`, `attrs` | `flatten`, `propertiesAsList` | 属性对象或列表。 |
+| `attr` | 无 | 必填 `key` | 单个属性值或 `null`。 |
+| `endOfBatch` | 无 | 无 | async 批次设置的布尔值。 |
+| 自定义 | 无 | 自定义 raw options | 通过插件注册表解析。 |
 
-未知 resolver names 会交给配置的 plugin registry。如果没有 plugin resolver，template compilation 失败。
+使用 `eventTemplateUri`、`eventTemplatePath` 或 kebab 别名可以加载模板文件。
 
-## TextLayout
+## 结构化 Layout
 
-Text layout 输出固定 key-value fields：
+| Layout | Throwable 行为 | 属性行为 |
+| --- | --- | --- |
+| `xml` | 默认字符串，`includeStacktrace` 输出栈帧，`stacktraceAsString` 输出完整字符串。 | `<ContextMap><Entry key="">...`。 |
+| `yaml` | 默认字符串，`includeStacktrace` 输出 map，`stacktraceAsString` 输出字符串。 | 默认 map，`propertiesAsList` 时为列表。 |
+| `gelf` | `full_message` 来自 throwable 或 `error` 属性。 | 附加字段加 `_` 前缀；空键、`id`、已有下划线前缀会跳过。 |
+| `rfc5424` / `syslog` | 只使用消息文本。 | 属性编码进 `[goark@32473 ...]`。 |
+| `csv` | 只在 attr 文本中体现。 | attrs 放入一个 CSV 字段。 |
+| `html` | 只在 attr 文本中体现。 | attrs 转义后放入一个表格单元格。 |
 
-```text
-time=2026-08-25T10:15:30.123+08:00 level=INFO logger=goark msg="service started" profile=dev
-```
+## Layout 生命周期
 
-它总是以 newline 结束。
-
-## XMLLayout
-
-XML layout 每个 log event 输出一个 `<Event>` element。包含 time、level、logger、thread、message、optional marker、optional throwable、context stack 和 context map entries。`includeStacktrace` 会在 throwable stack 存在时添加 `<StackTrace>` frames。`stacktraceAsString` 会把 throwable 写成一个 text value。
-
-## CSVLayout
-
-CSV layout 按以下顺序输出字段：
-
-```text
-time,level,logger,thread,message,attrs
-```
-
-`attrs` column 包含 key-value text。对 empty fields、commas、quotes 和 newlines 使用标准 CSV quoting。
-
-## GELFLayout
-
-GELF layout 输出 Graylog Extended Log Format JSON：
-
-| 字段 | 说明 |
-| --- | --- |
-| `version` | 固定 `1.1`。 |
-| `host` | Process host name。 |
-| `short_message` | Event message。 |
-| `full_message` | 存在 throwable 时输出 throwable text。 |
-| `timestamp` | 带 fractional microsecond precision 的 Unix seconds。 |
-| `level` | Syslog severity。 |
-| `_logger` | Logger name。 |
-| `_thread` | Logical thread name。 |
-| `_marker` | Marker 存在时输出。 |
-| `_attr` fields | Event attributes 加 `_` 前缀输出，排除 empty keys、`id` 和已经以 `_` 开头的 keys。 |
-
-下游协议需要 NUL delimiter 时可使用 `includeNullDelimiter`。
-
-## RFC5424 和 Syslog Layout
-
-`rfc5424` 和 `syslog` 使用同一实现。输出单条 RFC 5424 syslog event：
-
-```text
-<priority>1 timestamp host appName procid msgid structured-data message
-```
-
-Programmatic `RFC5424Layout` 暴露 `Facility`、`AppName` 和 `MessageID`。当前配置构建的是默认 layout instance；appender-level 字段如 `facility` 和 `appName` 为 appender plugins 保留，不调节内置 layout。
-
-## YAMLLayout
-
-YAML layout 每个 event 输出一个 YAML document，包含 time、level、logger、thread、message、optional marker、optional throwable、context stack 和 context map。`propertiesAsList` 为 true 时，attributes 以 key/value entries 输出，而不是 map。
-
-YAML layout 使用 `gopkg.in/yaml.v3`，因此不是零分配热路径。高吞吐 structured logs 应优先使用 JSONLayout 或 direct JSON appender。
-
-## HTMLLayout
-
-HTML layout 输出一个 `<tr>`，包含 time、level、logger、thread、message 和 attributes cells。它适合受控文件片段或测试，不适合直接服务 untrusted HTML pages。
+File 和 console appender 在第一次打开/写入时调用 header，在关闭时调用 footer。Rolling file
+在滚动前写 footer，打开新流后写 header。`createOnDemand` 会将该生命周期推迟到第一条事件。

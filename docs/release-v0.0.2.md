@@ -2,226 +2,98 @@
 
 [简体中文](release-v0.0.2.zh-CN.md)
 
-This checklist is for preparing `goark.dev/log` v0.0.2. Do the implementation
-and documentation work on `dev`. Do not edit `main` directly. Use `main` only
-for the approved release merge and tag.
+This checklist is for the next `goark-log` release candidate. Run it on the
+exact commit that will be tagged.
 
-## 1. Confirm Branch and Worktree
+## Scope To Verify
 
-```bash
-git switch dev
-git status --short --branch
-git log --oneline --decorate -5
-```
+| Area | Must be true |
+| --- | --- |
+| API | `slog` facade, native logger, context attrs, markers, messages, throwable snapshots, status logger, and plugin APIs compile and remain documented. |
+| Configuration | YAML, JSON, TOML, XML, and properties examples load through `LoadOptions`. |
+| Appenders | Console, file, JSON direct, rolling, async, failover, routing, and rewrite are covered by tests or runnable demos. |
+| Layouts | Pattern, text, JSON, JSON Template, XML, CSV, GELF, RFC5424/syslog, YAML, and HTML are documented. |
+| Filters | Every built-in filter family is documented and has integration coverage. |
+| Rolling | Size/time/cron/startup policies, gzip, retention, delete actions, direct write, and async archive actions pass tests. |
+| Reload | Explicit reload and `monitorInterval` behavior are verified. |
+| Docs | Public Markdown has English default pages and Simplified Chinese counterparts. |
+| Demos | All examples under `examples` run without external services. |
 
-Expected:
-
-- branch is `dev`,
-- there are no unrelated dirty files,
-- all intended commits are on `dev`.
-
-If the worktree has unrelated changes, do not reset them. Either keep them out
-of the release commit or ask the owner to resolve them.
-
-## 2. Documentation Gate
-
-Check that the public docs describe only implemented core behavior:
-
-```bash
-rg -n "HTTP|Socket|Syslog|Kafka|SMTP|Prometheus|OpenTelemetry|script" README.md README.zh-CN.md docs
-rg -n "bench 'BenchmarkNativeLoggerDirectJSON3|benchmarks/core|benchmarks/compare" README.md docs
-git diff --check
-```
-
-Required assertions:
-
-- default README is English,
-- Chinese README is separate,
-- every public documentation page has an English default file and a `.zh-CN.md`
-  Chinese counterpart,
-- detailed reference docs are under `docs/`,
-- core docs do not claim built-in external appenders,
-- benchmark commands use `./benchmarks/core` for core benchmarks,
-- compare benchmarks stay in `benchmarks/compare`,
-- no trailing whitespace or broken patch whitespace exists.
-
-## 3. Config Example Gate
-
-The copyable files under `docs/examples/` should load with `LoadOptions`.
-
-PowerShell:
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
-```
-
-The focused `TestDocsExamples_whenLoaded_shouldBuildOptions` test loads every
-copyable config file in `docs/examples`.
-`TestDocsLocalization_whenPublicMarkdownExists_shouldHaveChineseCounterpart`
-checks public Markdown documentation coverage.
-
-## 4. Core Test Gate
-
-Unix shell:
+## Correctness Gates
 
 ```bash
 GOWORK=off go test ./...
 GOWORK=off go vet ./...
+GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
 ```
 
-PowerShell:
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go vet ./...
-```
-
-## 5. Race Gate
-
-Full race gate:
+Run the race suite when concurrency code changed:
 
 ```bash
 GOWORK=off go test -race ./...
 ```
 
-Focused CI-style race gate:
+## Demo Smoke Gates
 
 ```bash
-GOWORK=off go test -race -run 'TestAsync(Logger|Appender)|TestRollingFileAppender|TestFileAppender|TestJSON' -count=1 -timeout=10m ./...
+GOWORK=off go run ./examples/console
+GOWORK=off go run ./examples/file
+GOWORK=off go run ./examples/rolling
+GOWORK=off go run ./examples/async
+GOWORK=off go run ./examples/reload
+GOWORK=off go run ./examples/extensibility
+GOWORK=off go run ./examples/production
+GOWORK=off go run ./examples/slf4j
+GOWORK=off go run ./examples/log4j2_config
 ```
 
-If the full race gate is too slow for a local release pass, run the focused gate
-locally and run the long pressure workflow remotely.
+## Performance Gates
 
-## 6. Benchmark Gate
-
-Focused hot-path benchmark:
+Core benchmark:
 
 ```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
+GOWORK=off go test -run '^$' -bench . -benchmem ./benchmarks/core
 ```
 
-Pressure benchmark:
-
-```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=5s -count=3 -cpu=1,4,16 ./benchmarks/core
-```
-
-Internal benchmark:
-
-```bash
-GOWORK=off go test -run '^$' -bench . -benchmem -benchtime=1s -count=1 ./internal/disruptor ./internal/jsoncodec
-```
-
-The hard budget for direct native JSON three-attribute paths is:
-
-- `0 B/op`,
-- `0 allocs/op`.
-
-## 7. Comparison Module Gate
+Comparison benchmark:
 
 ```bash
 cd benchmarks/compare
 GOWORK=off go test ./...
-GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=5s -count=3 -cpu=1,4,16
+GOWORK=off go test -run '^$' -bench . -benchmem
 ```
 
-The comparison module can depend on zap and zerolog. The core module must not.
+Record command, Go version, OS, architecture, CPU, and commit before making any
+performance statement.
 
-## 8. Long Stress Gate
+## Release Steps
 
-Local:
+1. Ensure the worktree is clean except intended release changes.
+2. Confirm `git diff --check` is clean.
+3. Run correctness gates.
+4. Run demo smoke gates.
+5. Run benchmarks if release notes mention performance.
+6. Update `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, `RELEASE.md`, and `RELEASE.zh-CN.md`.
+7. Merge to `main`.
+8. Tag from `main` only after the same commit passes the gates.
+
+## Network Proxy
+
+Use the proxy only when Go needs network access:
 
 ```bash
-GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+HTTP_PROXY=http://172.16.8.171:9444 HTTPS_PROXY=http://172.16.8.171:9444 ALL_PROXY=http://172.16.8.171:9444 go test ./...
 ```
 
-GitHub Actions:
+## Non-Release Conditions
 
-```bash
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-gh run list --branch dev --workflow pressure.yml --limit 5
-gh run watch <run-id> --exit-status
-```
+Do not tag if any of these are true:
 
-Proxy example for PowerShell:
-
-```powershell
-$env:HTTP_PROXY='http://172.16.8.171:9444'
-$env:HTTPS_PROXY='http://172.16.8.171:9444'
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-```
-
-## 9. Commit and Push Dev
-
-```bash
-git status --short
-git add README.md README.zh-CN.md CHANGELOG.md CHANGELOG.zh-CN.md RELEASE.md RELEASE.zh-CN.md docs examples .github/workflows internal/integration/docs_examples_test.go internal/integration/docs_localization_test.go
-git commit -m "docs: add bilingual documentation"
-git push origin dev
-```
-
-Adjust the path list if a release only changes a subset of files.
-
-## 10. Merge to Main
-
-After `dev` is green:
-
-```bash
-git switch main
-git pull --ff-only origin main
-git merge --ff-only dev
-git push origin main
-```
-
-If fast-forward merge is not possible, stop and inspect the difference. Do not
-force-push `main`.
-
-## 11. Tag
-
-```bash
-git tag -a v0.0.2 -m "release: v0.0.2"
-git push origin v0.0.2
-```
-
-## 12. Clean Module Download Verification
-
-PowerShell:
-
-```powershell
-$tmp = Join-Path $env:TEMP 'goark-log-v0.0.2-verify'
-Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $tmp | Out-Null
-Push-Location $tmp
-$env:GOWORK='off'
-go mod init verify.local/goark-log
-go get goark.dev/log@v0.0.2
-go test goark.dev/log/...
-Pop-Location
-```
-
-Unix shell:
-
-```bash
-tmp="$(mktemp -d)"
-cd "$tmp"
-GOWORK=off go mod init verify.local/goark-log
-GOWORK=off go get goark.dev/log@v0.0.2
-GOWORK=off go test goark.dev/log/...
-```
-
-## 13. GitHub Release
-
-Use the `CHANGELOG.md` v0.0.2 section as the release body. The release note
-must include:
-
-- user-facing documentation changes,
-- behavior or API changes, if any,
-- validation commands and results,
-- known limitations that remain intentionally out of core.
-
-Do not claim external appender support unless the matching plugin module is
-released and tested separately.
+| Condition | Reason |
+| --- | --- |
+| Full tests fail. | Correctness is not established. |
+| Public Markdown localization fails. | Documentation contract is broken. |
+| Config examples do not load. | Copyable docs are not trustworthy. |
+| Demos fail. | User-facing examples are not production-grade. |
+| Performance claims lack fresh benchmarks. | Claims would not be evidence-backed. |
+| Core docs claim unsupported remote sinks or exporters. | Boundary is inaccurate. |

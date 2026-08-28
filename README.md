@@ -2,11 +2,12 @@
 
 [简体中文](README.zh-CN.md)
 
-`goark-log` is a high-performance structured logging framework for Go services.
-It builds on the standard `log/slog` API while adding a production-oriented
-handler runtime, appenders, layouts, hierarchical routing, filters, safe
-configuration loading, bounded asynchronous queues, rolling files, and explicit
-plugin registration.
+`goark-log` is a production-oriented logging framework for Go. It keeps the
+standard `log/slog` contract as the first-class API and adds the runtime pieces
+that large services normally expect from Log4j2 and SLF4J: named logger
+hierarchies, appender references, structured filters, rolling files, JSON
+Template layouts, bounded asynchronous queues, configuration reload, status
+events, and explicit plugin registration.
 
 The module path is:
 
@@ -16,18 +17,25 @@ go get goark.dev/log
 
 The module targets Go 1.25 or newer.
 
-## Design Goals
+## What It Provides
 
-- Go-native public APIs: explicit constructors, interfaces, options, and plugin
-  registration instead of runtime scanning.
-- Low allocation on hot paths: common JSON, file, direct native logging, and
-  ring-buffer paths avoid reflection-heavy encoding.
-- Dependency-light core: zap and zerolog are used only by the independent
-  `benchmarks/compare` module.
-- Safe defaults: no remote lookup namespaces, no embedded script runtime, and no
-  built-in external-system appenders in the core package.
-- Deterministic shutdown: async loggers, async appenders, rolling compression,
-  and delete actions drain on `Close`.
+| Area | Current implementation |
+| --- | --- |
+| Standard API | `slog.Handler`, `slog.Logger`, `WithAttrs`, `WithGroup`, `LogAttrs`, and named loggers through `WithName` or `NewLogger`. |
+| Native API | Low-allocation `Logger`, fixed three-attribute fast path, fluent `LogBuilder`, parameterized messages, map messages, structured data messages, markers, thread names, context stack, and throwable snapshots. |
+| Configuration | YAML, JSON, TOML, Log4j2-style XML, and Java properties. Supported wrappers are top-level, `configuration`, and `goark.log`. |
+| Routing | Root logger, longest-prefix named logger rules, additivity, appender-ref level gates, appender-ref filters, and per-reference location capture. |
+| Appenders | Console, File, JSON direct, RollingFile, Async, Failover, Routing, and Rewrite. |
+| Layouts | Pattern, Text, JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog text, YAML, and HTML row layouts. |
+| Filters | Threshold, Level, LevelRange, Regex, Attr, Marker, NoMarker, Map, ThreadContextMap, ThreadContextStack, StructuredData, Throwable, StringMatch, Time, Burst, DynamicThreshold, Deny, and Composite. |
+| Async | Handler-level async logger and appender-level async queues with bounded ring buffers, batching, overflow strategies, wait strategies, counters, and deterministic drain on close. |
+| Rolling files | Size, interval, cron, startup rollover, `%d{...}` and `%i` patterns, index modes, gzip, max backups, max age, delete actions, and asynchronous archive actions. |
+| Extensibility | Explicit plugin registry for appenders, layouts, filters, lookups, and JSON Template resolvers. A generator is available at `cmd/goark-log-plugin-gen`. |
+
+The core module does not include HTTP appenders, socket appenders, network
+syslog clients, Kafka, Pulsar, RabbitMQ, SMTP, database sinks, OpenTelemetry
+exporters, Prometheus exporters, or an embedded script runtime. Those belong in
+separate modules that register explicit plugins.
 
 ## Quick Start
 
@@ -44,18 +52,18 @@ func main() {
 	logger, handler := goarklog.NewDefault()
 	defer handler.Close()
 
-	logger = goarklog.WithName(logger, "goark.boot")
+	logger = goarklog.WithName(logger, "goark.demo")
 	logger.Info("service started", slog.String("profile", "dev"))
 }
 ```
 
-Default output is a Spring Boot style single line written to stderr:
+Default output uses the Spring Boot style pattern and writes to stderr:
 
 ```text
-2026-08-25T10:15:30.123+08:00  INFO 12345 --- [main] goark.boot : service started profile=dev
+2026-08-28T09:30:00.000+08:00  INFO 12345 --- [main] goark.demo : service started profile=dev
 ```
 
-## Configured Startup
+## Production Startup
 
 ```go
 package main
@@ -68,203 +76,82 @@ import (
 )
 
 func main() {
-	handler, result, err := goarklog.ConfigureDefault(context.Background(),
+	loggerContext, result, err := goarklog.NewConfiguredLoggerContext(context.Background(),
 		goarklog.WithConfigPath("conf/goark-log.yml"),
 	)
 	if err != nil {
 		panic(err)
 	}
-	defer handler.Close()
+	defer loggerContext.Close()
 
-	slog.Info("logging configured", slog.String("source", string(result.Source)))
+	logger := loggerContext.Logger("goark.http")
+	logger.Info("logging configured", slog.String("source", string(result.Source)))
 }
 ```
 
-Configuration is resolved in this order:
+Configuration path resolution order:
 
 1. `WithConfigPath`.
-2. `GOARK_LOG_CONFIG`, or a custom key from `WithConfigEnvKey`.
-3. Boot property keys: `goark.log.config`, `goark.logging.config`,
-   `logging.config`.
-4. Default files under `conf/goark-log.{yml,yaml,json,xml,toml,properties}`.
-5. Built-in default: stderr console, `INFO`.
+2. Environment variable `GOARK_LOG_CONFIG`, or the key set by `WithConfigEnvKey`.
+3. Boot property keys `goark.log.config`, `goark.logging.config`, and `logging.config`.
+4. Default files under `conf/goark-log.yml`, `.yaml`, `.json`, `.xml`, `.toml`, and `.properties`.
+5. Built-in default configuration: stderr console at `INFO`.
 
-YAML, JSON, TOML, XML, and properties are supported.
+Use [docs/examples/production-service.yml](docs/examples/production-service.yml)
+as the starting production configuration. It covers console diagnostics,
+asynchronous rolling JSON files, audit logs, health-check filtering, retention,
+and configuration reload.
 
-## Production YAML
+## Runnable Demos
 
-```yaml
-configuration:
-  monitorInterval: 30s
-  properties:
-    LOG_DIR: logs
-    LOG_PATTERN: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
-  asyncLogger:
-    enabled: true
-    queueSize: 8192
-    batchSize: 256
-    overflowStrategy: block
-    waitStrategy: yield
-    includeLocation: false
-  appenders:
-    console:
-      type: console
-      target: stderr
-      layout:
-        type: pattern
-        pattern: "${prop:LOG_PATTERN}"
-    rolling:
-      type: rolling-file
-      fileName: "${prop:LOG_DIR}/app.log"
-      bufferSize: 256KiB
-      layout:
-        type: json
-        eventEol: true
-      rolling:
-        filePattern: "${prop:LOG_DIR}/archive/app-%d{yyyyMMdd}-%i.log.gz"
-        policies:
-          size:
-            size: 100MiB
-          time:
-            interval: daily
-            modulate: true
-          startup:
-            enabled: true
-        strategy:
-          max: 30
-          maxAge: 30d
-          compression:
-            gzip: true
-            async: true
-          delete:
-            basePath: "${prop:LOG_DIR}/archive"
-            maxDepth: 1
-            ifFileName:
-              glob: "*.log.gz"
-            ifLastModified:
-              age: 30d
-            async: true
-  root:
-    level: info
-    appenderRefs: [console, rolling]
-  loggers:
-    goark.orm:
-      level: debug
-      appenderRefs: [rolling]
-      additivity: false
+```bash
+GOWORK=off go run ./examples/production
+GOWORK=off go run ./examples/slf4j
+GOWORK=off go run ./examples/log4j2_config
 ```
 
-The same model can be placed at the top level, under `configuration`, or under
-`goark.log`. Use only one form per file.
+The demos set `GOARK_LOG_DIR` to a temporary directory unless it is already set.
+They do not require external services.
 
-## Native Logger
+## Documentation Map
 
-Use `slog` for ecosystem compatibility. Use the native logger when a hot path
-needs fewer allocations and direct `slog.Attr` handling.
-
-```go
-package main
-
-import (
-	"context"
-	"io"
-	"log/slog"
-	"time"
-
-	goarklog "goark.dev/log"
-)
-
-func main() {
-	appender := goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard))
-	handler, err := goarklog.NewHandler(goarklog.Options{
-		Appenders: []goarklog.Appender{appender},
-		Root: goarklog.RootLogger{
-			Level:        slog.LevelInfo,
-			AppenderRefs: []string{"json"},
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
-	defer handler.Close()
-
-	logger, err := goarklog.NewNativeLogger(handler, "goark.http")
-	if err != nil {
-		panic(err)
-	}
-
-	_ = logger.LogAttrs3(context.Background(), slog.LevelInfo, "request done",
-		slog.String("method", "GET"),
-		slog.Int("status", 200),
-		slog.Duration("elapsed", 8*time.Millisecond),
-	)
-}
-```
-
-## Capability Summary
-
-| Area | Supported in core |
+| Document | Purpose |
 | --- | --- |
-| Standard library integration | `slog.Handler`, `slog.Logger`, `LogAttrs`, `WithAttrs`, `WithGroup`. |
-| Native logging | Named native logger, fixed three-attribute fast path, builder API, message factories. |
-| Routing | Root logger, named logger rules, prefix matching, additivity, appender-ref controls. |
-| Appenders | Console, File, JSON, RollingFile, Async, Failover, Routing, Rewrite. |
-| Layouts | Pattern, Text, JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog, YAML, HTML. |
-| Filters | Threshold, Level, LevelRange, Regex, Attr, Marker, Map, Throwable, Time, Burst, DynamicThreshold, and related aliases. |
-| Configuration | YAML, JSON, TOML, XML, properties, local lookups, reload polling. |
-| Rolling files | Size, time, cron, startup rollover, `%d`/`%i`, gzip, retention, delete actions. |
-| Async | Bounded ring buffer, batching, block/drop/drop-debug/sync-fallback, shutdown drain. |
-| Extensibility | Explicit plugin registry, plugin set, lookup plugins, JSON Template resolver plugins, registrar generator. |
-
-HTTP, Socket, Syslog network output, Kafka, SMTP, database sinks, OpenTelemetry,
-Prometheus, and script engines are not built into the core module. Add them as
-separate modules that register explicit plugins.
-
-## Documentation
-
-- [Documentation index](docs/index.md)
-- [Programmatic API](docs/api.md)
-- [Configuration reference](docs/configuration.md)
-- [Appender reference](docs/appenders.md)
-- [Layout reference](docs/layouts.md)
-- [Filter reference](docs/filters.md)
-- [Usage scenarios](docs/scenarios.md)
-- [Extensibility guide](docs/extensibility.md)
-- [Capability boundary](docs/capabilities.md)
-- [Performance and stress testing](docs/performance.md)
-- [v0.0.2 release checklist](docs/release-v0.0.2.md)
-- [Configuration examples](docs/examples/README.md)
-- [Runnable examples](examples/README.md)
+| [Documentation index](docs/index.md) | Full navigation for users, operators, and plugin authors. |
+| [Production guide](docs/production-guide.md) | Production bootstrap, safe defaults, reload, shutdown, and deployment notes. |
+| [Configuration model](docs/configuration.md) | Format rules, wrappers, discovery, lookup semantics, and reload behavior. |
+| [Configuration reference](docs/configuration-reference.md) | Exhaustive field, alias, type, default, and validation tables. |
+| [Programmatic API](docs/api.md) | Public constructors, runtime types, native logger, messages, context, and status APIs. |
+| [Appenders](docs/appenders.md) | Appender behavior, configuration fields, ownership, and close semantics. |
+| [Layouts](docs/layouts.md) | Layout output formats, pattern converters, JSON Template resolvers, and lifecycle flags. |
+| [Filters](docs/filters.md) | Filter decisions, all built-in filters, placement, and nesting rules. |
+| [Scenarios](docs/scenarios.md) | Copyable recipes for common logging scenarios. |
+| [Log4j2 and SLF4J parity](docs/log4j2-slf4j-parity.md) | Compatibility mapping and Go-native differences. |
+| [Extensibility](docs/extensibility.md) | Plugin registry, generated registrars, and external module boundaries. |
+| [Capabilities](docs/capabilities.md) | Source-backed capability matrix and unsupported core boundaries. |
+| [Performance](docs/performance.md) | Benchmarks, hot-path rules, stress checks, and performance caveats. |
+| [Release checklist](docs/release-v0.0.2.md) | Validation gates for the next release. |
+| [Configuration examples](docs/examples/README.md) | Loadable YAML, TOML, XML, and properties examples. |
+| [Runnable examples](examples/README.md) | Demo commands and expected behavior. |
 
 ## Verification
 
-Unix shell:
+Run the current-worktree validation gates before publishing:
 
 ```bash
 GOWORK=off go test ./...
 GOWORK=off go vet ./...
+GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
 GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 ```
 
-PowerShell:
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go vet ./...
-go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
-```
-
-The comparison benchmarks live in a separate module:
+Comparison benchmarks live in a separate module:
 
 ```bash
 cd benchmarks/compare
 GOWORK=off go test ./...
+GOWORK=off go test -run '^$' -bench . -benchmem
 ```
 
-## Release Notes
-
-`dev` is the integration branch. Release tags should be cut from `main` after
-`dev` has been validated and fast-forwarded or merged according to the release
-process. Use [docs/release-v0.0.2.md](docs/release-v0.0.2.md) before publishing
-`v0.0.2`.
+`dev` is the integration branch. Cut release tags from `main` only after the
+release checklist has passed on the exact commit being tagged.

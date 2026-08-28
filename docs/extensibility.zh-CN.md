@@ -1,346 +1,191 @@
-# 扩展指南
+# 扩展机制
 
 [English](extensibility.md)
 
-`goark-log` 使用显式 plugin registration。它不会在运行时扫描 packages、struct tags、file paths 或 registries。这能保持启动确定性，并让 core hot path 维持轻依赖。
+`goark-log` 的扩展点全部是显式的。应用和配套模块在启动阶段注册插件；核心不会在运行时
+扫描文件系统、classpath、module cache 或包图。
 
-## Extension Points
+## 扩展点
 
-| Extension point | Factory type | 注册方式 |
+| 扩展点 | 注册 API | 配置/运行时用途 |
 | --- | --- | --- |
-| Appender | `AppenderFactory` | `RegisterAppender`, `WithPluginAppender` |
-| Layout | `LayoutFactory` | `RegisterLayout`, `WithPluginLayout` |
-| Filter | `FilterFactory` | `RegisterFilter`, `WithPluginFilter` |
-| Lookup | `LookupFunc` | `RegisterLookup`, `WithPluginLookup` |
-| JSON Template resolver | `JSONTemplateResolverFactory` | `RegisterJSONTemplateResolver`, `WithPluginJSONTemplateResolver` |
+| Appender | `RegisterAppender` 或 `WithPluginAppender` | 创建外部网络或消息队列等配置化 sink。 |
+| Layout | `RegisterLayout` 或 `WithPluginLayout` | 创建自定义事件编码器。 |
+| Filter | `RegisterFilter` 或 `WithPluginFilter` | 创建自定义事件门控。 |
+| Lookup | `RegisterLookup` 或 `WithPluginLookup` | 在运行时构建前解析配置中的 `${namespace:key}`。 |
+| JSON Template resolver | `RegisterJSONTemplateResolver` 或 `WithPluginJSONTemplateResolver` | 为 JSON Template 字段增加 resolver 名称。 |
 
-简单应用可以使用 process default registry。Framework、test 或 embedded runtime 需要隔离 plugin state 时，应创建 dedicated registry。
+插件 kind 匹配会忽略大小写、连字符和下划线。Lookup namespace 使用小写字符串。
 
-## Registry Usage
+## Registry 选择
 
-Default registry：
+插件是进程级并且应当表现得像内置插件时，使用 `DefaultPluginRegistry()`。
 
-```go
-err := goarklog.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", lookupTenant),
-	goarklog.WithPluginLayout("line", buildLineLayout),
-))
-```
-
-Isolated registry：
+测试、demo 或应用需要隔离注册时，使用 `NewPluginRegistry()`：
 
 ```go
 registry := goarklog.NewPluginRegistry()
-err := registry.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginAppender("http", buildHTTPAppender),
-	goarklog.WithPluginFilter("tenant", buildTenantFilter),
-))
-if err != nil {
+plugins := goarklog.NewPluginSet(
+	goarklog.WithPluginLookup("tenant", tenantLookup),
+	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+)
+if err := registry.RegisterPlugins(plugins); err != nil {
 	return err
 }
+```
 
-handler, _, err := goarklog.NewConfiguredHandler(ctx,
+把 registry 传入配置加载：
+
+```go
+loggerContext, _, err := goarklog.NewConfiguredLoggerContext(ctx,
 	goarklog.WithConfigPath("conf/goark-log.yml"),
 	goarklog.WithPluginRegistry(registry),
 )
 ```
 
-## Appender Plugin
+## Appender 插件
 
-Factory signature：
+Appender 插件接收 `AppenderBuildConfig` 并返回 `Appender`。build config 包含公共字段、
+远程目标字段、layout、rolling 配置、appender 引用、filter 和 registry。
 
-```go
-type AppenderFactory func(config goarklog.AppenderBuildConfig) (goarklog.Appender, error)
-```
+HTTP、socket、网络 syslog、Kafka、Pulsar、RabbitMQ、SMTP、数据库或云 sink 模块都应
+放在这个边界后面。核心会解析其中若干字段，但不会实现对应客户端。
 
-Minimal appender：
-
-```go
-type discardAppender struct {
-	name string
-}
-
-func (a *discardAppender) Name() string {
-	if a.name == "" {
-		return "discard"
-	}
-	return a.name
-}
-
-func (a *discardAppender) Append(ctx context.Context, event goarklog.Event) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (a *discardAppender) Close() error {
-	return nil
-}
-
-func buildDiscardAppender(config goarklog.AppenderBuildConfig) (goarklog.Appender, error) {
-	if strings.TrimSpace(config.Name) == "" {
-		return nil, fmt.Errorf("discard appender name is empty")
-	}
-	return &discardAppender{name: config.Name}, nil
-}
-```
-
-Registration：
+Appender 契约：
 
 ```go
-registry := goarklog.NewPluginRegistry()
-err := registry.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginAppender("discard", buildDiscardAppender),
-))
-```
-
-Configuration：
-
-```yaml
-appenders:
-  discard:
-    type: discard
-root:
-  level: info
-  appenderRefs: [discard]
-```
-
-Appender plugin 规则：
-
-- 校验 appender name 和 required fields。
-- 执行昂贵工作前检查 `ctx.Err()`。
-- `Append` 必须对并发调用安全。
-- `Close` 必须 idempotent。
-- 外部连接生命周期由 appender 自己拥有。
-- 网络写入不能永久阻塞；使用 timeouts、bounded queues 或 caller-visible errors。
-- 外部依赖放在 plugin module，不放进 `goark.dev/log`。
-
-## AppenderBuildConfig Fields
-
-`AppenderBuildConfig` 接收配置归一化后的输入：
-
-| 字段 | 来源 |
-| --- | --- |
-| `Name`, `Type` | Appender map key 和 configured type。 |
-| `Target` | `target`。 |
-| `URL`, `Method`, `Address`, `Network`, `Facility`, `AppName` | External appender fields。 |
-| `ConnectTimeout`, `WriteTimeout` | External timeout strings。 |
-| `FileName` | `fileName`、`file-name` 或 `path`。 |
-| `Layout` | 构建完成的 layout object。 |
-| `AppenderRefs` | Simple appender ref names。 |
-| `Delegates` | 已解析 downstream appenders，供 composite plugins 使用。 |
-| `Routes`, `DefaultRoute`, `RouteKey` | 已解析 routing config。 |
-| `QueueSize`, `BatchSize`, `OverflowStrategy`, `WaitStrategy`, `WaitOptions` | Async fields。 |
-| `BufferSize`, `FlushOnWrite`, `Append`, `CreateOnDemand`, `FilePermissions` | File-style fields。 |
-| `Rolling` | Rolling build config。 |
-| `Rewrite` | Built-in rewrite policy config。 |
-
-Factory 仍然要负责 semantic validation。`AppenderBuildConfig` 中存在某个字段，并不表示 core module 内置了对应 transport 的 appender。
-
-## Layout Plugin
-
-Factory signature：
-
-```go
-type LayoutFactory func(config goarklog.LayoutBuildConfig) (goarklog.Layout, error)
-```
-
-示例：
-
-```go
-type lineLayout struct{}
-
-func (lineLayout) Format(buf *bytes.Buffer, event goarklog.Event) error {
-	buf.WriteString(event.Message)
-	buf.WriteByte('\n')
-	return nil
-}
-
-func buildLineLayout(config goarklog.LayoutBuildConfig) (goarklog.Layout, error) {
-	return lineLayout{}, nil
+type Appender interface {
+	Name() string
+	Append(ctx context.Context, event Event) error
+	Close() error
 }
 ```
 
-Configuration：
+`Append` 必须支持并发调用。`Close` 必须释放自有资源并刷出缓冲数据。
 
-```yaml
-appenders:
-  console:
-    type: console
-    layout:
-      type: line
-```
+## Layout 插件
 
-Layout plugin 规则：
-
-- 在 factory 中编译昂贵 templates 或 regex values，不要放在 `Format`。
-- 不要在未复制的情况下持有 mutable event slices。
-- 只写入传入的 buffer。
-- `Format` 应保持 deterministic，不做网络或文件系统副作用。
-
-## Filter Plugin
-
-Factory signature：
+Layout 插件接收 `LayoutBuildConfig` 并返回 `Layout`。
 
 ```go
-type FilterFactory func(config goarklog.FilterBuildConfig) (goarklog.Filter, error)
-```
-
-示例：
-
-```go
-type tenantFilter struct {
-	tenant string
-}
-
-func (f tenantFilter) Decide(ctx context.Context, event goarklog.Event) goarklog.FilterDecision {
-	value, ok := event.Attr("tenant")
-	if ok && value.String() == f.tenant {
-		return goarklog.FilterNeutral
-	}
-	return goarklog.FilterDeny
-}
-
-func buildTenantFilter(config goarklog.FilterBuildConfig) (goarklog.Filter, error) {
-	if strings.TrimSpace(config.Value) == "" {
-		return nil, fmt.Errorf("tenant filter value is empty")
-	}
-	return tenantFilter{tenant: strings.TrimSpace(config.Value)}, nil
+type Layout interface {
+	Append(buf *bytes.Buffer, event Event) error
 }
 ```
 
-Configuration：
+Layout 插件应使用调用方提供的 buffer，不要保留 event 引用。带 complete 生命周期状态的
+layout，应由 appender 拥有状态，或按 appender 克隆状态。
 
-```yaml
-filters:
-  tenantA:
-    type: tenant
-    value: tenant-a
-root:
-  level: info
-  filters: [tenantA]
-```
+## Filter 插件
 
-Filter plugin 规则：
-
-- pass-through 使用 `neutral`，除非 plugin 明确要 accept。
-- policy rejection 使用 `deny`。
-- `Decide` 中避免 allocations、regex compilation、map construction 和 reflection。
-- 共享状态必须 immutable 或受 lock 保护。
-
-## Lookup Plugin
-
-Lookup signature：
+Filter 插件接收 `FilterBuildConfig` 并返回 `Filter`。
 
 ```go
-type LookupFunc func(key string) (string, bool)
+type Filter interface {
+	Decide(ctx context.Context, event Event) FilterDecision
+}
 ```
 
-示例：
+`FilterNeutral` 表示无意见，`FilterAccept` 表示在当前链路允许，`FilterDeny` 表示丢弃。
+
+## Lookup 插件
+
+Lookup 插件在 appender、layout、filter 和 logger rule 构建前解析配置文本。
 
 ```go
-func lookupTenant(key string) (string, bool) {
-	switch key {
-	case "id":
+func tenantLookup(key string) (string, bool) {
+	if key == "default" {
 		return "tenant-a", true
-	default:
-		return "", false
 	}
+	return "", false
 }
 ```
 
-Configuration：
+安全策略会阻断 `jndi`、`ldap`、`rmi` namespace。没有默认值的缺失 lookup 会导致配置加载
+失败。默认值形式为 `${namespace:key:-fallback}`。
+
+## JSON Template Resolver 插件
+
+Resolver 向事件输出中追加原始 JSON。
+
+```go
+type constantResolver string
+
+func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
+	data, err := json.Marshal(string(r))
+	if err != nil {
+		buf.WriteString("null")
+		return
+	}
+	buf.Write(data)
+}
+```
+
+工厂选项来自 resolver 对象中的原始 JSON 值：
+
+```go
+func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
+	var value string
+	if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
+	}
+	return constantResolver(value), nil
+}
+```
+
+配置：
 
 ```yaml
-properties:
-  LOG_DIR: "logs/${tenant:id}"
+layout:
+  type: jsonTemplate
+  eventTemplate: >
+    {
+      "component": {"$resolver": "constant", "value": "billing"},
+      "message": {"$resolver": "message"}
+    }
 ```
 
-Lookup plugin 规则：
-
-- 只有值存在时才返回 `(value, true)`。
-- Lookups 应保持 local 和 deterministic。
-- 配置加载期间不要做无界网络调用。
-- `jndi`、`ldap`、`rmi` namespaces 被阻止，不能注册。
-
-## JSON Template Resolver Plugin
-
-Factory signature：
-
-```go
-type JSONTemplateResolverFactory func(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error)
-```
-
-示例 resolver：
-
-```go
-type constantResolver struct {
-	value string
-}
-
-func (r constantResolver) AppendJSON(buf *bytes.Buffer, event goarklog.Event) {
-	_ = event
-	buf.WriteString(strconv.Quote(r.value))
-}
-
-func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
-	raw := config.Options["value"]
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, fmt.Errorf("constant resolver value must be a string")
-	}
-	return constantResolver{value: value}, nil
-}
-```
-
-Template：
-
-```json
-{
-  "service": {"$resolver": "constant", "value": "billing"},
-  "message": {"$resolver": "message"}
-}
-```
-
-Resolver plugin 规则：
-
-- 在 factory 中解析并校验 options。
-- 只能 append valid JSON values。
-- 热路径 `AppendJSON` 避免分配。
-- 不要修改 event。
-
-## Registrar Generator
-
-模块包含一个生成 registrar boilerplate 的小工具：
+可运行 demo：
 
 ```bash
-go run goark.dev/log/cmd/goark-log-plugin-gen \
-  -package mylog \
-  -appender discard=buildDiscardAppender \
-  -layout line=buildLineLayout \
-  -filter tenant=buildTenantFilter \
-  -lookup tenant=lookupTenant \
-  -json-template-resolver constant=buildConstantResolver \
-  -out zz_generated_plugins.go
+GOWORK=off go run ./examples/extensibility
 ```
 
-当 plugin package 导出多个 extension points 时，使用 generated registrars。Generated files 应提交到仓库，消费者正常 build 不需要运行 generator。
+## 生成 Registrar
 
-## Dependency Boundary
+`cmd/goark-log-plugin-gen` 生成小型 registrar，外部扩展模块不需要手写注册胶水代码。
 
-外部集成应放在 core module 之外：
+```bash
+GOWORK=off go run ./cmd/goark-log-plugin-gen \
+  -package mylogplugin \
+  -appender kafka=goark.dev/log/contrib/kafka.NewAppender \
+  -lookup tenant=goark.dev/myapp/logging.TenantLookup \
+  -json-template-resolver build=goark.dev/myapp/logging.BuildResolver \
+  -output plugins_gen.go
+```
 
-| Integration | 保持外部的原因 |
+生成文件包含兼容 `RegisterPlugins` 的 `PluginRegistrar`。
+
+## 插件边界
+
+插件模块保持职责窄化：
+
+| 模块类型 | 应包含内容 |
 | --- | --- |
-| HTTP, Socket, Syslog network output | Connection management、retries、deadlines、TLS 和 backpressure 因部署而异。 |
-| Kafka, Pulsar, RabbitMQ | Client dependencies 和 delivery semantics 重且 broker-specific。 |
-| SMTP | Slow network I/O 和 credential handling 不应进入 core logging path。 |
-| Database sinks | Transactions、batching、schema 和 failure modes 因数据库而异。 |
-| OpenTelemetry and Prometheus | Observability design 应在 Goark modules 间统一，而不是被 logging core 强制决定。 |
-| Script engines | Runtime 和 sandbox 选择有安全影响。 |
+| 网络 sink | 连接生命周期、重试、超时、批处理和 appender factory。 |
+| Broker sink | Producer 生命周期、序列化、背压和 appender factory。 |
+| 云 exporter | 认证、传输、资源映射和 appender factory。 |
+| 自定义 layout | 只做编码；不要从 layout 打开文件或网络连接。 |
+| 自定义 filter | 谓词和必要的小型状态。 |
 
-这个边界让 `goark.dev/log` 保持小、可预测，并适合被 low level packages 使用。
+不要为了可选目标把重量级依赖放入核心。
+
+## 验证清单
+
+| 检查 | 命令或期望 |
+| --- | --- |
+| Registry 拒绝 nil factory 和空 kind。 | 插件模块单元测试。 |
+| 配置示例可加载。 | `GOWORK=off go test ./internal/integration -run TestDocsExamples -count=1`。 |
+| 并发行为无数据竞争。 | 并发模块运行 `GOWORK=off go test -race ./...`。 |
+| 热点性能结论有测量依据。 | 在所属模块提供 benchmark。 |
+| 关闭行为确定。 | `Close` 完成 drain 并返回传输错误。 |

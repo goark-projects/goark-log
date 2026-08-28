@@ -2,70 +2,59 @@
 
 [English](README.md)
 
-`examples/` 目录包含只依赖 core module 的小型可运行程序，不需要外部服务。
+这些示例是当前 `goark.dev/log` API 和配置模型的生产形态 smoke demo，不依赖外部服务。
 
-## 命令
+## 全部运行
 
 ```bash
-GOWORK=off go test ./examples/...
 GOWORK=off go run ./examples/console
 GOWORK=off go run ./examples/file
 GOWORK=off go run ./examples/rolling
 GOWORK=off go run ./examples/async
 GOWORK=off go run ./examples/reload
 GOWORK=off go run ./examples/extensibility
+GOWORK=off go run ./examples/production
+GOWORK=off go run ./examples/slf4j
+GOWORK=off go run ./examples/log4j2_config
 ```
 
-PowerShell：
+## Demo 列表
 
-```powershell
-$env:GOWORK='off'
-go test ./examples/...
-go run ./examples/console
-go run ./examples/file
-go run ./examples/rolling
-go run ./examples/async
-go run ./examples/reload
-go run ./examples/extensibility
+| 目录 | 展示内容 |
+| --- | --- |
+| [console](console) | `ConfigureDefault`、命名 `slog` logger 和最小控制台配置。 |
+| [file](file) | 配置化文件输出和完整 JSON layout 生命周期。 |
+| [rolling](rolling) | 原生 logger 快路径通过生产滚动配置写入。 |
+| [async](async) | Appender 级异步队列、failover 链和异步计数器。 |
+| [reload](reload) | 显式 `ConfigReloader` 改变日志级别。 |
+| [extensibility](extensibility) | 隔离插件 registry、自定义 lookup、自定义 JSON Template resolver 和 message factory。 |
+| [production](production) | 生产形态服务日志，包含 MDC、NDC、marker、审计、健康检查过滤、throwable stack、滚动文件和 async appender。 |
+| [slf4j](slf4j) | SLF4J 风格参数化日志和标准 `slog` 互操作。 |
+| [log4j2_config](log4j2_config) | Log4j2 风格 XML 配置，包含 rolling、async fan-out、routing、rewrite、filter 和命名 logger。 |
+
+## 日志目录
+
+写文件 demo 调用 `examples/internal/exampleutil.PrepareLogDir`。
+
+如果设置了 `GOARK_LOG_DIR`，会使用该目录：
+
+```bash
+GOARK_LOG_DIR=/tmp/goark-log-demo GOWORK=off go run ./examples/production
 ```
 
-## 示例程序
+如果没有设置，demo 会创建临时目录并打印 `logDir=...`。临时目录会在 demo 退出时删除。
 
-| 目录 | 目的 | 输出 |
-| --- | --- | --- |
-| `console` | 默认 console logger 和 named logger 用法。 | stderr。 |
-| `file` | 普通 file appender 和显式 close。 | 系统临时目录下的 `goark-log-example/file.log`。 |
-| `rolling` | size rollover、startup rollover、archive pattern 和 gzip compression。 | 系统临时目录下的 `goark-log-example/rolling.log` 及 archive 文件。 |
-| `async` | AsyncAppender 包装 rolling appender。 | 系统临时目录下的 `goark-log-example/async-rolling.log` 及 archive 文件。 |
-| `reload` | 配置文件加载和运行时 reload。 | 临时配置文件和 console 输出。 |
-| `extensibility` | `PluginRegistry`、custom JSON Template resolver 和 message factory。 | stdout JSON。 |
+## 配置来源
 
-## 配置示例
+Demo 从 [../docs/examples](../docs/examples) 加载文件。该目录也被集成测试覆盖，因此示例
+和文档共用同一个事实来源。
 
-可复制配置文件位于 [../docs/examples](../docs/examples/README.zh-CN.md)：
+## Smoke Test
 
-- [console.yml](../docs/examples/console.yml)
-- [json-stdout.yml](../docs/examples/json-stdout.yml)
-- [production-rolling.yml](../docs/examples/production-rolling.yml)
-- [split-audit.yml](../docs/examples/split-audit.yml)
-- [async-appender.yml](../docs/examples/async-appender.yml)
-- [rewrite-routing.yml](../docs/examples/rewrite-routing.yml)
-- [goark-log.properties](../docs/examples/goark-log.properties)
-- [goark-log.toml](../docs/examples/goark-log.toml)
-- [log4j2-style.xml](../docs/examples/log4j2-style.xml)
+模块里没有把所有 `go run` demo 串起来的单一命令。release candidate 需要运行
+"全部运行" 中的命令，然后运行：
 
-## 阅读顺序
-
-1. `console`：最小集成。
-2. `file`：文件写入生命周期和 close 行为。
-3. `rolling`：归档、压缩和保留行为。
-4. `async`：异步包装器和 shutdown drain。
-5. `reload`：配置 reload 入口。
-6. `extensibility`：插件注册和 resolver 扩展。
-
-## 新增示例规则
-
-- 必须能通过 `go test ./examples/...` 编译。
-- 文件输出必须使用临时目录，不允许写入仓库目录。
-- 只演示 core capability。
-- 程序代码保持短小，细节解释放在 `docs/`。
+```bash
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+```

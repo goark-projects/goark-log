@@ -2,217 +2,96 @@
 
 [English](release-v0.0.2.md)
 
-本检查清单用于准备 `goark.dev/log` v0.0.2。实现和文档工作都在 `dev` 上做。不要直接修改 `main`。`main` 只用于批准后的 release merge 和 tag。
+本清单用于下一个 `goark-log` release candidate。必须在将要打 tag 的精确 commit 上运行。
 
-## 1. 确认分支和工作区
+## 需要验证的范围
 
-```bash
-git switch dev
-git status --short --branch
-git log --oneline --decorate -5
-```
+| 领域 | 必须成立 |
+| --- | --- |
+| API | `slog` 门面、原生 logger、context attrs、markers、messages、throwable snapshots、status logger 和插件 API 可以编译且已文档化。 |
+| 配置 | YAML、JSON、TOML、XML 和 properties 示例都能通过 `LoadOptions` 加载。 |
+| Appenders | Console、file、JSON direct、rolling、async、failover、routing、rewrite 有测试或可运行 demo 覆盖。 |
+| Layouts | Pattern、text、JSON、JSON Template、XML、CSV、GELF、RFC5424/syslog、YAML、HTML 都已文档化。 |
+| Filters | 每个内置 filter 家族都已文档化并有集成覆盖。 |
+| Rolling | Size/time/cron/startup 策略、gzip、保留策略、删除动作、direct write、异步归档动作通过测试。 |
+| Reload | 显式 reload 和 `monitorInterval` 行为已验证。 |
+| 文档 | 公开 Markdown 默认英文且有简体中文副本。 |
+| Demo | `examples` 下所有示例不依赖外部服务即可运行。 |
 
-期望：
-
-- 当前分支是 `dev`；
-- 没有无关 dirty files；
-- 所有预期提交都在 `dev`。
-
-如果工作区有无关变更，不要 reset。要么把它们排除在 release commit 外，要么让 owner 先处理。
-
-## 2. 文档关卡
-
-检查公开文档只描述已实现的 core behavior：
-
-```bash
-rg -n "HTTP|Socket|Syslog|Kafka|SMTP|Prometheus|OpenTelemetry|script" README.md README.zh-CN.md docs
-rg -n "bench 'BenchmarkNativeLoggerDirectJSON3|benchmarks/core|benchmarks/compare" README.md docs
-git diff --check
-```
-
-必需断言：
-
-- 默认 README 是英文；
-- 中文 README 独立存在；
-- 所有公开文档都有英文默认文件和 `.zh-CN.md` 中文文件；
-- 详细参考文档位于 `docs/`；
-- core docs 不声称内置 external appenders；
-- core benchmark 使用 `./benchmarks/core`；
-- compare benchmark 留在 `benchmarks/compare`；
-- 没有 trailing whitespace 或 broken patch whitespace。
-
-## 3. Config Example Gate
-
-`docs/examples/` 下的可复制文件应能通过 `LoadOptions` 加载。
-
-PowerShell：
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
-```
-
-`TestDocsExamples_whenLoaded_shouldBuildOptions` 会加载 `docs/examples` 中每一个可复制配置文件。`TestDocsLocalization_whenPublicMarkdownExists_shouldHaveChineseCounterpart` 会检查公开 Markdown 文档都有中文 counterpart。
-
-## 4. Core Test Gate
-
-Unix shell：
+## 正确性门禁
 
 ```bash
 GOWORK=off go test ./...
 GOWORK=off go vet ./...
+GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
 ```
 
-PowerShell：
-
-```powershell
-$env:GOWORK='off'
-go test ./...
-go vet ./...
-```
-
-## 5. Race Gate
-
-Full race gate：
+并发代码变更后运行 race suite：
 
 ```bash
 GOWORK=off go test -race ./...
 ```
 
-Focused CI-style race gate：
+## Demo Smoke 门禁
 
 ```bash
-GOWORK=off go test -race -run 'TestAsync(Logger|Appender)|TestRollingFileAppender|TestFileAppender|TestJSON' -count=1 -timeout=10m ./...
+GOWORK=off go run ./examples/console
+GOWORK=off go run ./examples/file
+GOWORK=off go run ./examples/rolling
+GOWORK=off go run ./examples/async
+GOWORK=off go run ./examples/reload
+GOWORK=off go run ./examples/extensibility
+GOWORK=off go run ./examples/production
+GOWORK=off go run ./examples/slf4j
+GOWORK=off go run ./examples/log4j2_config
 ```
 
-如果 full race gate 本地太慢，至少本地跑 focused gate，并远程跑 long pressure workflow。
+## 性能门禁
 
-## 6. Benchmark Gate
-
-Focused hot-path benchmark：
+核心 benchmark：
 
 ```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
+GOWORK=off go test -run '^$' -bench . -benchmem ./benchmarks/core
 ```
 
-Pressure benchmark：
-
-```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=5s -count=3 -cpu=1,4,16 ./benchmarks/core
-```
-
-Internal benchmark：
-
-```bash
-GOWORK=off go test -run '^$' -bench . -benchmem -benchtime=1s -count=1 ./internal/disruptor ./internal/jsoncodec
-```
-
-Direct native JSON three-attribute paths 的硬预算：
-
-- `0 B/op`；
-- `0 allocs/op`。
-
-## 7. Comparison Module Gate
+对比 benchmark：
 
 ```bash
 cd benchmarks/compare
 GOWORK=off go test ./...
-GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=5s -count=3 -cpu=1,4,16
+GOWORK=off go test -run '^$' -bench . -benchmem
 ```
 
-Comparison module 可以依赖 zap 和 zerolog。Core module 不允许。
+任何性能说明都需要先记录命令、Go 版本、OS、架构、CPU 和 commit。
 
-## 8. Long Stress Gate
+## 发布步骤
 
-Local：
+1. 确保工作树除预期发布变更外干净。
+2. 确认 `git diff --check` 干净。
+3. 运行正确性门禁。
+4. 运行 demo smoke 门禁。
+5. 如果发布说明提到性能，运行 benchmark。
+6. 更新 `CHANGELOG.md`、`CHANGELOG.zh-CN.md`、`RELEASE.md` 和 `RELEASE.zh-CN.md`。
+7. 合并到 `main`。
+8. 只有同一 commit 通过门禁后，才从 `main` 打 tag。
+
+## 网络代理
+
+只有 Go 需要访问网络时使用代理：
 
 ```bash
-GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+HTTP_PROXY=http://172.16.8.171:9444 HTTPS_PROXY=http://172.16.8.171:9444 ALL_PROXY=http://172.16.8.171:9444 go test ./...
 ```
 
-GitHub Actions：
+## 不能发布的条件
 
-```bash
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-gh run list --branch dev --workflow pressure.yml --limit 5
-gh run watch <run-id> --exit-status
-```
+出现以下任一情况不得打 tag：
 
-PowerShell 代理示例：
-
-```powershell
-$env:HTTP_PROXY='http://172.16.8.171:9444'
-$env:HTTPS_PROXY='http://172.16.8.171:9444'
-gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
-```
-
-## 9. Commit and Push Dev
-
-```bash
-git status --short
-git add README.md README.zh-CN.md CHANGELOG.md CHANGELOG.zh-CN.md RELEASE.md RELEASE.zh-CN.md docs examples .github/workflows internal/integration/docs_examples_test.go internal/integration/docs_localization_test.go
-git commit -m "docs: add bilingual documentation"
-git push origin dev
-```
-
-如果 release 只改部分文件，按实际 path list 调整。
-
-## 10. Merge to Main
-
-`dev` green 后：
-
-```bash
-git switch main
-git pull --ff-only origin main
-git merge --ff-only dev
-git push origin main
-```
-
-如果不能 fast-forward merge，停止并检查差异。不要 force-push `main`。
-
-## 11. Tag
-
-```bash
-git tag -a v0.0.2 -m "release: v0.0.2"
-git push origin v0.0.2
-```
-
-## 12. 干净模块下载验证
-
-PowerShell：
-
-```powershell
-$tmp = Join-Path $env:TEMP 'goark-log-v0.0.2-verify'
-Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $tmp | Out-Null
-Push-Location $tmp
-$env:GOWORK='off'
-go mod init verify.local/goark-log
-go get goark.dev/log@v0.0.2
-go test goark.dev/log/...
-Pop-Location
-```
-
-Unix shell：
-
-```bash
-tmp="$(mktemp -d)"
-cd "$tmp"
-GOWORK=off go mod init verify.local/goark-log
-GOWORK=off go get goark.dev/log@v0.0.2
-GOWORK=off go test goark.dev/log/...
-```
-
-## 13. GitHub Release
-
-使用 `CHANGELOG.md` 的 v0.0.2 section 作为默认英文 release body。中文 release notes 使用 `CHANGELOG.zh-CN.md` 的 v0.0.2 section。
-
-Release note 必须包含：
-
-- 用户可见文档变更；
-- 行为或 API 变更，如果存在；
-- 验证命令和结果；
-- 已知限制，尤其是仍故意留在 core 外部的能力。
-
-不要声称 external appender support，除非对应 plugin module 已单独发布并测试。
+| 条件 | 原因 |
+| --- | --- |
+| 全量测试失败。 | 正确性没有建立。 |
+| 公开 Markdown 双语检查失败。 | 文档契约破坏。 |
+| 配置示例无法加载。 | 可复制文档不可信。 |
+| Demo 失败。 | 面向用户的示例未达到生产级。 |
+| 性能结论缺少新 benchmark。 | 结论没有证据。 |
+| 核心文档宣称不支持的远程 sink 或 exporter。 | 边界描述错误。 |

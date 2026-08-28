@@ -62,6 +62,23 @@ func TestFileAppender_whenBuffered_shouldFlushBeforeClose(t *testing.T) {
 	}
 }
 
+func TestFileAppender_whenCreateOnDemandClosedBeforeAppend_shouldNotOpenFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lazy-complete.json")
+	appender, err := NewFileAppender(path,
+		WithFileLayout(NewJSONLayout(LayoutOptions{Complete: true})),
+		WithFileCreateOnDemand(true),
+	)
+	if err != nil {
+		t.Fatalf("NewFileAppender() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("file should not be created before first append, stat error = %v", err)
+	}
+}
+
 func testEvent(message string, when time.Time) Event {
 	return Event{
 		Time:       when,

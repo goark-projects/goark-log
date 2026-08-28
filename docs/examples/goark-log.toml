@@ -1,15 +1,18 @@
 [configuration]
+status = "warn"
 monitorInterval = "30s"
 
 [configuration.properties]
-LOG_DIR = "logs"
+LOG_DIR = "${env:GOARK_LOG_DIR:-logs}"
+PATTERN = "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
 
 [configuration.asyncLogger]
 enabled = true
-queueSize = 8192
-batchSize = 256
-overflowStrategy = "block"
+queueSize = 4096
+batchSize = 128
+overflowStrategy = "drop-debug"
 waitStrategy = "yield"
+includeLocation = false
 
 [configuration.appenders.console]
 type = "console"
@@ -17,19 +20,27 @@ target = "stderr"
 
 [configuration.appenders.console.layout]
 type = "pattern"
-pattern = "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
+pattern = "${prop:PATTERN}"
+disableAnsi = true
 
-[configuration.appenders.json]
+[configuration.appenders.jsonFile]
 type = "json"
-fileName = "${LOG_DIR}/app.json"
+fileName = "${prop:LOG_DIR}/toml-app.json"
 bufferSize = "256KiB"
 flushOnWrite = false
 
+[configuration.filters.auditMarker]
+type = "marker"
+marker = "AUDIT"
+onMatch = "accept"
+onMismatch = "neutral"
+
 [configuration.root]
 level = "info"
-appenderRefs = ["console", "json"]
+appenderRefs = ["console", "jsonFile"]
 
-[configuration.loggers."goark.orm"]
-level = "debug"
-appenderRefs = ["json"]
+[configuration.loggers."goark.audit"]
+level = "info"
+appenderRefs = ["jsonFile"]
+filterRefs = ["auditMarker"]
 additivity = false

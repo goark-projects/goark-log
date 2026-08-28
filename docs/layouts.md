@@ -1,65 +1,46 @@
-# Layout Reference
+# Layouts
 
 [简体中文](layouts.zh-CN.md)
 
-A layout converts an immutable log event snapshot into bytes. Console, file,
-and rolling file appenders use layouts. The direct JSON appender has its own
-fixed JSON encoder and does not use a configured layout.
+Layouts encode a snapshot `Event` into bytes. Console, file, and rolling-file
+appenders use layouts; JSON direct appender bypasses layouts for a hot JSON
+path.
 
-## Built-In Layouts
+## Layout Options
+
+| Field | Notes |
+| --- | --- |
+| `compact` | Suppresses the default event newline. |
+| `eventEol`, `event-eol` | Adds a newline even when compact is true. |
+| `complete` | Enables stream header/footer output. JSON layouts use array-style complete mode by default. |
+| `includeStacktrace`, `include-stacktrace` | Emits structured stack details where supported. |
+| `stacktraceAsString`, `stacktrace-as-string` | Emits throwable stack as one string where supported. |
+| `propertiesAsList`, `properties-as-list` | Emits context attributes as key/value lists where supported. |
+| `includeNullDelimiter`, `include-null-delimiter` | Appends NUL after each event. |
+| `disableAnsi`, `disable-ansi` | Disables ANSI output from pattern `highlight` and `style`. |
+| `header` | Custom complete-mode header. |
+| `footer` | Custom complete-mode footer. |
+
+Complete JSON and JSON Template layouts clone lifecycle state per appender so
+separate files produce valid independent streams.
+
+## Built-In Layout Types
 
 | Type | Aliases | Output |
 | --- | --- | --- |
-| `pattern` | none | Log4j/Spring Boot style pattern text. |
-| `text` | none | Stable key-value text. |
-| `json` | none | Structured JSON event. |
-| `jsonTemplate` | `json-template` after normalization | JSON event generated from an event template. |
-| `xml` | `xmlLayout` | Single XML event. |
-| `csv` | `csvLayout` | Single CSV row. |
+| `pattern` | none | Log4j-style text pattern. Empty pattern uses `DefaultSpringBootPattern`. |
+| `text` | none | Stable `key=value` text. |
+| `json` | none | JSON object with event fields and attributes. |
+| `jsonTemplate` | none | JSON object defined by a resolver template. |
+| `xml` | `xmlLayout` | Single `<Event>` XML fragment. |
+| `csv` | `csvLayout` | CSV line: time, level, logger, thread, message, attrs. |
 | `gelf` | `gelfLayout` | Graylog Extended Log Format JSON. |
-| `rfc5424` | `rfc5424Layout` | RFC 5424 syslog text event. |
-| `syslog` | `syslogLayout` | Alias of the RFC 5424 layout. |
-| `yaml` | `yamlLayout` | YAML event document. |
+| `rfc5424` | `rfc5424Layout` | RFC 5424 syslog text line. |
+| `syslog` | `syslogLayout` | Alias of RFC5424 layout. |
+| `yaml` | `yamlLayout` | Single YAML document. |
 | `html` | `htmlLayout` | HTML table row. |
 
-Layout and plugin kinds are normalized by trimming spaces, lowercasing, and
-removing `-` and `_`.
-
-## Common Layout Fields
-
-```yaml
-layout:
-  type: json
-  compact: false
-  eventEol: true
-  complete: false
-  includeStacktrace: true
-  stacktraceAsString: false
-  propertiesAsList: false
-  includeNullDelimiter: false
-  disableAnsi: false
-  header: ""
-  footer: ""
-```
-
-| Field | Aliases | Default | Description |
-| --- | --- | --- | --- |
-| `type` | none | appender default pattern | Layout kind. |
-| `pattern` | none | default Spring Boot pattern | PatternLayout format string. |
-| `eventTemplate` | `event-template` | default template | Inline JSON Template event template. |
-| `eventTemplateUri` | `event-template-uri`, `eventTemplatePath`, `event-template-path` | empty | Local JSON Template file. |
-| `compact` | none | false | Disables the default event newline. |
-| `eventEol` | `event-eol` | false | Adds an event newline even when `compact` is true. |
-| `complete` | none | false | Enables lifecycle header/footer output. JSON layouts default to array header/footer when complete. |
-| `includeStacktrace` | `include-stacktrace` | false | Includes structured stack information where supported. |
-| `stacktraceAsString` | `stacktrace-as-string` | false | Emits stacktrace as one string instead of a structured object/list. |
-| `propertiesAsList` | `properties-as-list` | false | Emits context attributes as `[{"key":...,"value":...}]` where supported. |
-| `includeNullDelimiter` | `include-null-delimiter` | false | Appends NUL after each event. Useful for protocols that require frame delimiters. |
-| `disableAnsi` | `disable-ansi` | false | Disables PatternLayout `%highlight` and `%style` ANSI output. |
-| `header` | none | empty | Custom lifecycle header when `complete` is true. |
-| `footer` | none | empty | Custom lifecycle footer when `complete` is true. |
-
-## PatternLayout
+## Pattern Layout
 
 Default pattern:
 
@@ -67,140 +48,80 @@ Default pattern:
 %d %5level %pid --- [%thread] %logger : %msg%attrs%n
 ```
 
-Example:
+Field width and truncation follow Log4j-style syntax: `%5p`, `%-5p`, `%.30c`,
+and combinations are accepted.
 
-```yaml
-layout:
-  type: pattern
-  pattern: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%thread] %c{2} trace=%X{trace_id} %m%notEmpty{ %ex{short}}%n"
-```
-
-### Width Modifiers
-
-Pattern converters support:
-
-| Form | Meaning |
-| --- | --- |
-| `%5p` | Minimum width 5, right-aligned. |
-| `%-5p` | Minimum width 5, left-aligned. |
-| `%.40logger` | Maximum width 40. |
-| `%20.40logger` | Minimum width 20, maximum width 40. |
-
-### Converters
-
-| Converter | Aliases | Description |
+| Converter | Aliases | Output |
 | --- | --- | --- |
-| `%d{format}` | `%date{format}` | Event time. Empty/default uses `2006-01-02T15:04:05.000Z07:00`. |
-| `%level` | `%p` | Level name from the level registry. |
-| `%pid` | `%processId` | Current process ID. |
-| `%thread` | `%t` | Logical thread name from context/attrs, default `main`. |
-| `%logger{precision}` | `%c{precision}` | Logger name. Precision keeps the last N dot-separated components. |
-| `%msg` | `%message`, `%m` | Event message. |
-| `%attrs` | `%kvp`, `%map` | Event attributes as key-value text. |
-| `%X{key}` | `%mdc{key}` | Attribute value by key. Empty `%X` or `%mdc` prints all attrs. |
-| `%ex{option}` | `%throwable`, `%exception` | Throwable text. Options: empty, `short`, `full`, `none`. |
-| `%marker` | none | Marker value. |
-| `%ndc` | `%x` | Context stack values. |
-| `%C` | `%class` | Caller class/function owner. Requires caller PC. |
-| `%M` | `%method` | Caller method/function. Requires caller PC. Case-sensitive: `%M` is method, `%m` is message. |
-| `%F` | `%file` | Caller file. Requires caller PC. |
-| `%L` | `%line` | Caller line. Requires caller PC. |
-| `%l` | `%location` | Caller location string. Requires caller PC. |
+| `%d{format}` | `%date{format}` | Event timestamp. |
+| `%p` | `%level` | Level name. |
+| `%pid` | `%processId` | Process ID. |
+| `%thread` | `%t` | Logical thread name, default `main`. |
+| `%logger{precision}` | `%c{precision}` | Logger name, optionally shortened to trailing segments. |
+| `%msg` | `%message`, `%m` | Message text. |
+| `%attrs` | `%kvp`, `%map` | Event attributes as pattern key/value text. |
+| `%X{key}` | `%mdc{key}` | Single attribute value. Without a key, emits all attrs. |
+| `%ex{option}` | `%throwable{option}`, `%exception{option}` | Throwable or `error`/`err` attr. Options: empty, `none`, `short`, `full`. |
+| `%marker` | none | Marker name. |
+| `%ndc` | `%x` | Context stack values joined by spaces. |
 | `%n` | none | Newline. |
-| `%uuid` | none | Random UUID v4 style value generated per event render. |
+| `%C` | `%class` | Caller class/function owner. |
+| `%M` | `%method` | Caller method/function. |
+| `%F` | `%file` | Caller file base name. |
+| `%L` | `%line` | Caller line. |
+| `%l` | `%location` | Combined caller location. |
+| `%uuid` | none | Random version 4 UUID. |
 | `%relative` | `%r` | Milliseconds since layout package initialization. |
-| `%host` | `%hostname` | Host name resolved at process startup. |
-| `%sequenceNumber` | `%sn` | Atomic sequence number. |
-| `%highlight{pattern}` | none | Applies default ANSI color by level. Disabled by `disableAnsi`. |
-| `%style{pattern}{style}` | none | Applies configured ANSI style. Disabled by `disableAnsi`. |
-| `%notEmpty{pattern}` | none | Emits nested pattern only when the nested output is not blank after trimming. |
-| `%replace{pattern}{regex}{replacement}` | none | Regex replacement on nested output. |
-| `%enc{pattern}{mode}` | `%encode` | Escapes nested output. Modes: `json`, `html`, `xml`, `crlf`; unknown mode leaves value unchanged. |
-| `%equals{pattern}{test}{substitution}` | none | Replaces nested output when it equals `test`. |
-| `%equalsIgnoreCase{pattern}{test}{substitution}` | none | Case-insensitive variant of `%equals`. |
-| `%maxLen{pattern}{length}` | `%maxLength` | Truncates nested output to display width. |
-| `%repeat{pattern}{count}` | none | Repeats nested output. |
+| `%host` | `%hostname` | Host name. |
+| `%sequenceNumber` | `%sn` | Global monotonically increasing sequence number. |
+| `%highlight{pattern}` | none | ANSI level color unless `disableAnsi` is true. |
+| `%style{pattern}{style}` | none | ANSI style unless `disableAnsi` is true. |
+| `%notEmpty{pattern}` | none | Emits child pattern only when it is non-blank. |
+| `%replace{pattern}{regex}{replacement}` | none | Regex replacement over child output. |
+| `%enc{pattern}{mode}` | `%encode{pattern}{mode}` | Escapes child output. |
+| `%equals{pattern}{test}{substitution}` | `%equalsIgnoreCase{pattern}{test}{substitution}` | Substitutes when child output matches. |
+| `%maxLen{pattern}{length}` | `%maxLength{pattern}{length}` | Truncates child output. |
+| `%repeat{pattern}{count}` | none | Repeats child output. |
 | `%%` | none | Literal percent sign. |
 
-Caller converters resolve `slog.Record.PC`. They are empty unless one of these
-is true:
+Caller converters require location capture through logger options, logger
+config, async config, or appender-ref `includeLocation`.
 
-- Handler/root/logger/appender-ref `includeLocation` is true.
-- Handler-level async `includeLocation` is true.
-- Native logger is created with `WithLoggerCaller(true)`.
+## Time Formats
 
-Caller capture has measurable cost and should be enabled only for loggers or
-appender refs that need it.
+`%d{...}`, date lookups, and JSON Template timestamp resolver accept:
 
-### ANSI Styles
-
-`%highlight` uses these level defaults:
-
-| Level | Style |
+| Format | Output |
 | --- | --- |
-| `FATAL` and above | `red,bold` |
-| `ERROR` | `red` |
-| `WARN` | `yellow` |
-| `INFO` | `green` |
-| `DEBUG` | `cyan` |
-| lower | `faint` |
+| empty, `DEFAULT`, `ISO8601`, `ISO8601_OFFSET_DATE_TIME` | `2006-01-02T15:04:05.000Z07:00` layout. |
+| `RFC3339` | Go `time.RFC3339`. |
+| `RFC3339NANO` | Go `time.RFC3339Nano`. |
+| `UNIX`, `UNIX_SECONDS` | Unix seconds. |
+| `UNIX_MILLIS`, `UNIX_MS` | Unix milliseconds. |
+| `UNIX_MICROS`, `UNIX_US` | Unix microseconds. |
+| `UNIX_NANOS`, `UNIX_NS` | Unix nanoseconds. |
+| Java-style date pattern | Common Java tokens are mapped to Go reference-time layout. |
 
-`%style` accepts tokens such as `bold`, `faint`, `underline`, `blink`,
-`reverse`, foreground colors (`red`, `green`, `yellow`, `blue`, `magenta`,
-`cyan`, `white`, `gray`), bright colors, and background forms such as `bgRed` or
-`backgroundRed`.
+Supported Java token mappings include `yyyy`, `yy`, `MM`, `dd`, `HH`, `mm`,
+`ss`, `SSS`, `SSSSSS`, `XXX`, `XX`, and `X`.
 
-## JSONLayout
+## JSON Layout
+
+JSON layout writes `time`, `level`, `logger`, `msg`, attrs, and optional
+`thrown`. With `propertiesAsList`, attrs move under `contextMap` as key/value
+entries. With `complete`, the default header/footer are `[` and `]`.
 
 ```yaml
 layout:
   type: json
   eventEol: true
-  propertiesAsList: false
   includeStacktrace: true
 ```
 
-Default fields:
+## JSON Template Layout
 
-| Field | Description |
-| --- | --- |
-| `time` | Event time in default layout format. |
-| `level` | Level name. |
-| `logger` | Logger name. |
-| `msg` | Message. |
-| event attributes | Emitted as top-level fields unless `propertiesAsList` is true. |
-| `contextMap` | Attribute list when `propertiesAsList` is true. |
-| `thrown` | Throwable object or string when stacktrace output is enabled and throwable exists. |
-
-Common `slog.Value` kinds are encoded by hand: string, bool, int, uint, float,
-duration, time, groups, and errors/stringers. Complex `Any` values use the
-internal JSON fallback codec and fall back to `fmt.Sprint` on marshal error.
-The fallback codec uses Sonic on supported Go/architecture combinations and
-uses the standard library on Go 1.27+ or unsupported architectures.
-
-With `complete: true`, JSONLayout writes a JSON array stream. Default header is
-`[` and default footer is `]`. Commas are inserted between events.
-
-## JSONTemplateLayout
-
-Default event template:
-
-```json
-{
-  "timestamp": {"$resolver": "timestamp"},
-  "level": {"$resolver": "level"},
-  "loggerName": {"$resolver": "logger"},
-  "message": {"$resolver": "message"},
-  "thread": {"$resolver": "thread"},
-  "marker": {"$resolver": "marker"},
-  "thrown": {"$resolver": "throwable"},
-  "contextStack": {"$resolver": "contextStack"},
-  "endOfBatch": {"$resolver": "endOfBatch"},
-  "contextMap": {"$resolver": "mdc"}
-}
-```
-
-Inline template example:
+JSON Template uses an object whose fields are either raw JSON constants or
+resolver objects. Empty template uses the built-in default event template.
 
 ```yaml
 layout:
@@ -208,124 +129,51 @@ layout:
   eventTemplate: >
     {
       "ts": {"$resolver": "timestamp", "format": "UNIX_MILLIS"},
-      "lvl": {"$resolver": "level"},
-      "logger": {"$resolver": "logger", "precision": 2},
-      "msg": {"$resolver": "message"},
-      "traceId": {"$resolver": "attr", "key": "trace_id"},
-      "attrs": {"$resolver": "mdc", "flatten": true}
+      "level": {"$resolver": "level"},
+      "logger": {"$resolver": "logger", "precision": 3},
+      "message": {"$resolver": "message"},
+      "trace_id": {"$resolver": "attr", "key": "trace_id"}
     }
   eventEol: true
 ```
 
-Template file example:
-
-```yaml
-layout:
-  type: jsonTemplate
-  eventTemplateUri: conf/log-event-template.json
-  stacktraceAsString: true
-```
-
-Any JSON field value without `$resolver` is emitted as raw JSON.
-
-### JSON Template Resolvers
+Template fields:
 
 | Resolver | Aliases | Options | Output |
 | --- | --- | --- | --- |
-| `timestamp` | `time` | `format` | Event time using the time-pattern mapper. |
-| `level` | none | `field` | Text level by default. `int`, `integer`, or `value` emits slog numeric level. `severity` or `syslogSeverity` emits syslog severity. |
-| `logger` | `loggerName` | `precision` | Logger name, optionally shortened to last N components. |
-| `message` | `msg` | none | Event message. |
+| `timestamp` | `time` | `format` | Timestamp string or Unix number. |
+| `level` | none | `field=int`, `integer`, `value`, `severity`, `syslogSeverity` | Level name, integer value, or syslog severity. |
+| `logger` | `loggerName` | `precision` | Logger name. |
+| `message` | `msg` | none | Message text. |
 | `thread` | `threadName` | none | Logical thread name. |
-| `marker` | none | none | Marker string or `null`. |
-| `throwable` | `exception`, `thrown` | `field` | Throwable object by default. Fields: `object`, `type`, `message`, `string`, `formatted`, `rootCause`, `rootCauseMessage`, `stackTrace`, `stackTraceAsString`. |
+| `marker` | none | none | Marker name or `null`. |
+| `throwable` | `exception`, `thrown` | `field` | Throwable object, type, message, string, root cause, stack trace, or stack string. |
 | `rootCause` | none | none | Throwable root cause object. |
-| `stackTrace` | none | none | Stack array, or string when `stacktraceAsString` is enabled. |
-| `source` | `location` | none | Caller object with class, method, file, line, and location. Requires caller PC. |
-| `process` | none | none | Object containing `pid`. |
+| `stackTrace` | none | none | Stack frames or stack string when layout option is set. |
+| `source` | `location` | none | Caller object with class, method, file, line, and location. |
+| `process` | none | none | Process object with `pid`. |
 | `contextStack` | `ndc` | none | Context stack array. |
-| `mdc` | `contextMap`, `attrs` | `flatten`, `propertiesAsList` | Event attributes as an object or list. |
+| `mdc` | `contextMap`, `attrs` | `flatten`, `propertiesAsList` | Attribute object or list. |
 | `attr` | none | `key` required | One attribute value or `null`. |
-| `endOfBatch` | none | none | Boolean set by async batching. |
+| `endOfBatch` | none | none | Boolean set by async batches. |
+| custom | none | custom raw options | Resolved through plugin registry. |
 
-Unknown resolver names are delegated to the configured plugin registry. If no
-plugin resolver exists, template compilation fails.
+Use `eventTemplateUri`, `eventTemplatePath`, or their kebab aliases to load a
+template file.
 
-## TextLayout
+## Structured Layouts
 
-Text layout emits fixed key-value fields:
+| Layout | Throwable behavior | Attribute behavior |
+| --- | --- | --- |
+| `xml` | String by default, stack frames when `includeStacktrace`, full string when `stacktraceAsString`. | `<ContextMap><Entry key="">...`. |
+| `yaml` | String by default, map when `includeStacktrace`, string when `stacktraceAsString`. | Map by default, list with `propertiesAsList`. |
+| `gelf` | `full_message` from throwable or `error` attr. | Additional fields are prefixed with `_`; empty, `id`, and already-underscore keys are skipped. |
+| `rfc5424` / `syslog` | Message text only. | Attributes are encoded into `[goark@32473 ...]`. |
+| `csv` | Included only when present in attr text. | Attrs are one CSV field. |
+| `html` | Included only when present in attr text. | Attrs are escaped in one table cell. |
 
-```text
-time=2026-08-25T10:15:30.123+08:00 level=INFO logger=goark msg="service started" profile=dev
-```
+## Layout Lifecycle
 
-It always terminates with a newline.
-
-## XMLLayout
-
-XML layout emits one `<Event>` element per log event. It includes time, level,
-logger, thread, message, optional marker, optional throwable, context stack, and
-context map entries. `includeStacktrace` adds `<StackTrace>` frames when a
-throwable stack is present. `stacktraceAsString` writes the throwable as one
-text value.
-
-## CSVLayout
-
-CSV layout emits fields in this order:
-
-```text
-time,level,logger,thread,message,attrs
-```
-
-The `attrs` column contains key-value text. Standard CSV quoting is applied for
-empty fields, commas, quotes, and newlines.
-
-## GELFLayout
-
-GELF layout emits Graylog Extended Log Format JSON:
-
-| Field | Description |
-| --- | --- |
-| `version` | Always `1.1`. |
-| `host` | Process host name. |
-| `short_message` | Event message. |
-| `full_message` | Throwable text when available. |
-| `timestamp` | Unix seconds with fractional microsecond precision. |
-| `level` | Syslog severity. |
-| `_logger` | Logger name. |
-| `_thread` | Logical thread name. |
-| `_marker` | Marker when present. |
-| `_attr` fields | Event attributes prefixed with `_`, except empty keys, `id`, and keys already starting with `_`. |
-
-`includeNullDelimiter` can be used when the downstream protocol expects NUL
-delimited GELF events.
-
-## RFC5424 and Syslog Layout
-
-`rfc5424` and `syslog` use the same layout implementation. The output is a
-single RFC 5424 syslog event:
-
-```text
-<priority>1 timestamp host appName procid msgid structured-data message
-```
-
-Programmatic `RFC5424Layout` exposes `Facility`, `AppName`, and `MessageID`.
-Configuration currently builds the default layout instance; appender-level
-fields such as `facility` and `appName` are reserved for appender plugins and do
-not tune the built-in layout.
-
-## YAMLLayout
-
-YAML layout emits one YAML document per event with time, level, logger, thread,
-message, optional marker, optional throwable, context stack, and context map.
-When `propertiesAsList` is true, attributes are emitted as key/value entries
-instead of a map.
-
-YAML layout uses `gopkg.in/yaml.v3`, so it is not a zero-allocation hot path.
-Use JSONLayout or the direct JSON appender for high-throughput structured logs.
-
-## HTMLLayout
-
-HTML layout emits a `<tr>` with cells for time, level, logger, thread, message,
-and attributes. It is intended for controlled file snippets or tests, not for
-serving untrusted HTML pages directly.
+File and console appenders call header on first open/write and footer on close.
+Rolling file writes footers before rollover and headers after opening a new
+stream. `createOnDemand` delays this lifecycle until the first event.

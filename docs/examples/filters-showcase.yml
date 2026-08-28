@@ -1,0 +1,104 @@
+configuration:
+  filters:
+    thresholdInfo:
+      type: threshold
+      level: info
+      onMatch: neutral
+      onMismatch: deny
+    onlyInfo:
+      type: level
+      level: info
+      onMatch: accept
+      onMismatch: neutral
+    warnToFatal:
+      type: levelRange
+      minLevel: warn
+      maxLevel: fatal
+      onMatch: neutral
+      onMismatch: deny
+    messageRegex:
+      type: regex
+      field: message
+      pattern: "request|audit"
+      onMatch: neutral
+      onMismatch: deny
+    loggerRegex:
+      type: regex
+      field: logger
+      pattern: "^goark\\."
+    attrRegex:
+      type: regex
+      field: attr
+      key: tenant
+      pattern: "^tenant-"
+    tenantCore:
+      type: map
+      operator: and
+      values:
+        tenant: tenant-a
+        region: cn-east
+    threadTenant:
+      type: threadContextMap
+      operator: or
+      keyValuePairs:
+        - key: trace_id
+          value: trace-1
+        - key: tenant
+          value: tenant-a
+    structuredAudit:
+      type: structuredData
+      KeyValuePair:
+        - key: goark.structuredData.id
+          value: audit
+    attrMatch:
+      type: attr
+      key: component
+      value: api
+    auditMarker:
+      type: marker
+      marker: AUDIT
+    noMarker:
+      type: noMarker
+      onMatch: neutral
+      onMismatch: deny
+    contextStack:
+      type: threadContextStack
+      value: request
+    throwable:
+      type: throwable
+      pattern: "timeout|refused"
+    stringMatch:
+      type: stringMatch
+      text: "request"
+    businessHours:
+      type: time
+      start: "00:00"
+      end: "23:59:59"
+      timezone: Asia/Shanghai
+    burst:
+      type: burst
+      level: debug
+      rate: "10"
+      maxBurst: 100
+    dynamicTenant:
+      type: dynamicThreshold
+      key: tenant
+      defaultThreshold: error
+      thresholds:
+        tenant-a: debug
+        tenant-b: info
+    denyAll:
+      type: deny
+    compositeAudit:
+      type: composite
+      filterRefs: [auditMarker, tenantCore]
+  appenders:
+    stdout:
+      type: console
+      target: stdout
+      layout:
+        type: pattern
+        pattern: "%d %5p %c %marker %ndc : %m%attrs%ex{short}%n"
+  root:
+    level: debug
+    appenderRefs: [stdout]

@@ -1,0 +1,21 @@
+goark:
+  log:
+    async:
+      enabled: true
+      queueSize: 4096
+      batchSize: 128
+      overflowStrategy: drop-debug
+      waitStrategy: block
+      includeLocation: false
+    appenders:
+      stdout:
+        type: json
+        target: stdout
+    root:
+      level: info
+      appenderRefs: [stdout]
+    loggers:
+      goark.demo.debug:
+        level: debug
+        appenderRefs: [stdout]
+        additivity: false

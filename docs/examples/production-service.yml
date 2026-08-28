@@ -1,0 +1,115 @@
+configuration:
+  monitorInterval: 30s
+  properties:
+    LOG_DIR: "${env:GOARK_LOG_DIR:-logs}"
+    CONSOLE_PATTERN: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
+  filters:
+    dropHealthCheck:
+      type: stringMatch
+      text: "/health"
+      onMatch: deny
+      onMismatch: neutral
+  appenders:
+    console:
+      type: console
+      target: stderr
+      layout:
+        type: pattern
+        pattern: "${prop:CONSOLE_PATTERN}"
+        disableAnsi: true
+    appRolling:
+      type: rolling-file
+      fileName: "${prop:LOG_DIR}/app.log"
+      bufferSize: 256KiB
+      append: true
+      createOnDemand: true
+      filePermissions: "0644"
+      layout:
+        type: json
+        eventEol: true
+        includeStacktrace: true
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/app-%d{yyyyMMdd-HHmmss}-%06i.log.gz"
+        policies:
+          size:
+            size: 100MiB
+          time:
+            interval: daily
+            modulate: true
+          startup:
+            enabled: true
+        strategy:
+          max: 30
+          maxAge: 30d
+          fileIndex: nomax
+          compression:
+            gzip: true
+            async: true
+          delete:
+            basePath: "${prop:LOG_DIR}/archive"
+            maxDepth: 1
+            ifFileName:
+              glob: "*.log.gz"
+            ifLastModified:
+              age: 30d
+            async: true
+    appAsync:
+      type: async
+      appenderRefs:
+        - ref: appRolling
+          level: info
+      queueSize: 8192
+      batchSize: 256
+      overflowStrategy: block
+      waitStrategy: yield
+    auditRolling:
+      type: rolling-file
+      fileName: "${prop:LOG_DIR}/audit.log"
+      flushOnWrite: true
+      filePermissions: "0600"
+      layout:
+        type: jsonTemplate
+        eventTemplate: >
+          {
+            "timestamp": {"$resolver": "timestamp", "format": "UNIX_MILLIS"},
+            "level": {"$resolver": "level"},
+            "logger": {"$resolver": "logger"},
+            "thread": {"$resolver": "thread"},
+            "marker": {"$resolver": "marker"},
+            "message": {"$resolver": "message"},
+            "principal": {"$resolver": "attr", "key": "principal"},
+            "action": {"$resolver": "attr", "key": "action"},
+            "resource": {"$resolver": "attr", "key": "resource"},
+            "contextMap": {"$resolver": "mdc"}
+          }
+        eventEol: true
+        stacktraceAsString: true
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/audit-%d{yyyyMMdd}-%i.log.gz"
+        policies:
+          size:
+            size: 50MiB
+          time:
+            interval: daily
+            modulate: true
+        strategy:
+          max: 90
+          maxAge: 90d
+          compression:
+            gzip: true
+            async: true
+  root:
+    level: info
+    filterRefs: [dropHealthCheck]
+    appenderRefs:
+      - console
+      - appAsync
+  loggers:
+    goark.audit:
+      level: info
+      appenderRefs: [auditRolling]
+      additivity: false
+    goark.demo.sql:
+      level: debug
+      appenderRefs: [appAsync]
+      additivity: true

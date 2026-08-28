@@ -1,274 +1,250 @@
-# 编程式 API 指南
+# 编程 API
 
 [English](api.md)
 
-本文覆盖公开编程式 API。配置文件见 [配置参考](configuration.zh-CN.md)。
+本文档说明 `goark.dev/log` 当前源码实现的公开 Go API。`internal/configfile`
+下的配置结构不是公开 API。
 
-## 默认 Logger
-
-```go
-logger, handler := goarklog.NewDefault()
-defer handler.Close()
-
-logger.Info("service started", slog.String("profile", "dev"))
-```
-
-`NewDefault` 创建：
-
-- 一个名为 `console` 的 console appender；
-- stderr 输出目标；
-- 默认 Spring Boot 风格 pattern layout；
-- root level 为 `INFO`。
-
-`NewDefaultHandler` 只返回 handler。`DefaultOptions` 返回等价的 options object。
-
-## Handler 构造
+## 引入
 
 ```go
-appender := goarklog.NewConsoleAppender()
-handler, err := goarklog.NewHandler(goarklog.Options{
-	Appenders: []goarklog.Appender{appender},
-	Root: goarklog.RootLogger{
-		Level:        slog.LevelInfo,
-		AppenderRefs: []string{"console"},
-	},
-})
-if err != nil {
-	return err
-}
-defer handler.Close()
+import goarklog "goark.dev/log"
 ```
 
-`Options` 字段：
+模块要求 Go 1.25 或更新版本，并实现标准 `log/slog` handler 契约。
 
-| 字段 | 说明 |
+## 构造入口
+
+| 函数 | 用途 |
 | --- | --- |
-| `Appenders` | 使用非默认 options 时必填。名称必须非空且唯一。 |
-| `Filters` | Global filters。 |
-| `Root` | Root route。未设置 root appender 时使用第一个 appender。 |
-| `Loggers` | Named logger rules。 |
-| `Async` | Handler-level async logger options。 |
-
-如果手动构造 appenders 且 `NewHandler` 返回错误，调用方需要自行关闭这些 appenders。`NewHandler` 成功后，`Handler.Close` 拥有已配置 appenders 的关闭责任。
-
-## Named slog Logger
-
-```go
-logger := goarklog.NewLogger(handler, "goark.http")
-logger.InfoContext(ctx, "request done", slog.Int("status", 200))
-```
-
-`NewLogger` 会附加内部 `goark.logger` attribute，handler 用它做路由。`WithName` 可以重命名已有 `slog.Logger`：
+| `DefaultOptions()` | 返回 stderr、`INFO`、Spring Boot 风格 pattern 的默认配置。 |
+| `NewHandler(options)` | 从编程式 `Options` 构建 `*Handler`。 |
+| `New(options)` | 构建默认命名的 `*slog.Logger` 和对应 `*Handler`。 |
+| `NewDefaultHandler()` | 构建默认 stderr handler；仅在内置默认值非法时 panic。 |
+| `NewDefault()` | 构建默认 `*slog.Logger` 和 `*Handler`。 |
+| `LoadOptions(ctx, opts...)` | 解析配置并构建 `Options`。 |
+| `NewConfiguredHandler(ctx, opts...)` | 从配置构建 handler。 |
+| `NewConfigured(ctx, opts...)` | 从配置构建默认命名 logger 和 handler。 |
+| `ConfigureDefault(ctx, opts...)` | 从配置构建 logger，并通过 `slog.SetDefault` 安装。 |
+| `NewLoggerContext(options, opts...)` | 从显式 options 创建可关闭、可重载的上下文。 |
+| `NewConfiguredLoggerContext(ctx, opts...)` | 从配置创建上下文，并在配置启用时启动轮询重载。 |
 
 ```go
-logger = goarklog.WithName(logger, "goark.orm")
-```
-
-## 配置默认 slog
-
-```go
-handler, result, err := goarklog.ConfigureDefault(context.Background(),
+loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
 	goarklog.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
 }
-defer handler.Close()
+defer loggerContext.Close()
 
-slog.Info("configured", slog.String("source", string(result.Source)))
+logger := loggerContext.Logger("goark.http")
+logger.InfoContext(ctx, "ready", slog.String("source", string(result.Source)))
 ```
 
-`ConfigureDefault` 创建配置化 logger 并通过 `slog.SetDefault` 安装为默认 logger。
-
-## LoggerContext
-
-`LoggerContext` 是服务端推荐的托管运行时，适合需要 reload 和集中 shutdown 的应用。
+## Handler Options
 
 ```go
-logging, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-)
-if err != nil {
-	return err
+type Options struct {
+	Appenders []Appender
+	Filters   []Filter
+	Root      RootLogger
+	Loggers   []LoggerRule
+	Async     AsyncLoggerOptions
 }
-defer logging.Close()
-
-logger := logging.Logger("goark.service")
-logger.Info("ready", slog.String("source", string(result.Source)))
 ```
 
-常用方法：
+| 字段 | 运行期含义 |
+| --- | --- |
+| `Appenders` | 最终输出端。应用默认值后至少需要一个 appender。 |
+| `Filters` | 全局过滤器，先于 logger 级别判断执行。 |
+| `Root` | 根 logger 的级别、appender 引用、过滤器和位置采集策略。 |
+| `Loggers` | 命名 logger 规则，最长前缀优先。 |
+| `Async` | Handler 层有界异步队列。 |
+
+`Handler.Close()` 会排空异步工作、关闭 appender、刷新文件并写 layout
+footer。`Handler.Reload(options)` 在新运行期构建成功后原子替换路由。
+
+## Logger 命名
+
+`NewLogger(handler, name)` 返回绑定内部 `goark.logger` 属性的
+`*slog.Logger`。`WithName(logger, name)` 对已有 logger 做同样处理；输入为
+nil 时使用 `slog.Default()`。
+
+```go
+logger := goarklog.NewLogger(handler, "goark.orm.mapper")
+logger.Info("query finished", slog.Int("rows", 12))
+```
+
+默认 logger 名称是 `goark`。
+
+## 原生 Logger
+
+`NewNativeLogger(handler, name, opts...)` 构建低分配 logger，仍然复用同一个
+handler、appender、filter 和 layout。
 
 | 方法 | 说明 |
 | --- | --- |
-| `Logger(name)` | 返回 named `slog.Logger`。 |
-| `Handler()` | 返回底层 `*Handler`。 |
-| `StatusLogger()` | 返回内部 status logger。 |
-| `ConfigResult()` | 返回最后一次配置加载结果快照。 |
-| `Reload(options)` | 从显式 `Options` reload。 |
-| `ReloadConfigured(ctx, options...)` | 从 config loading options reload。 |
-| `Close()` | 停止 config monitor，drain async，关闭 appenders。 |
-
-只有当配置文件来自实际文件并且 `monitorInterval` 为正数时，`NewConfiguredLoggerContext` 才会启动文件轮询。
-
-## Config Reloader
-
-应用已有自己的生命周期或文件 watcher 时，可以直接使用 `ConfigReloader`。
-
-```go
-reloader, err := goarklog.NewConfigReloader(handler,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-)
-if err != nil {
-	return err
-}
-
-changed, result, err := reloader.ReloadIfChanged(ctx)
-```
-
-`Watch(ctx, interval, onError)` 启动 polling loop，并返回一个在 context done 时关闭的 channel。
-
-## Native Logger
-
-native logger 避开部分标准 `slog.Record` facade，并提供固定三属性快速路径。
-
-```go
-logger, err := goarklog.NewNativeLogger(handler, "goark.http")
-if err != nil {
-	return err
-}
-
-_ = logger.LogAttrs3(ctx, slog.LevelInfo, "request done",
-	slog.String("method", "GET"),
-	slog.Int("status", 200),
-	slog.Duration("elapsed", elapsed),
-)
-```
-
-Native logger 方法：
-
-| 方法 | 说明 |
-| --- | --- |
-| `Name()` | Logger 名称。 |
-| `Enabled(ctx, level)` | 检查当前 route/global-filter 状态。 |
+| `Name()` | 返回有效 logger 名称。 |
+| `Enabled(ctx, level)` | 检查当前路由级别。 |
+| `WithAttrs(attrs...)` | 返回绑定属性的新 logger。 |
+| `WithGroup(name)` | 返回绑定属性分组的新 logger。 |
 | `Slog()` | 返回等价的 `*slog.Logger`。 |
-| `WithAttrs(attrs...)` | 返回绑定 attrs 的 logger。 |
-| `WithGroup(name)` | 返回带 flattened group prefix 的 logger。 |
-| `LogAttrs(ctx, level, message, attrs...)` | 写入动态 attr slice。 |
-| `LogAttrs3(ctx, level, message, a0, a1, a2)` | 写入正好三个 attrs，开销最低。 |
-| `Debug`, `Info`, `Warn`, `Error`, `Fatal` | 使用 background context 的 convenience methods。 |
-| `DebugContext`, `InfoContext`, `WarnContext`, `ErrorContext`, `FatalContext` | context-aware convenience methods。 |
-| `At(level)`, `AtTrace`, `AtDebug`, `AtInfo`, `AtWarn`, `AtError`, `AtFatal` | 创建 builder。 |
+| `LogAttrs(ctx, level, message, attrs...)` | 写结构化事件。 |
+| `LogAttrs3(ctx, level, message, a0, a1, a2)` | 固定三个属性的极热路径。 |
+| `Debug`, `Info`, `Warn`, `Error`, `Fatal` | 便捷级别方法。 |
+| `DebugContext`, `InfoContext`, `WarnContext`, `ErrorContext`, `FatalContext` | 带 context 的便捷方法。 |
+| `At(level)`, `AtTrace`, `AtDebug`, `AtInfo`, `AtWarn`, `AtError`, `AtFatal` | 链式事件构造器入口。 |
 
-`WithLoggerCaller(true)` 会为 native events 捕获 caller PC。只有 layouts 需要 caller converters 或 JSON Template source resolver 时才应在热路径启用。
+原生 logger 选项：
 
-## Log Builder
+| 选项 | 说明 |
+| --- | --- |
+| `WithLoggerCaller(enabled)` | 为 true 时采集调用位置；路由需要位置时也会强制采集。 |
+| `WithLoggerMessageFactory(factory)` | 替换默认 `{}` 参数化消息工厂。 |
+
+## 链式构造器
+
+`LogBuilder` 在级别关闭时跳过属性构建。
+
+| 方法 | 说明 |
+| --- | --- |
+| `Enabled()` | 当前事件是否会写出。 |
+| `WithContext(ctx)` | 设置事件 context。 |
+| `WithGroup(name)` | 给后续属性增加分组前缀。 |
+| `WithAttr`, `WithAttrs` | 添加 `slog.Attr`。 |
+| `WithString`, `WithInt`, `WithBool`, `WithAny` | 类型化属性辅助方法。 |
+| `WithMarker(marker)` | 添加 marker。 |
+| `WithError`, `WithThrowable` | 添加不采集栈的异常快照。 |
+| `WithErrorStack(err)` | 添加带调用栈的异常快照。 |
+| `Log(message)` | 写普通字符串消息。 |
+| `Logf(pattern, args...)` | 使用 `{}` 占位符。 |
+| `LogMessage(message)` | 写 `Message`；带属性的消息会追加 attrs。 |
 
 ```go
-err := logger.AtInfo().
+_ = logger.AtInfo().
 	WithContext(ctx).
 	WithGroup("http").
 	WithString("method", "GET").
 	WithInt("status", 200).
-	WithBool("cached", false).
-	Log("request done")
+	Logf("request {} completed", requestID)
 ```
 
-Builder 方法：
+## Context、Marker 与 Throwable
 
-| 方法 | 说明 |
+| API | 说明 |
 | --- | --- |
-| `Enabled()` | 当前事件是否会被输出。 |
-| `WithContext(ctx)` | 设置 event context。 |
-| `WithGroup(name)` | 为后续 attrs 添加 flattened group prefix。 |
-| `WithAttr(attr)` | 添加一个 attr。 |
-| `WithAttrs(attrs...)` | 添加多个 attrs。 |
-| `WithString`, `WithInt`, `WithBool`, `WithAny` | Typed attr helpers。 |
-| `WithMarker(marker)` | 添加 marker attr。 |
-| `WithError(err)`, `WithThrowable(err)` | 添加 throwable，不捕获 stack。 |
-| `WithErrorStack(err)` | 添加 throwable 并捕获 stack。 |
-| `Log(message)` | 写入普通字符串 message。 |
-| `Logf(pattern, args...)` | 默认使用 `{}` placeholder 的 message factory。 |
-| `LogMessage(message)` | 写入自定义 message object。 |
+| `WithContextAttrs`, `WithContextAttr`, `ContextAttrs` | MDC 风格请求属性。 |
+| `NewMarker`, `MarkerAttr`, `WithMarker`, `ContextMarker` | 支持父级匹配的 marker。 |
+| `ThreadNameAttr`, `WithThreadName`, `ContextThreadName` | Go goroutine 的逻辑线程名。 |
+| `WithContextStack`, `ContextStack` | NDC 风格栈值。 |
+| `NewThrowable`, `NewThrowableWithStack` | 将 Go error 转换为异常快照。 |
+| `ThrowableAttr`, `ThrowableWithStackAttr` | 给 slog 事件添加异常数据。 |
 
-builder 在分配 backing slice 前，会把最多 8 个 attrs 存在 inline 空间里。
+标准属性键包括 `goark.throwable`、`goark.marker`、`goark.thread`、
+`goark.contextStack`、`goark.structuredData.id` 和
+`goark.structuredData.type`。
 
-## Context Attributes
+## 消息
+
+| 类型 | 函数 | 说明 |
+| --- | --- | --- |
+| `SimpleMessage` | `NewSimpleMessage(text)` | 不可变文本。 |
+| `ParameterizedMessage` | `NewParameterizedMessage(pattern, args...)` | 按顺序替换 `{}`；`\{}` 保留字面占位符。 |
+| `MapMessage` | `NewMapMessage(attrs...)` | 文本是 key/value，同时向 layout/filter 暴露 attrs。 |
+| `StructuredDataMessage` | `NewStructuredDataMessage(id, type, message, attrs...)` | RFC5424 风格结构化字段和普通 attrs。 |
+| `MessageFactoryFunc` | 适配器 | 自定义参数化消息行为。 |
+
+## 级别
+
+内置级别是 `ALL`、`TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`、`FATAL`
+和 `OFF`。`WARNING` 按 `WARN` 解析，也接受整数级别。
+
+| API | 说明 |
+| --- | --- |
+| `ParseLevel(value)` | 解析名称或整数。 |
+| `LevelName(level)` | 返回已注册精确名称，或返回最接近的内置区间名称。 |
+| `NewLevelRegistry()` | 创建独立级别注册表。 |
+| `DefaultLevelRegistry()` | 返回进程默认级别注册表。 |
+| `RegisterLevel(name, level)` | 注册进程级自定义级别。 |
+
+## Appender API
+
+所有 appender 实现：
 
 ```go
-ctx = goarklog.WithContextAttrs(ctx,
-	slog.String("trace_id", "trace-1"),
-	slog.String("span_id", "span-1"),
-)
-ctx = goarklog.WithThreadName(ctx, "worker-1")
-ctx = goarklog.WithMarker(ctx, goarklog.NewMarker("HTTP"))
-ctx = goarklog.WithContextStack(ctx, "tenant-a", "checkout")
+type Appender interface {
+	Name() string
+	Append(ctx context.Context, event Event) error
+	Close() error
+}
 ```
 
-Context helpers：
+构造器包括 `NewConsoleAppender`、`NewFileAppender`、`NewJSONAppender`、
+`NewJSONFileAppender`、`NewRollingFileAppender`、`NewAsyncAppender`、
+`NewFailoverAppender`、`NewRoutingAppender`、`NewRewriteAppender` 和
+`NewFilteredAppender`。
 
-| Helper | 说明 |
+`NewAppenderRef` 配合 `WithAppenderRefLevel`、`WithAppenderRefLocation`、
+`WithAppenderRefFilters`，在代码中表达 Log4j2 风格 appender 引用。
+
+## Layout API
+
+`Layout` 将事件格式化到调用方持有的 buffer。内置构造器包括
+`NewDefaultLayout`、`NewPatternLayout`、`NewPatternLayoutWithOptions`、
+`NewJSONLayout`、`NewJSONTemplateLayout`、
+`NewJSONTemplateLayoutFromFile`、`NewXMLLayout`、`NewYAMLLayout`、
+`NewCSVLayout`、`NewHTMLLayout` 和 `NewGELFLayout`。`TextLayout`、
+`RFC5424Layout` 和 `SyslogLayout` 是可直接使用的类型。
+
+`LayoutOptions` 包含 `Compact`、`EventEOL`、`Complete`、
+`IncludeStacktrace`、`StacktraceAsString`、`PropertiesAsList`、
+`IncludeNullDelimiter`、`DisableANSI`、`Header` 和 `Footer`。
+
+## Filter API
+
+所有 filter 实现 `Decide(ctx, event) FilterDecision`。裁决包括
+`FilterNeutral`、`FilterAccept` 和 `FilterDeny`。
+
+构造器覆盖 threshold、level、level range、regex、attr、marker、
+no-marker、map、thread context map、thread context stack、structured data、
+throwable、string match、time、burst、dynamic threshold、deny、composite 和
+script filter。`ScriptFilter` 只在代码中使用，必须由调用方提供
+`ScriptEvaluator`。
+
+## 配置 API
+
+配置加载选项：
+
+| 选项 | 说明 |
 | --- | --- |
-| `WithContextAttrs` | 向 context 添加 immutable attr snapshot。 |
-| `WithContextAttr` | 向 context 添加单个 attr。 |
-| `ContextAttrs` | 返回 context attr snapshot。 |
-| `NewMarker` | 创建 marker，可带 parents。 |
-| `MarkerAttr` | 将 marker 转为 slog attr。 |
-| `WithMarker`, `ContextMarker` | 存取 context marker。 |
-| `ThreadNameAttr` | 将 logical thread name 转为 attr。 |
-| `WithThreadName`, `ContextThreadName` | 存取 logical thread name。 |
-| `WithContextStack`, `ContextStack` | 存取 NDC-style stack values。 |
+| `WithConfigPath(path)` | 最高优先级显式路径。 |
+| `WithConfigEnvKey(key)` | 覆盖 `GOARK_LOG_CONFIG` 环境变量名。 |
+| `WithConfigWorkingDir(dir)` | 相对路径和默认发现路径的基准目录。 |
+| `WithBootPropertyResolver(resolver)` | 读取 `goark.log.config`、`goark.logging.config` 和 `logging.config`。 |
+| `WithDefaultConfigPaths(paths...)` | 替换默认发现路径。 |
+| `WithConfigLookups(resolver)` | 使用自定义 lookup resolver。 |
+| `WithPluginRegistry(registry)` | 使用显式插件注册表。 |
 
-Event attributes 按以下顺序合并：
+`ConfigResult` 返回 `Source`、`Path` 和 `MonitorInterval`。
 
-1. handler-bound attrs；
-2. context attrs；
-3. record/native attrs。
+解析辅助函数包括 `ParseByteSize`、`ParseRollingInterval`、
+`ParseRollingMaxAge` 和 `ParseMonitorInterval`。
 
-同一个 key 出现多次时，`Event.Attr(key)` 返回最新值。
+## 重载与状态日志
 
-## Throwable 和 Message APIs
+`ConfigReloader.Reload(ctx)` 总是重新加载。`ReloadIfChanged(ctx)` 检查配置
+路径、修改时间和大小。`Watch(ctx, interval, onError)` 轮询到 context 取消。
 
-Throwable helpers：
+`StatusLogger` 记录内部配置与重载事件。使用 `NewStatusLogger`、
+`WithStatusLevel`、`WithStatusWriter` 和 `WithStatusBufferSize`。
 
-| Helper | 说明 |
-| --- | --- |
-| `NewThrowable(err)` | 捕获 error type/message/cause chain，不捕获 stack。 |
-| `NewThrowableWithStack(err)` | 捕获 throwable 和当前 stack。 |
-| `ThrowableAttr(err)` | 添加标准 `goark.throwable` attr。 |
-| `ThrowableWithStackAttr(err)` | 添加带 stack 的标准 throwable attr。 |
+## 插件 API
 
-Message helpers：
+使用 `NewPluginRegistry` 创建隔离注册表，或使用 `DefaultPluginRegistry`
+做进程级注册。通过 `RegisterAppender`、`RegisterLayout`、`RegisterFilter`、
+`RegisterLookup`、`RegisterJSONTemplateResolver` 或 `RegisterPlugins` 注册。
 
-| Helper | 说明 |
-| --- | --- |
-| `NewSimpleMessage(text)` | immutable string message。 |
-| `NewParameterizedMessage(pattern, args...)` | `{}` placeholder message。 |
-| `NewMapMessage(attrs...)` | attrs 表示的 structured message。 |
-| `NewStructuredDataMessage(id, type, message, attrs...)` | RFC5424-style structured message。 |
-| `WithLoggerMessageFactory(factory)` | 替换 native logger parameterized message factory。 |
-
-## Status Logger
-
-```go
-status := goarklog.NewStatusLogger(
-	goarklog.WithStatusLevel(slog.LevelWarn),
-	goarklog.WithStatusWriter(os.Stderr),
-	goarklog.WithStatusBufferSize(128),
-)
-
-logging, err := goarklog.NewLoggerContext(options,
-	goarklog.WithLoggerContextStatus(status),
-)
-```
-
-`StatusLogger` 记录内部 config、reload 和 close errors。配置文件里的 `status` 字段会为兼容性解析，但当前不会调节 `StatusLogger`。
-
-## 关闭规则
-
-- 始终调用 `Handler` 或 `LoggerContext` 的 `Close`。
-- `Close` 会先 drain Handler-level async，再关闭 appenders。
-- runtime close order 会先关闭 async appenders，再关闭它们的 delegates。
-- File 和 rolling appenders 会 flush buffers，并在需要时写 layout footers。
-- Rolling async actions 会在 `Close` 返回前 drain 完成。
-- 重复调用 `Close` 是安全的。
+`NewPluginSet` 配合 `WithPluginAppender`、`WithPluginLayout`、
+`WithPluginFilter`、`WithPluginLookup` 和
+`WithPluginJSONTemplateResolver` 可以创建可复用的 `PluginRegistrar`。

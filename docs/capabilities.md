@@ -1,113 +1,113 @@
-# Capability Boundary
+# Capabilities
 
 [简体中文](capabilities.zh-CN.md)
 
-This document records what the `goark.dev/log` core module currently provides,
-what is intentionally out of scope, and which validation gates should be used
-before release.
+This matrix describes the current core module, not planned companion modules.
+Use it to decide whether a feature is available directly, available through an
+extension boundary, or intentionally outside the core.
 
-## Design Principles
+## Runtime API
 
-- Go-native API: explicit construction, interfaces, options, and plugin
-  registration.
-- Low-allocation hot paths: common JSON, file, direct native logging, and
-  ring-buffer paths avoid reflection-heavy work.
-- Dependency-light core: comparison dependencies stay in the independent
-  `benchmarks/compare` module.
-- Deterministic shutdown: async logger, async appender, rolling compression, and
-  delete actions drain on `Close`.
-- Safe defaults: no remote lookup, no embedded script engine, no built-in
-  external-system appender, and no observability exporter in core.
-
-## Supported in Core
-
-| Area | Status | Notes |
+| Capability | Status | Notes |
 | --- | --- | --- |
-| `slog.Handler` | supported | Implements `Enabled`, `Handle`, `WithAttrs`, and `WithGroup`; can be installed as `slog.Default()`. |
-| Native logger | supported | `NewNativeLogger`, `LogAttrs`, `LogAttrs3`, builder API, and message factories. |
-| Logger routing | supported | Root logger, named rules, prefix matching, additivity, appender-ref level/filter, and includeLocation. |
-| Custom levels | supported | Built-in `ALL`, `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `OFF`, and `RegisterLevel`. |
-| Context attributes | supported | `WithContextAttrs`, `ContextAttrs`, MDC/NDC-style layout output. |
-| Marker and throwable | supported | Context marker, marker attr, throwable attr, and optional throwable stack snapshots. |
-| Async logger | supported | Bounded ring buffer, batch drain, block/drop/drop-debug/sync-fallback, wait strategies, counters, and drain on close. |
-| Async appender | supported | Appender wrapper with bounded queue, batch drain, counters, error handler, and drain on close. |
-| File appender | supported | Append/truncate, create-on-demand, permissions, buffering, and flush-on-write. |
-| JSON appender | supported | Direct single-line JSON to stdout/stderr or file; file mode supports buffering. |
-| Rolling file appender | supported | Size/time/cron/startup triggers, `%d`/`%i`, gzip, max count, max age, delete actions, and async action worker. |
-| PatternLayout | supported | Time, level, logger, message, attrs, MDC, marker, NDC, caller, throwable, host, sequence, ANSI style, and nested converters. |
-| Structured layouts | supported | JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog, YAML, and HTML. |
-| Filters | supported | Level, range, regex, attrs, marker, MDC, structured data, throwable, time windows, burst limiter, and dynamic thresholds. |
-| Composite appenders | supported | Async, Failover, Routing, and Rewrite are config-buildable. |
-| Lookups | supported local subset | `env`, `sys`, `go`, `date`, `prop`, and `property`. |
-| Configuration formats | supported | YAML, JSON, TOML, XML, and properties. |
-| Reload | supported with constraints | Polls a concrete config file; async logger queue/runtime shape cannot be hot-replaced. |
-| Plugins | supported | `PluginRegistry`, `PluginRegistrar`, `PluginSet`, package helpers, lookup plugins, JSON Template resolvers, and registrar generator. |
+| `slog.Handler` implementation | Built in | Supports standard `slog.Logger`, `WithAttrs`, `WithGroup`, and `LogAttrs`. |
+| Named loggers | Built in | `NewLogger`, `WithName`, and `LoggerContext.Logger`. |
+| Native logger | Built in | Low-allocation builder, fixed three-attr path, and `slog` interop. |
+| Parameterized messages | Built in | `{}` placeholders through `ParameterizedMessageFactory`. |
+| Map and structured data messages | Built in | Message attrs are also visible to layouts and filters. |
+| Markers | Built in | Supports parent marker matching. |
+| MDC-style context attrs | Built in | `WithContextAttrs` and pattern `%X{}` / JSON Template `mdc`. |
+| NDC-style context stack | Built in | `WithContextStack`, `%ndc`, and JSON Template `contextStack`. |
+| Throwable snapshots | Built in | Go errors with optional stack capture. |
+| Status logger | Built in | Internal configuration and reload events. |
 
-## Not in Core
+## Configuration
 
-| Area | Reason | Recommended approach |
+| Capability | Status | Notes |
 | --- | --- | --- |
-| HTTP appender | Connection lifecycle, retry, timeout, TLS, and response handling are deployment-specific. | Build an external module and register an appender plugin. |
-| Socket appender | Framing, reconnect, backpressure, and protocol choices vary. | Build an external module. |
-| Syslog network appender | Transport, TLS, facility/app name mapping, and retry policy are environment-specific. | Build an external module; core only provides RFC5424/Syslog layout. |
-| Kafka, Pulsar, RabbitMQ | Broker clients and delivery semantics are heavy dependencies. | Keep in dedicated Goark integration modules. |
-| SMTP appender | Slow network I/O and credential handling do not belong in the core hot path. | Build a plugin module with explicit queue and retry behavior. |
-| Database appender | Schema, transactions, batching, and failure handling are database-specific. | Build a database-specific plugin module. |
-| OpenTelemetry, Prometheus | Observability design should be shared across Goark modules and remain optional. | Add after a separate observability design. |
-| Script runtime | JavaScript/Lua/expr/Starlark runtime and sandbox decisions are security-sensitive. | Core exposes `ScriptEvaluator` API only. |
-| Remote lookup namespaces | JNDI/LDAP/RMI-style lookups are unsafe for config-time resolution. | Blocked by default. |
-| Runtime plugin scanning | Scanning adds implicit startup behavior and cost. | Use explicit registration or generated registrars. |
+| YAML | Built in | Strict known-field structured decoding. |
+| JSON | Built in | Same logical model as YAML. |
+| TOML | Built in | Same logical model as YAML. |
+| XML | Built in | Log4j2-style root and child elements. |
+| Java properties | Built in | Practical key mapping; rolling policy coverage is narrower than YAML/TOML/XML. |
+| Wrappers | Built in | Top-level, `configuration`, or `goark.log`; cannot be mixed. |
+| Config discovery | Built in | Explicit path, env var, boot properties, default files, then defaults. |
+| Lookup expansion | Built in and extensible | Built-ins: `env`, `sys`, `go`, `date`, plus file `prop` / `property`. |
+| Blocked lookup namespaces | Built in | `jndi`, `ldap`, and `rmi` are blocked. |
+| Reload | Built in | Explicit `ConfigReloader` and `LoggerContext` polling through `monitorInterval`. |
 
-## Dependency Boundary
+## Appenders
 
-Core `go.mod` dependencies are limited to:
+| Appender | Status | Notes |
+| --- | --- | --- |
+| Console | Built in | stdout/stderr with layouts. |
+| File | Built in | Buffering, permissions, append/truncate, create-on-demand, headers, footers. |
+| JSON direct | Built in | stdout/stderr or file, optimized event JSON path. |
+| Rolling file | Built in | Size/time/cron/startup, gzip, retention, delete actions, async archive actions. |
+| Async | Built in | Appender-level queue over delegate appenders. |
+| Failover | Built in | Primary plus ordered failovers. |
+| Routing | Built in | Attribute-key route selection with default route. |
+| Rewrite | Built in | Adds and removes attrs before delegation. |
+| HTTP | Plugin boundary | Parsed fields can be passed to a registered plugin; no core client. |
+| Socket | Plugin boundary | Parsed fields can be passed to a registered plugin; no core client. |
+| Network syslog | Plugin boundary | Core has RFC5424/syslog layouts, not a network client. |
+| Kafka, Pulsar, RabbitMQ | Plugin boundary | Broker dependencies stay outside core. |
+| SMTP, database sinks | Plugin boundary | Implement as external appender modules. |
 
-- `github.com/bytedance/sonic`
-- `github.com/pelletier/go-toml/v2`
-- `gopkg.in/yaml.v3`
+## Layouts
 
-The zap and zerolog comparison dependencies live in `benchmarks/compare/go.mod`
-and must not be moved into the core module.
+| Layout | Status | Notes |
+| --- | --- | --- |
+| Pattern | Built in | Log4j-style converters and ANSI style/highlight support. |
+| Text | Built in | Stable text key/value output. |
+| JSON | Built in | Structured event JSON with lifecycle options. |
+| JSON Template | Built in and extensible | Built-in resolvers plus plugin resolver registry. |
+| XML | Built in | Single event XML fragment. |
+| CSV | Built in | Fixed event CSV line. |
+| GELF | Built in | Graylog Extended Log Format JSON. |
+| RFC5424 | Built in | Syslog text line layout. |
+| Syslog layout | Built in | Alias of RFC5424 layout. |
+| YAML | Built in | Single event YAML document. |
+| HTML | Built in | HTML table row. |
 
-## Validation Gates
+## Filters
 
-Short gates:
+| Filter family | Status | Notes |
+| --- | --- | --- |
+| Threshold, level, level range | Built in | Level gates. |
+| Regex and string match | Built in | Message/logger/attr or substring matching. |
+| Attr, map, thread context map, structured data | Built in | Attribute key/value matching. |
+| Marker and no-marker | Built in | Marker presence and hierarchy matching. |
+| Thread context stack | Built in | NDC-style stack matching. |
+| Throwable | Built in | Throwable and error attribute matching. |
+| Time | Built in | Time-of-day intervals with optional IANA time zone. |
+| Burst | Built in | Token-bucket limiter for lower-severity events. |
+| Dynamic threshold | Built in | Attribute-selected threshold. |
+| Deny and composite | Built in | Always-deny and nested chains. |
+| Script filter | Go API only | Requires caller-provided evaluator; no configured script runtime in core. |
 
-```bash
-GOWORK=off go test ./...
-GOWORK=off go vet ./...
-GOWORK=off go test ./... ./cmd/goark-log-plugin-gen ./internal/disruptor ./internal/jsoncodec
-```
+## Rolling Files
 
-Focused hot-path benchmark:
+| Capability | Status | Notes |
+| --- | --- | --- |
+| Size policy | Built in | `%i` required in `filePattern` when enabled. |
+| Time policy | Built in | Interval and modulation support. |
+| Cron policy | Built in | 5, 6, or 7 fields; year field must be wildcard-like. |
+| Startup policy | Built in | Optional rollover on startup. |
+| Gzip archives | Built in | For archive files; not allowed with direct write. |
+| Max archive count | Built in | `strategy.max` or legacy `maxBackups`. |
+| Max archive age | Built in | `strategy.maxAge` or legacy `maxAge`. |
+| Delete action | Built in | Path depth, glob, age, accumulated count, and accumulated size. |
+| Async archive actions | Built in | Serial background worker for compression and deletion. |
+| Direct write strategy | Built in | Requires `filePattern`; rejects gzip. |
 
-```bash
-GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
-```
+## Production Boundaries
 
-Long stress gate:
-
-```bash
-GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
-```
-
-Independent comparison module:
-
-```bash
-cd benchmarks/compare
-GOWORK=off go test ./...
-GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=5s -count=3 -cpu=1,4,16
-```
-
-## Release Boundary
-
-Before publishing a tag, confirm:
-
-- `dev` contains every intended change.
-- `main` is updated through the approved release flow.
-- Core tests and compare-module tests pass.
-- Race and stress checks are either current or explicitly documented as deferred.
-- Benchmark paths use `./benchmarks/core` for core benchmarks after the benchmark
-  package split.
-- README and docs do not claim unsupported external appenders or observability
-  exporters.
+| Concern | Current support |
+| --- | --- |
+| Backpressure | Handler-level async and appender-level async support block, drop, drop-debug, and sync-fallback. |
+| Shutdown | Handler and logger context close drains queues and closes appenders. |
+| Caller location cost | Captured only when logger/options/routes require it. |
+| Hot-path formatting | JSON direct and native logger fast paths exist; claims require current benchmarks. |
+| Observability exporters | Plugin boundary; no OpenTelemetry or Prometheus exporter in core. |
+| Remote delivery retries | Plugin boundary for remote appenders. |

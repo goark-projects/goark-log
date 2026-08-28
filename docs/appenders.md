@@ -1,11 +1,12 @@
-# Appender Reference
+# Appenders
 
 [简体中文](appenders.zh-CN.md)
 
-An appender is the final output boundary for a log event. Every appender must be
-safe for concurrent `Append` calls and must release resources on `Close`.
+Appenders are the final write targets for an event. They are selected through
+root and named logger routes, appender references, routing appenders, and
+failover appenders.
 
-The public appender contract is:
+## Contract
 
 ```go
 type Appender interface {
@@ -15,65 +16,37 @@ type Appender interface {
 }
 ```
 
-## Built-In Appender Types
+`Append` must be safe for concurrent callers. `Close` is expected to flush
+buffers and release owned resources. `Handler.Close` closes async appenders
+first, then the remaining appenders, and skips duplicate appender names.
 
-| Type | Aliases | Purpose |
+## Common Configuration
+
+| Field | Used by | Notes |
 | --- | --- | --- |
-| `console` | none | Writes formatted events to stdout or stderr. |
-| `file` | none | Writes formatted events to one regular file. |
-| `json` | `jsonDirect`, `jsonWriter` | Writes hand-encoded single-line JSON to stdout, stderr, or a file. |
-| `rolling`, `rollingFile` | `rolling-file`, `rolling_file` after normalization | Writes one active file and rolls archives by size, time, cron, or startup. |
-| `async` | none | Wraps one or more downstream appenders behind a bounded queue. |
-| `failover`, `failoverAppender` | `failover-appender`, `failover_appender` after normalization | Tries a primary appender first, then failover appenders when writes fail. |
-| `routing`, `routingAppender` | `routing-appender`, `routing_appender` after normalization | Selects a downstream appender by route key. |
-| `rewrite`, `rewriteAppender` | `rewrite-appender`, `rewrite_appender` after normalization | Rewrites event attributes before writing to a delegate appender. |
+| `type` | all configured appenders | Required. Kind matching ignores case, hyphen, and underscore. |
+| `layout` | console, file, rolling-file | Omitted layout defaults to the Spring Boot style pattern. |
+| `filters`, `filterRefs`, `filter-refs` | all | Appender-level filters wrap the appender before it is used. |
+| `target` | console, JSON direct | `stderr` is default; `stdout` is supported. |
+| `fileName`, `file-name`, `path` | file sinks | File path. Required for file and rolling-file. Optional for JSON direct file output. |
+| `bufferSize`, `buffer-size` | file sinks | Byte size string. `0` disables application buffering. |
+| `flushOnWrite`, `flush-on-write` | file sinks | Flushes the buffered writer after each event. |
+| `append` | file, rolling-file | Defaults to true. False truncates at open. |
+| `createOnDemand`, `create-on-demand` | file, rolling-file | Delays opening the file until the first event. |
+| `filePermissions`, `file-permissions` | file, rolling-file | Defaults to `0644`; accepts octal or symbolic forms. |
+| `appenderRefs`, `appender-refs`, `refs` | composite appenders | Downstream appender references. |
 
-Appender and plugin kinds are normalized by trimming spaces, lowercasing, and
-removing `-` and `_`.
+Remote fields such as `url`, `method`, `address`, `network`, `facility`,
+`appName`, `connectTimeout`, and `writeTimeout` are parsed and passed to
+plugins. The core module does not implement remote appenders.
 
-## Common Configuration Fields
+## Console
 
-These fields are accepted by the appender config object. Only the relevant
-built-in appender uses each field. External appender plugins can also read them
-through `AppenderBuildConfig`.
+Type: `console`.
 
-| Field | Aliases | Used by core | Description |
-| --- | --- | --- | --- |
-| `type` | none | all | Required appender type. |
-| `target` | none | console, json | `stderr`, `stdout`; JSON also rejects `file` unless `fileName` is set. |
-| `fileName` | `file-name`, `path` | file, json file, rolling | Active log file path. |
-| `layout` | none | console, file, rolling | Layout object. JSON direct appender ignores `layout`. |
-| `rolling` | none | rolling | Rolling policy and strategy object. |
-| `appenderRefs` | `appender-refs`, `refs` | async, failover, rewrite | Downstream appender references. |
-| `primary` | `primary-ref` | failover | Primary appender reference. |
-| `failovers` | `failover-refs` | failover | Failover appender references. |
-| `routeKey` | `route-key` | routing | Event attribute used as route key. |
-| `defaultRoute` | `default-route` | routing | Fallback appender reference. |
-| `routes` | none | routing | Map from route key to appender name. |
-| `rewrite` | none | rewrite | Attribute rewrite policy. |
-| `queueSize` | `queue-size` | async | Async appender queue size. |
-| `batchSize` | `batch-size` | async | Async appender batch size. |
-| `overflowStrategy` | `overflow-strategy` | async | Queue-full behavior. |
-| `waitStrategy` | `wait-strategy` | async | Consumer wait behavior. |
-| `waitRetries` | `wait-retries` | async | Optional wait strategy retries. |
-| `sleepTime` | `sleep-time` | async | Optional wait strategy sleep duration. |
-| `timeout` | none | async | Optional blocking timeout. |
-| `bufferSize` | `buffer-size` | file, json file, rolling | Application-level buffer size. `0` disables buffering. |
-| `flushOnWrite` | `flush-on-write` | file, json file, rolling | Flushes the appender buffer after every event. |
-| `append` | none | file, rolling | Appends instead of truncating the active file. |
-| `createOnDemand` | `create-on-demand` | file, rolling | Delays file creation until the first write. |
-| `filePermissions` | `file-permissions` | file, rolling | New file permissions. Accepts octal or `rwxr-x---` style. |
-| `filters` | `filterRefs`, `filter-refs` | all | Filter chain applied at the appender wrapper level. |
-| `url` | none | external only | Reserved for external appender plugins. |
-| `method` | none | external only | Reserved for external appender plugins. |
-| `address` | none | external only | Reserved for external appender plugins. |
-| `network` | none | external only | Reserved for external appender plugins. |
-| `facility` | none | external only | Reserved for external appender plugins. |
-| `appName` | `app-name` | external only | Reserved for external appender plugins. |
-| `connectTimeout` | `connect-timeout` | external only | Reserved for external appender plugins. |
-| `writeTimeout` | `write-timeout` | external only | Reserved for external appender plugins. |
-
-## Console Appender
+Console writes to stderr by default, or stdout when `target: stdout` is set.
+It supports every layout and writes layout headers on first event and footers
+on close when the layout is in complete mode.
 
 ```yaml
 appenders:
@@ -82,135 +55,91 @@ appenders:
     target: stderr
     layout:
       type: pattern
-      pattern: "%d %5p %pid --- [%thread] %c : %m%attrs%n"
+      pattern: "%d %5p %c : %m%attrs%n"
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `type` | required | `console`. |
-| `target` | `stderr` | `stderr` or `stdout`. XML also accepts `SYSTEM_ERR`, `STDERR`, `SYSTEM_OUT`, `STDOUT`. |
-| `layout` | default pattern | Any built-in or registered layout. |
-| `filters` | empty | Optional appender-level filters. |
+Programmatic API: `NewConsoleAppender`, `WithConsoleName`,
+`WithConsoleWriter`, and `WithConsoleLayout`.
 
-Programmatic API:
+## File
 
-```go
-appender := goarklog.NewConsoleAppender(
-	goarklog.WithConsoleName("console"),
-	goarklog.WithConsoleWriter(os.Stdout),
-	goarklog.WithConsoleLayout(goarklog.TextLayout{}),
-)
-```
+Type: `file`.
 
-## File Appender
+File writes to a local path and creates parent directories. It validates that
+the target is not an existing directory. The default buffer size is 256 KiB.
 
 ```yaml
 appenders:
-  file:
+  app:
     type: file
-    fileName: logs/app.log
+    fileName: "${env:GOARK_LOG_DIR:-logs}/app.log"
     bufferSize: 256KiB
-    flushOnWrite: false
     append: true
-    createOnDemand: false
+    createOnDemand: true
     filePermissions: "0644"
     layout:
       type: json
       eventEol: true
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `fileName`, `file-name`, `path` | required | File path. Parent directories are created with `0755`. |
-| `layout` | default pattern | Layout used before writing. |
-| `bufferSize`, `buffer-size` | `256KiB` | Application buffer size. `0` disables buffering. Negative values fail. |
-| `flushOnWrite`, `flush-on-write` | false | Flush after every event. More durable, slower. |
-| `append` | true | `true` uses `O_APPEND`; `false` truncates on open. |
-| `createOnDemand`, `create-on-demand` | false | When true, the file opens on first append. |
-| `filePermissions`, `file-permissions` | `0644` | Octal such as `0600`, or symbolic `rw-------`. |
+Programmatic API: `NewFileAppender`, `WithFileName`, `WithFileLayout`,
+`WithFileBufferSize`, `WithFileFlushOnWrite`, `WithFileAppend`,
+`WithFileCreateOnDemand`, and `WithFilePermissions`.
 
-Programmatic API:
+## JSON Direct
 
-```go
-appender, err := goarklog.NewFileAppender("logs/app.log",
-	goarklog.WithFileName("file"),
-	goarklog.WithFileLayout(goarklog.NewJSONLayout(goarklog.LayoutOptions{EventEOL: true})),
-	goarklog.WithFileBufferSize(256*1024),
-	goarklog.WithFileAppend(true),
-)
-```
+Types: `json`, `jsonDirect`, `jsonWriter`.
 
-## JSON Appender
-
-The JSON appender bypasses general layout dispatch and writes a fixed JSON event
-shape directly:
-
-```json
-{"time":"2026-08-25T10:15:30.123+08:00","level":"INFO","logger":"goark.http","msg":"request done","status":200}
-```
-
-Console JSON:
+JSON direct bypasses the general layout interface and emits a single-line JSON
+object with `time`, `level`, `logger`, `msg`, and event attributes. Use this on
+hot paths or container stdout pipelines.
 
 ```yaml
 appenders:
-  json:
+  stdout:
     type: json
     target: stdout
 ```
 
-File JSON:
+When `fileName` is set, it writes to a file with optional `bufferSize` and
+`flushOnWrite`.
+
+Programmatic API: `NewJSONAppender`, `NewJSONFileAppender`,
+`WithJSONAppenderName`, `WithJSONAppenderWriter`,
+`WithJSONAppenderBufferSize`, and `WithJSONAppenderFlushOnWrite`.
+
+## Rolling File
+
+Types: `rolling`, `rollingFile`, `rolling-file`.
+
+Rolling file is a local file appender with size, time, cron, startup rollover,
+archive patterns, gzip, retention, and delete actions.
+
+Required fields:
+
+| Field | Notes |
+| --- | --- |
+| `fileName` | Active log file. |
+| `rolling.filePattern` | Archive pattern when custom archive naming is needed. Required for `directWrite`. |
+| At least one policy | Size, interval, cron, or startup rollover. The default programmatic constructor has size rollover enabled. |
 
 ```yaml
 appenders:
-  json:
-    type: json
-    fileName: logs/app.json
-    bufferSize: 256KiB
-    flushOnWrite: false
-```
-
-| Field | Default | Description |
-| --- | --- | --- |
-| `target` | `stderr` | `stderr` or `stdout` when `fileName` is empty. |
-| `fileName`, `file-name`, `path` | empty | When set, JSON is written to this file with the file appender path rules. |
-| `bufferSize`, `buffer-size` | `256KiB` for file mode | File buffer size. `0` disables buffering. |
-| `flushOnWrite`, `flush-on-write` | false | Flushes the file buffer after every event. |
-
-`target: file` without `fileName` is invalid. Programmatic `NewJSONFileAppender`
-rejects an explicit writer because file mode owns the file lifecycle.
-
-Programmatic API:
-
-```go
-stdoutJSON := goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(os.Stdout))
-
-fileJSON, err := goarklog.NewJSONFileAppender("logs/app.json",
-	goarklog.WithJSONAppenderBufferSize(256*1024),
-)
-```
-
-## Rolling File Appender
-
-```yaml
-appenders:
-  rolling:
+  appRolling:
     type: rolling-file
-    fileName: logs/app.log
-    bufferSize: 256KiB
-    append: true
+    fileName: "${LOG_DIR}/app.log"
     layout:
       type: json
       eventEol: true
+      includeStacktrace: true
     rolling:
-      filePattern: logs/archive/app-%d{yyyyMMdd-HHmmss}-%06i.log.gz
+      filePattern: "${LOG_DIR}/archive/app-%d{yyyyMMdd-HHmmss}-%06i.log.gz"
       policies:
         size:
           size: 100MiB
         time:
           interval: daily
           modulate: true
-        cron:
-          schedule: "0 0 0 * * ?"
         startup:
           enabled: true
       strategy:
@@ -220,242 +149,160 @@ appenders:
         compression:
           gzip: true
           async: true
-        delete:
-          basePath: logs/archive
-          maxDepth: 1
-          ifFileName:
-            glob: "*.log.gz"
-          ifLastModified:
-            age: 30d
 ```
 
-Appender-level file fields are the same as `file`: `fileName`, `layout`,
-`bufferSize`, `flushOnWrite`, `append`, `createOnDemand`, and
-`filePermissions`.
+Important validation rules:
 
-Rolling defaults:
-
-| Setting | Default |
+| Rule | Reason |
 | --- | --- |
-| appender name | `rollingFile` |
-| `maxSize` | `10MiB` |
-| `maxBackups` | `7` |
-| `bufferSize` | `256KiB` |
-| `fileIndex` | `nomax` |
-| time `modulate` | true |
-| action queue size | `32` |
+| `filePattern` must contain `%i` when size rollover is enabled. | Multiple size rollovers can happen within one timestamp bucket. |
+| `.gz` suffix or `gzip: true` enables compression. | Compression applies to archives, not the active file. |
+| `directWrite` requires `filePattern`. | There is no separate active file. |
+| `directWrite` rejects gzip. | The active stream cannot be gzip-renamed safely. |
+| `filePattern` must not resolve to the active `fileName` when not direct write. | Prevents self-rename data loss. |
 
-At least one trigger must be enabled: size, time, cron, or startup.
-
-### Rolling Fields
-
-| Field | Aliases | Description |
-| --- | --- | --- |
-| `filePattern` | `file-pattern` | Archive path pattern. Supports `%d{layout}`, `%i`, `%0Ni`, and `%%`. |
-| `maxSize` | `max-size` | Legacy shortcut for size policy. |
-| `interval` | none | Legacy shortcut for time policy. |
-| `cron` | `cronSchedule`, `cron-schedule` | Legacy shortcut for cron policy. |
-| `onStartup` | `on-startup` | Legacy shortcut for startup policy. |
-| `maxBackups` | `max-backups` | Legacy shortcut for retained archive count. |
-| `maxAge` | `max-age` | Legacy shortcut for retained archive age. |
-| `gzip` | `compress` | Enables gzip archive compression. Also enabled when `filePattern` ends with `.gz`. |
-| `directWrite` | `direct-write` | Writes directly to the active pattern file instead of renaming a stable active file. Requires `filePattern`; incompatible with gzip. |
-| `asyncActions` | `async-actions` | Runs compression and delete actions on a single background worker. |
-| `actionQueueSize` | `action-queue-size` | Bounded queue for async rolling actions. `0` means default `32`. |
-
-### Policies
-
-Policy names accept concise and Log4j2-style names:
-
-| YAML field | Aliases | Fields |
-| --- | --- | --- |
-| `policies.size` | `size-based-triggering-policy`, `sizeBasedTriggeringPolicy`, `SizeBasedTriggeringPolicy` | `size`, `maxSize`, `max-size`. |
-| `policies.time` | `time-based-triggering-policy`, `timeBasedTriggeringPolicy`, `TimeBasedTriggeringPolicy` | `interval`, `every`, `unit`, `modulate`. |
-| `policies.cron` | `cron-triggering-policy`, `cronTriggeringPolicy`, `CronTriggeringPolicy` | `schedule`, `cron`, `cronSchedule`, `cron-schedule`. |
-| `policies.startup` | `on-startup-triggering-policy`, `onStartupTriggeringPolicy`, `OnStartupTriggeringPolicy` | `enabled`. |
-
-When a size policy is active and `filePattern` is set, the pattern must include
-`%i`; otherwise configuration fails.
-
-### Strategy
-
-| Field | Aliases | Description |
-| --- | --- | --- |
-| `type` | none | `directWrite`, `direct-write`, or `directWriteRolloverStrategy` enables direct-write mode. |
-| `max` | none | Retained archive count. Overrides `maxBackups`. |
-| `maxBackups` | `max-backups` | Retained archive count. |
-| `maxAge` | `max-age` | Retained archive age. |
-| `fileIndex` | `file-index` | `nomax`, `no-max`, `none`, `max`, or `min`. |
-| `directWrite` | `direct-write` | Direct-write boolean. |
-| `asyncActions` | `async-actions` | Async compression/delete actions. |
-| `actionQueueSize` | `action-queue-size` | Async action queue size. |
-| `compression.gzip` | `compression.compress` | Enables gzip compression. |
-| `compression.async` | none | Enables async actions. |
-| `delete` | none | Single delete action. |
-| `deleteActions` | `delete-actions` | Multiple delete actions. |
-
-### Delete Action
-
-| Field | Aliases | Default | Description |
-| --- | --- | --- | --- |
-| `basePath` | `base-path` | archive directory or active file directory | Directory to scan. |
-| `maxDepth` | `max-depth` | `1` | Maximum file depth under `basePath`. |
-| `glob` | `ifFileName.glob` | `*` | File name or relative path glob. |
-| `age` | `ifLastModified.age` | disabled | Deletes files older than this age. |
-| `maxCount` | `max-count`, `ifAccumulatedFileCount.exceeds` | disabled | Keeps newest files up to this count. |
-| `maxSize` | `max-size`, `ifAccumulatedFileSize.exceeds` | disabled | Keeps newest files until accumulated size exceeds this value. |
-| `async` | none | false | Enables rolling async actions when present under strategy delete entries. |
-
-Programmatic API:
-
-```go
-appender, err := goarklog.NewRollingFileAppender("logs/app.log",
-	goarklog.WithRollingFileLayout(goarklog.NewJSONLayout(goarklog.LayoutOptions{EventEOL: true})),
-	goarklog.WithRollingMaxSize(100*1024*1024),
-	goarklog.WithRollingInterval(24*time.Hour),
-	goarklog.WithRollingFilePattern("logs/archive/app-%d{yyyyMMdd}-%03i.log.gz"),
-	goarklog.WithRollingGzip(true),
-	goarklog.WithRollingMaxBackups(30),
-	goarklog.WithRollingMaxAge(30*24*time.Hour),
-	goarklog.WithRollingAsyncActions(true),
-)
-```
+Programmatic API: `NewRollingFileAppender`, `WithRollingFileName`,
+`WithRollingFileLayout`, `WithRollingFileBufferSize`,
+`WithRollingFileFlushOnWrite`, `WithRollingFileAppend`,
+`WithRollingFileCreateOnDemand`, `WithRollingFilePermissions`,
+`WithRollingMaxSize`, `WithRollingInterval`, `WithRollingCronSchedule`,
+`WithRollingTimeModulate`, `WithRollingFilePattern`,
+`WithRollingFileIndexMode`, `WithRollingDirectWrite`,
+`WithRolloverOnStartup`, `WithRollingMaxBackups`, `WithRollingMaxAge`,
+`WithRollingGzip`, `WithRollingAsyncActions`,
+`WithRollingActionQueueSize`, and `WithRollingDeleteActions`.
 
 ## Async Appender
 
-Async appender wraps downstream appenders. It is useful when only a specific
-sink should be asynchronous.
+Type: `async`.
+
+Async appender queues events and sends them to one or more delegate appenders on
+a single background worker. It is useful when only selected destinations should
+be asynchronous.
 
 ```yaml
 appenders:
-  file:
-    type: file
-    fileName: logs/app.log
-    layout:
-      type: json
-      eventEol: true
   asyncFile:
     type: async
-    appenderRefs: [file]
-    queueSize: 4096
-    batchSize: 128
+    appenderRefs:
+      - ref: appRolling
+        level: info
+    queueSize: 8192
+    batchSize: 256
     overflowStrategy: block
     waitStrategy: yield
-root:
-  level: info
-  appenderRefs: [asyncFile]
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `appenderRefs`, `refs` | required | One or more downstream appenders. |
-| `queueSize` | `1024` | Must be greater than zero. Normalized to ring-buffer capacity. |
-| `batchSize` | `64` | Must be greater than zero; capped to queue size. |
-| `overflowStrategy` | `block` | Same aliases as Handler-level async logger. |
-| `waitStrategy` | `block` | Same aliases as Handler-level async logger. |
-| `waitRetries` | `0` | Non-negative. |
-| `sleepTime` | `0` | Go duration. |
-| `timeout` | `0` | Go duration. |
+Defaults: queue size 1024, batch size 64, overflow `block`, wait `block`.
+Queue size is normalized to the ring-buffer capacity required by the runtime.
+Close drains the queue.
 
-`Close` waits for producers and drains queued events. In configuration-built
-composite appenders, child appenders are owned by the full handler runtime and
-are not closed twice by the wrapper itself.
+Programmatic API: `NewAsyncAppender`, `WithAsyncName`, `WithAsyncQueueSize`,
+`WithAsyncBatchSize`, `WithAsyncOverflowStrategy`, `WithAsyncWaitStrategy`,
+`WithAsyncWaitOptions`, `WithAsyncErrorHandler`, and
+`WithAsyncCloseAppenders`.
 
-## Failover Appender
+## Handler-Level Async
+
+`asyncLogger`, `async-logger`, or `async` config enables a single async queue at
+the handler boundary. Use it when most events should pass through the same
+queue. Defaults when enabled: queue size 4096, batch size 64, overflow `block`,
+wait `block`.
+
+Handler-level async runtime shape cannot change during reload. Enablement,
+queue size, batch size, overflow strategy, wait strategy, wait options, and
+include-location must remain stable.
+
+## Overflow And Wait Strategies
+
+| Overflow strategy | Behavior |
+| --- | --- |
+| `block` | Producers wait until capacity is available. |
+| `drop` | Drops new events when the queue is full and increments the dropped counter. |
+| `drop-debug` | Drops events at DEBUG or lower when full; higher levels block. |
+| `sync-fallback` | Writes synchronously when the queue is full. |
+
+| Wait strategy | Behavior |
+| --- | --- |
+| `block` | General-purpose blocking wait. |
+| `sleep` | Sleeps between retries; accepts `sleepTime`, `waitRetries`, and `timeout`. |
+| `yield` | Yields the processor while waiting. |
+| `spin` | Busy spin. Use only after benchmark evidence. |
+
+## Failover
+
+Types: `failover`, `failoverAppender`.
+
+Failover tries the primary appender first. If it returns an error, failovers are
+tried in order until one succeeds. When all fail, the joined error is returned.
 
 ```yaml
 appenders:
-  primary:
-    type: file
-    fileName: logs/primary.log
-  fallback:
-    type: console
-    target: stderr
-  failover:
+  reliable:
     type: failover
-    primary: primary
-    failovers: [fallback]
-root:
-  level: info
-  appenderRefs: [failover]
+    primary: primaryFile
+    failovers: [stderrConsole]
 ```
 
-`primary` plus at least one failover is required. The shorthand
-`appenderRefs: [primary, fallback]` is also accepted; the first reference is the
-primary.
+Config-built failover appenders do not close child appenders themselves because
+the router owns the full appender list. Programmatic failover closes children by
+default unless `WithFailoverCloseChildren(false)` is used.
 
-Failover behavior:
+## Routing
 
-- If the primary write succeeds, failovers are not called.
-- If the primary fails, failovers are tried in order.
-- The first successful failover completes the write.
-- If every delegate fails, the returned error joins all failures.
+Types: `routing`, `routingAppender`.
 
-## Routing Appender
+Routing selects a downstream appender by event attribute. The default route key
+is `route`; config can set `routeKey`.
 
 ```yaml
 appenders:
-  defaultJson:
-    type: json
-    target: stdout
-  auditFile:
-    type: file
-    fileName: logs/audit.log
-    layout:
-      type: json
-      eventEol: true
-  router:
+  tenantRouter:
     type: routing
-    routeKey: channel
-    defaultRoute: defaultJson
+    routeKey: tenant
+    defaultRoute: stdout
     routes:
-      audit: auditFile
-root:
-  level: info
-  appenderRefs: [router]
+      tenant-a: tenantA
+      tenant-b: tenantB
 ```
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `routeKey`, `route-key` | `route` | Event attribute read as route key. |
-| `routes` | empty | Map of route value to appender name. |
-| `defaultRoute`, `default-route` | empty | Optional fallback appender. |
+If the event has no matching route and no default route, the event is skipped
+without error.
 
-At least one route or a default route is required. When no route matches and no
-default route exists, the event is skipped without error.
+## Rewrite
 
-## Rewrite Appender
+Types: `rewrite`, `rewriteAppender`.
+
+Rewrite applies a policy before delegating. The built-in configured policy adds
+attributes from `attrs`, `attributes`, or `properties`, and removes keys from
+`remove`, `removeAttrs`, or `remove-attrs`.
 
 ```yaml
 appenders:
-  json:
-    type: json
-    target: stdout
   redacted:
     type: rewrite
-    appenderRefs: [json]
+    appenderRefs: [tenantRouter]
     rewrite:
       attrs:
         service: billing
-      removeAttrs: [password, token]
-root:
-  level: info
-  appenderRefs: [redacted]
+      removeAttrs: [password, token, authorization]
 ```
 
-| Field | Aliases | Description |
-| --- | --- | --- |
-| `appenderRefs` | `refs` | Exactly one downstream appender. |
-| `rewrite.attrs` | `rewrite.attributes`, `rewrite.properties` | Adds or overwrites attributes with configured string values. |
-| `rewrite.remove` | `rewrite.removeAttrs`, `rewrite.remove-attrs` | Removes attributes by key before writing. |
+Programmatic API allows a custom `RewritePolicy`.
 
-The built-in rewrite policy is attribute-only. More complex behavior should use
-the programmatic `NewRewriteAppender` with a custom `RewritePolicy` or a plugin.
+## Appender References
 
-## Unsupported Core Appenders
+Appender refs can be strings or objects.
 
-The XML schema has `<Http>`, `<Socket>`, and `<Syslog>` element slots, and the
-generic config object exposes fields such as `url`, `address`, `facility`, and
-timeouts. The core module does not register network appenders. A config using
-those types fails unless an external module registers the matching appender
-factory.
+```yaml
+appenderRefs:
+  - console
+  - ref: rolling
+    level: warn
+    includeLocation: true
+    filterRefs: [auditMarker]
+```
+
+Per-reference `level` filters before the appender call. `includeLocation: true`
+forces caller capture; `includeLocation: false` clears caller data for that
+reference.
