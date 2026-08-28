@@ -76,6 +76,36 @@ type lifecycleLayout interface {
 	AppendFooter(buf *bytes.Buffer) error
 }
 
+type cloneableLayout interface {
+	CloneLayout() Layout
+}
+
+type synchronizedFormatLayout interface {
+	RequiresSynchronizedFormatting() bool
+}
+
+// CloneLayout 为 appender 绑定创建隔离布局，避免生命周期状态跨输出流共享。
+func CloneLayout(layout Layout) Layout {
+	if layout == nil {
+		return nil
+	}
+	cloneable, ok := layout.(cloneableLayout)
+	if !ok {
+		return layout
+	}
+	cloned := cloneable.CloneLayout()
+	if cloned == nil {
+		return layout
+	}
+	return cloned
+}
+
+// RequiresSynchronizedFormatting 判断布局格式化是否必须与写入在同一临界区内完成。
+func RequiresSynchronizedFormatting(layout Layout) bool {
+	synchronized, ok := layout.(synchronizedFormatLayout)
+	return ok && synchronized.RequiresSynchronizedFormatting()
+}
+
 // NewDefaultLayout 创建默认 Spring Boot 风格布局。
 func NewDefaultLayout() Layout {
 	layout, _ := NewPatternLayout(DefaultSpringBootPattern)

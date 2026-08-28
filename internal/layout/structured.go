@@ -45,6 +45,22 @@ func (l JSONLayout) AppendFooter(buf *bytes.Buffer) error {
 	return nil
 }
 
+// CloneLayout 为每个 appender 隔离 Complete 模式的事件计数。
+func (l JSONLayout) CloneLayout() Layout {
+	cloned := l
+	if cloned.options.Complete {
+		cloned.state = &jsonLayoutState{}
+	} else {
+		cloned.state = nil
+	}
+	return cloned
+}
+
+// RequiresSynchronizedFormatting 说明 Complete JSON 流需要按实际写入顺序生成分隔符。
+func (l JSONLayout) RequiresSynchronizedFormatting() bool {
+	return l.options.Complete
+}
+
 // Options 返回布局输出参数快照。
 func (l JSONLayout) Options() LayoutOptions {
 	return l.options

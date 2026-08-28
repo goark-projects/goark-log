@@ -174,7 +174,9 @@ Default fields:
 
 Common `slog.Value` kinds are encoded by hand: string, bool, int, uint, float,
 duration, time, groups, and errors/stringers. Complex `Any` values use the
-internal Sonic-backed JSON codec and fall back to `fmt.Sprint` on marshal error.
+internal JSON fallback codec and fall back to `fmt.Sprint` on marshal error.
+The fallback codec uses Sonic on supported Go/architecture combinations and
+uses the standard library on Go 1.27+ or unsupported architectures.
 
 With `complete: true`, JSONLayout writes a JSON array stream. Default header is
 `[` and default footer is `]`. Commas are inserted between events.

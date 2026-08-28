@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
@@ -77,6 +79,88 @@ func TestNativeLogger_whenLevelDisabled_shouldSkipEvent(t *testing.T) {
 	}
 }
 
+func TestNativeLogger_whenDirectJSONFastPathUsed_shouldKeepBoundAttrs(t *testing.T) {
+	var out bytes.Buffer
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{
+			NewJSONAppender(WithJSONAppenderWriter(&out)),
+		},
+		Root: RootLogger{
+			Level:        slog.LevelInfo,
+			AppenderRefs: []string{"json"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	defer handler.Close()
+
+	logger, err := NewNativeLogger(handler, "goark.native")
+	if err != nil {
+		t.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	bound := logger.WithAttrs(slog.String("service", "billing"))
+	if err := bound.LogAttrs(context.Background(), slog.LevelInfo, "request done", slog.Int("status", 200)); err != nil {
+		t.Fatalf("LogAttrs() error = %v", err)
+	}
+	grouped := logger.WithGroup("request").WithAttrs(slog.String("service", "billing"))
+	if err := grouped.LogAttrs3(context.Background(), slog.LevelInfo, "request done",
+		slog.String("method", "GET"),
+		slog.Int("status", 200),
+		slog.Bool("ok", true),
+	); err != nil {
+		t.Fatalf("LogAttrs3() error = %v", err)
+	}
+
+	decoder := json.NewDecoder(&out)
+	first := decodeJSONLogLine(t, decoder)
+	if first["service"] != "billing" || first["status"] != float64(200) {
+		t.Fatalf("first event = %+v, want bound service and status", first)
+	}
+	second := decodeJSONLogLine(t, decoder)
+	if second["request.service"] != "billing" ||
+		second["request.method"] != "GET" ||
+		second["request.status"] != float64(200) ||
+		second["request.ok"] != true {
+		t.Fatalf("second event = %+v, want grouped bound attrs and call attrs", second)
+	}
+}
+
+func TestNativeLoggerSlog_whenGroupsBound_shouldPreserveInteropAttrs(t *testing.T) {
+	appender := newRecordingAppender("memory")
+	handler, err := NewHandler(Options{
+		Appenders: []Appender{appender},
+		Root: RootLogger{
+			Level:        slog.LevelInfo,
+			AppenderRefs: []string{"memory"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	defer handler.Close()
+
+	logger, err := NewNativeLogger(handler, "goark.native")
+	if err != nil {
+		t.Fatalf("NewNativeLogger() error = %v", err)
+	}
+	logger.WithGroup("request").
+		WithAttrs(slog.String("service", "billing")).
+		Slog().
+		Info("via slog", slog.Int("status", 200))
+
+	events := appender.Events()
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+	event := events[0]
+	if event.Logger != "goark.native" {
+		t.Fatalf("event logger = %q, want goark.native", event.Logger)
+	}
+	assertAttrString(t, event, "request.service", "billing")
+	assertAttrString(t, event, "request.status", "200")
+}
+
 func TestNativeLogger_whenCallerEnabled_shouldCaptureCallSite(t *testing.T) {
 	appender := newRecordingAppender("memory")
 	handler, err := NewHandler(Options{
@@ -107,6 +191,15 @@ func TestNativeLogger_whenCallerEnabled_shouldCaptureCallSite(t *testing.T) {
 	if !strings.Contains(frame.Method, "TestNativeLogger_whenCallerEnabled") {
 		t.Fatalf("caller method = %q, want test method", frame.Method)
 	}
+}
+
+func decodeJSONLogLine(t *testing.T, decoder *json.Decoder) map[string]any {
+	t.Helper()
+	var fields map[string]any
+	if err := decoder.Decode(&fields); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	return fields
 }
 
 func assertAttrString(t *testing.T, event Event, key string, want string) {

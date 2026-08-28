@@ -201,7 +201,7 @@ func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []sl
 			return nil
 		}
 		if h.async == nil && pc == 0 {
-			if handled, err := internalrouter.DispatchAttrsFast(ctx, plan.Route, h.attrs, h.groups, logger, when, level, message, attrs); handled {
+			if handled, err := internalrouter.DispatchAttrsFast(ctx, plan.Route, handlerAttrs, groups, logger, when, level, message, attrs); handled {
 				return err
 			}
 		}
@@ -233,7 +233,7 @@ func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []s
 			return nil
 		}
 		if h.async == nil && pc == 0 {
-			if handled, err := internalrouter.DispatchFixedAttrsFast(ctx, plan.Route, h.attrs, h.groups, logger, when, level, message, attr0, attr1, attr2); handled {
+			if handled, err := internalrouter.DispatchFixedAttrsFast(ctx, plan.Route, handlerAttrs, groups, logger, when, level, message, attr0, attr1, attr2); handled {
 				return err
 			}
 		}

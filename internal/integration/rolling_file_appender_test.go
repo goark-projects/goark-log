@@ -313,6 +313,40 @@ func TestRollingFileAppender_whenRolloverOccurs_shouldPreserveLayoutLifecycle(t 
 	}
 }
 
+func TestRollingFileAppender_whenCompleteJSONLayoutRolls_shouldKeepEachStreamValid(t *testing.T) {
+	now := fixedTestTime()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "complete-roll.json")
+	appender, err := NewRollingFileAppender(path,
+		WithRollingFileLayout(NewJSONLayout(LayoutOptions{Compact: true, Complete: true})),
+		WithRollingMaxSize(180),
+		WithRollingMaxBackups(10),
+		withRollingClock(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("NewRollingFileAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("roll-first-"+strings.Repeat("x", 20), now)); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("roll-second-"+strings.Repeat("x", 20), now)); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	archives, err := filepath.Glob(path + ".*")
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(archives) != 1 {
+		t.Fatalf("expected one archive, got %d: %v", len(archives), archives)
+	}
+	assertCompleteJSONMessages(t, archives[0], "roll-first-"+strings.Repeat("x", 20))
+	assertCompleteJSONMessages(t, path, "roll-second-"+strings.Repeat("x", 20))
+}
+
 func TestNewConfigured_whenRollingFileCreateOnDemandAndAppendDisabledConfigured_shouldDelayAndTruncate(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "logs", "configured.log")

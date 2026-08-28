@@ -81,6 +81,7 @@ func NewConsoleAppender(options ...ConsoleOption) *ConsoleAppender {
 	if appender.layout == nil {
 		appender.layout = internallayout.NewDefaultLayout()
 	}
+	appender.layout = internallayout.CloneLayout(appender.layout)
 	return appender
 }
 
@@ -99,6 +100,9 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if internallayout.RequiresSynchronizedFormatting(a.layout) {
+		return a.appendSynchronized(event)
+	}
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer releaseBuffer(buf)
@@ -110,14 +114,41 @@ func (a *ConsoleAppender) Append(ctx context.Context, event Event) error {
 	if a.closed {
 		return fmt.Errorf("goark-log: console appender %q is closed", a.Name())
 	}
-	if !a.started {
-		if _, err := internallayout.WriteHeader(a.writer, a.layout); err != nil {
-			return err
-		}
-		a.started = true
+	if err := a.ensureStartedLocked(); err != nil {
+		return err
 	}
 	_, err := a.writer.Write(buf.Bytes())
 	return err
+}
+
+func (a *ConsoleAppender) appendSynchronized(event Event) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return fmt.Errorf("goark-log: console appender %q is closed", a.Name())
+	}
+	if err := a.ensureStartedLocked(); err != nil {
+		return err
+	}
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer releaseBuffer(buf)
+	if err := a.layout.Format(buf, event); err != nil {
+		return err
+	}
+	_, err := a.writer.Write(buf.Bytes())
+	return err
+}
+
+func (a *ConsoleAppender) ensureStartedLocked() error {
+	if a.started {
+		return nil
+	}
+	if _, err := internallayout.WriteHeader(a.writer, a.layout); err != nil {
+		return err
+	}
+	a.started = true
+	return nil
 }
 
 func (a *ConsoleAppender) Close() error {
@@ -237,6 +268,7 @@ func NewFileAppender(path string, options ...FileOption) (*FileAppender, error) 
 	if appender.layout == nil {
 		appender.layout = internallayout.NewDefaultLayout()
 	}
+	appender.layout = internallayout.CloneLayout(appender.layout)
 	if appender.bufferSize < 0 {
 		return nil, fmt.Errorf("goark-log: file buffer size must be >= 0")
 	}
@@ -274,6 +306,9 @@ func (a *FileAppender) Append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if internallayout.RequiresSynchronizedFormatting(a.layout) {
+		return a.appendSynchronized(event)
+	}
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer releaseBuffer(buf)
@@ -290,15 +325,39 @@ func (a *FileAppender) Append(ctx context.Context, event Event) error {
 			return err
 		}
 	}
+	return a.writeBytesLocked(buf.Bytes())
+}
+
+func (a *FileAppender) appendSynchronized(event Event) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return fmt.Errorf("goark-log: file appender %q is closed", a.Name())
+	}
+	if a.file == nil {
+		if _, err := a.openLocked(); err != nil {
+			return err
+		}
+	}
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer releaseBuffer(buf)
+	if err := a.layout.Format(buf, event); err != nil {
+		return err
+	}
+	return a.writeBytesLocked(buf.Bytes())
+}
+
+func (a *FileAppender) writeBytesLocked(data []byte) error {
 	var err error
 	if a.writer != nil {
-		_, err = a.writer.Write(buf.Bytes())
+		_, err = a.writer.Write(data)
 		if err == nil && a.flushOnWrite {
 			err = a.writer.Flush()
 		}
 		return err
 	}
-	_, err = a.file.Write(buf.Bytes())
+	_, err = a.file.Write(data)
 	return err
 }
 

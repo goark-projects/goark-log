@@ -293,6 +293,51 @@ func TestJSONTemplateLayout_whenCompleteOptionUsed_shouldWriteValidArray(t *test
 	}
 }
 
+func TestFileAppender_whenCompleteJSONTemplateLayoutShared_shouldIsolateLifecycleState(t *testing.T) {
+	shared, err := NewJSONTemplateLayout(`{"msg":{"$resolver":"message"}}`, WithJSONTemplateLayoutOptions(LayoutOptions{
+		Compact:  true,
+		Complete: true,
+	}))
+	if err != nil {
+		t.Fatalf("NewJSONTemplateLayout() error = %v", err)
+	}
+	dir := t.TempDir()
+	first, err := NewFileAppender(filepath.Join(dir, "template-first.json"), WithFileLayout(shared), WithFileBufferSize(0))
+	if err != nil {
+		t.Fatalf("NewFileAppender(first) error = %v", err)
+	}
+	second, err := NewFileAppender(filepath.Join(dir, "template-second.json"), WithFileLayout(shared), WithFileBufferSize(0))
+	if err != nil {
+		t.Fatalf("NewFileAppender(second) error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = first.Close()
+		_ = second.Close()
+	})
+
+	for _, item := range []struct {
+		appender *FileAppender
+		message  string
+	}{
+		{first, "template-first-1"},
+		{second, "template-second-1"},
+		{first, "template-first-2"},
+		{second, "template-second-2"},
+	} {
+		if err := item.appender.Append(context.Background(), testEvent(item.message, fixedTestTime())); err != nil {
+			t.Fatalf("Append(%s) error = %v", item.message, err)
+		}
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close(first) error = %v", err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatalf("Close(second) error = %v", err)
+	}
+	assertCompleteJSONMessages(t, filepath.Join(dir, "template-first.json"), "template-first-1", "template-first-2")
+	assertCompleteJSONMessages(t, filepath.Join(dir, "template-second.json"), "template-second-1", "template-second-2")
+}
+
 type constantJSONResolver string
 
 func (r constantJSONResolver) AppendJSON(buf *bytes.Buffer, _ Event) {

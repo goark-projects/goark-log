@@ -164,7 +164,7 @@ layout:
 | `contextMap` | `propertiesAsList` 为 true 时输出 attribute list。 |
 | `thrown` | 启用 stacktrace output 且存在 throwable 时输出 throwable object 或 string。 |
 
-常见 `slog.Value` kinds 由手写编码处理：string、bool、int、uint、float、duration、time、groups 和 errors/stringers。复杂 `Any` values 使用内部 Sonic-backed JSON codec，marshal error 时 fallback 到 `fmt.Sprint`。
+常见 `slog.Value` kinds 由手写编码处理：string、bool、int、uint、float、duration、time、groups 和 errors/stringers。复杂 `Any` values 使用内部 JSON fallback codec，marshal error 时 fallback 到 `fmt.Sprint`。Fallback codec 会在受支持的 Go/architecture 组合上使用 Sonic；Go 1.27+ 或不受 Sonic 支持的架构上使用标准库。
 
 `complete: true` 时，JSONLayout 写 JSON array stream。默认 header 为 `[`，默认 footer 为 `]`，events 之间自动插入 commas。
 

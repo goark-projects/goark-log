@@ -22,6 +22,12 @@
 - benchmark 文档改为使用 `./benchmarks/core` 执行 core benchmark，以匹配 benchmark 包拆分后的结构。
 - CI 和 pressure workflow 的 benchmark 命令改为执行 `./benchmarks/core`，不再从根包运行 core benchmark。
 - 明确外部系统 appender 和 observability exporter 不属于 core module，必须由显式插件模块提供。
+- internal JSON fallback 在 Go 1.27+ 或不受 Sonic 支持的架构上改用标准库，避免底层依赖输出不受控的 runtime warning。
+
+### 修复
+
+- Complete JSON 和 JSON Template layout 的生命周期状态按 appender 隔离，并将有状态格式化与流写入同步，确保 console、file、create-on-demand、共享 layout 和 rolling 输出都是合法 JSON 数组。
+- 非有限 `slog.Float64` 值改为 JSON 字符串编码，避免输出非法 `NaN`/`Inf` token。
 
 ### 验证
 

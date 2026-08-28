@@ -98,11 +98,14 @@ func (l *Logger) Slog() *slog.Logger {
 	}
 	logger := slog.New(handler).With(logevent.LoggerNameKey, l.name)
 	if len(l.attrs) > 0 {
-		values := make([]any, 0, len(l.attrs)*2)
+		values := make([]any, 0, len(l.attrs))
 		for _, attr := range l.attrs {
-			values = append(values, attr.Key, attr.Value)
+			values = append(values, attr)
 		}
 		logger = logger.With(values...)
+	}
+	for _, group := range l.groups {
+		logger = logger.WithGroup(group)
 	}
 	return logger
 }

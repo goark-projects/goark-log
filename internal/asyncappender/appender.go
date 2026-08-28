@@ -126,6 +126,10 @@ func New(appenders []Sink, options ...Option) (*Appender, error) {
 	if err := appender.validate(appenders); err != nil {
 		return nil, err
 	}
+	strategy, err := asyncruntime.ParseOverflowStrategy(string(appender.strategy))
+	if err != nil {
+		return nil, err
+	}
 	normalizedQueueSize, err := asyncruntime.NormalizeQueueSize(appender.queueSize, asyncruntime.DefaultAsyncQueueSize)
 	if err != nil {
 		return nil, err
@@ -138,6 +142,7 @@ func New(appenders []Sink, options ...Option) (*Appender, error) {
 	if appender.batchSize > appender.queueSize {
 		appender.batchSize = appender.queueSize
 	}
+	appender.strategy = strategy
 	appender.waitStrategy = waitStrategy
 	appender.appenders = append([]Sink(nil), appenders...)
 	appender.queue, err = disruptor.NewRingBuffer[entry](appender.queueSize, asyncruntime.NewWaitStrategyWithOptions(appender.waitStrategy, appender.waitOptions))

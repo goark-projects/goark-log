@@ -149,6 +149,9 @@ func (a *RollingFileAppender) Append(ctx context.Context, event Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if internallayout.RequiresSynchronizedFormatting(a.layout) {
+		return a.appendSynchronized(event)
+	}
 	buf := acquireBuffer()
 	defer releaseBuffer(buf)
 	if err := a.layout.Format(buf, event); err != nil {
@@ -179,15 +182,62 @@ func (a *RollingFileAppender) Append(ctx context.Context, event Event) error {
 			return err
 		}
 	}
+	return a.writeBytesLocked(buf.Bytes())
+}
+
+func (a *RollingFileAppender) appendSynchronized(event Event) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return fmt.Errorf("goark-log: rolling file appender %q is closed", a.Name())
+	}
+	now := event.Time
+	if now.IsZero() {
+		now = a.now()
+	}
+	if a.file == nil {
+		existingSize, err := a.openAt(now)
+		if err != nil {
+			return err
+		}
+		if a.rolloverOnStartup && existingSize > 0 {
+			if err := a.rollover(now); err != nil {
+				return err
+			}
+		}
+	}
+	if a.shouldRollover(now, 0) {
+		if err := a.rollover(now); err != nil {
+			return err
+		}
+	}
+	buf := acquireBuffer()
+	defer releaseBuffer(buf)
+	if err := a.layout.Format(buf, event); err != nil {
+		return err
+	}
+	if a.shouldRollover(now, int64(buf.Len())) {
+		if err := a.rollover(now); err != nil {
+			return err
+		}
+		buf.Reset()
+		if err := a.layout.Format(buf, event); err != nil {
+			return err
+		}
+	}
+	return a.writeBytesLocked(buf.Bytes())
+}
+
+func (a *RollingFileAppender) writeBytesLocked(data []byte) error {
 	var n int
 	var err error
 	if a.writer != nil {
-		n, err = a.writer.Write(buf.Bytes())
+		n, err = a.writer.Write(data)
 		if err == nil && a.flushOnWrite {
 			err = a.writer.Flush()
 		}
 	} else {
-		n, err = a.file.Write(buf.Bytes())
+		n, err = a.file.Write(data)
 	}
 	a.size += int64(n)
 	return err
@@ -232,6 +282,7 @@ func (a *RollingFileAppender) validate() error {
 	if a.layout == nil {
 		a.layout = internallayout.NewDefaultLayout()
 	}
+	a.layout = internallayout.CloneLayout(a.layout)
 	if a.bufferSize < 0 {
 		return fmt.Errorf("goark-log: rolling file buffer size must be >= 0")
 	}

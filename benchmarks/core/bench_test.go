@@ -48,7 +48,7 @@ func BenchmarkJSONLayoutAnyFallback(b *testing.B) {
 	event.Attrs = append(event.Attrs, slog.Any("payload", map[string]any{
 		"traceId": "abc-123",
 		"attempt": 3,
-		"tags":    []string{"core", "json", "sonic"},
+		"tags":    []string{"core", "json", "fallback"},
 	}))
 	layout := JSONLayout{}
 	buf := benchmarkBufferPool.Get().(*bytes.Buffer)
@@ -535,7 +535,7 @@ func benchmarkAnyPayload() map[string]any {
 		"traceId": "abc-123",
 		"attempt": 3,
 		"ok":      true,
-		"tags":    []string{"core", "json", "sonic"},
+		"tags":    []string{"core", "json", "fallback"},
 		"nested": map[string]any{
 			"latency": 12.5,
 			"status":  "ready",

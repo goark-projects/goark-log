@@ -33,6 +33,16 @@ This project follows Go module semantic versioning rules.
   `./benchmarks/core` package instead of the root package.
 - Clarified that external-system appenders and observability exporters remain
   outside the core module and must be provided by explicit plugin modules.
+- Made the internal JSON fallback select the standard library on Go 1.27+ or
+  unsupported architectures to avoid unsupported Sonic runtime warnings.
+
+### Fixed
+
+- Isolated Complete JSON and JSON Template layout lifecycle state per appender
+  and synchronized stateful formatting with stream writes, keeping console,
+  file, create-on-demand, shared-layout, and rolling outputs valid JSON arrays.
+- Encoded non-finite `slog.Float64` values as JSON strings instead of invalid
+  `NaN`/`Inf` tokens.
 
 ### Validation
 

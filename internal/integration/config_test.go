@@ -244,6 +244,33 @@ root:
 			},
 		},
 		{
+			name:       "toml",
+			configName: "goark-log.toml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+[appenders.file]
+type = "file"
+fileName = %q
+
+[appenders.file.layout]
+type = "json"
+compact = true
+eventEol = true
+complete = true
+includeStacktrace = true
+stacktraceAsString = true
+propertiesAsList = true
+includeNullDelimiter = true
+header = "H"
+footer = "F"
+
+[root]
+level = "info"
+appenderRefs = ["file"]
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
 			name:       "xml",
 			configName: "goark-log.xml",
 			content: func(logPath string) string {
@@ -346,6 +373,26 @@ root:
     </Root>
   </Loggers>
 </Configuration>
+`, filepath.ToSlash(logPath))
+			},
+		},
+		{
+			name:       "toml",
+			configName: "goark-log.toml",
+			content: func(logPath string) string {
+				return fmt.Sprintf(`
+[appenders.file]
+type = "file"
+fileName = %q
+
+[appenders.file.layout]
+type = "pattern"
+pattern = "%%style{%%m}{red}%%n"
+disableAnsi = true
+
+[root]
+level = "info"
+appenderRefs = ["file"]
 `, filepath.ToSlash(logPath))
 			},
 		},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"time"
 
@@ -61,7 +62,12 @@ func AppendJSONValue(buf *bytes.Buffer, value slog.Value) {
 	case slog.KindUint64:
 		buf.Write(strconv.AppendUint(buf.AvailableBuffer(), value.Uint64(), 10))
 	case slog.KindFloat64:
-		buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), value.Float64(), 'g', -1, 64))
+		float := value.Float64()
+		if math.IsNaN(float) || math.IsInf(float, 0) {
+			AppendJSONString(buf, strconv.FormatFloat(float, 'g', -1, 64))
+			return
+		}
+		buf.Write(strconv.AppendFloat(buf.AvailableBuffer(), float, 'g', -1, 64))
 	case slog.KindDuration:
 		AppendJSONString(buf, value.Duration().String())
 	case slog.KindTime:

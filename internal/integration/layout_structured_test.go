@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -150,6 +151,33 @@ func TestJSONLayout_whenOptionsEnabled_shouldWriteListPropertiesAndStackString(t
 	}
 }
 
+func TestJSONLayout_whenNonFiniteFloatAttrsUsed_shouldWriteValidJSON(t *testing.T) {
+	event := benchmarkEvent()
+	event.Attrs = []slog.Attr{
+		slog.Float64("nan", math.NaN()),
+		slog.Float64("posInf", math.Inf(1)),
+		slog.Float64("negInf", math.Inf(-1)),
+	}
+
+	var buf bytes.Buffer
+	if err := (JSONLayout{}).Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("JSON output is invalid: %v\n%s", err, buf.String())
+	}
+	for key, want := range map[string]string{
+		"nan":    "NaN",
+		"posInf": "+Inf",
+		"negInf": "-Inf",
+	} {
+		if decoded[key] != want {
+			t.Fatalf("%s = %#v, want %q", key, decoded[key], want)
+		}
+	}
+}
+
 func TestFileAppender_whenCompleteJSONLayoutUsed_shouldWriteValidArray(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "complete.json")
 	appender, err := NewFileAppender(
@@ -180,6 +208,89 @@ func TestFileAppender_whenCompleteJSONLayoutUsed_shouldWriteValidArray(t *testin
 	if len(decoded) != 2 || decoded[1]["msg"] != "second event" {
 		t.Fatalf("decoded complete JSON = %#v, want two events", decoded)
 	}
+}
+
+func TestConsoleAppender_whenCompleteJSONLayoutUsed_shouldWriteValidArray(t *testing.T) {
+	var out bytes.Buffer
+	appender := NewConsoleAppender(
+		WithConsoleWriter(&out),
+		WithConsoleLayout(NewJSONLayout(LayoutOptions{Compact: true, Complete: true})),
+	)
+	if err := appender.Append(context.Background(), testEvent("console-first", fixedTestTime())); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("console-second", fixedTestTime())); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	assertCompleteJSONContentMessages(t, out.String(), "console-first", "console-second")
+}
+
+func TestFileAppender_whenCompleteJSONLayoutCreateOnDemand_shouldWriteValidArray(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "complete-lazy.json")
+	appender, err := NewFileAppender(
+		path,
+		WithFileLayout(NewJSONLayout(LayoutOptions{Compact: true, Complete: true})),
+		WithFileCreateOnDemand(true),
+		WithFileBufferSize(0),
+	)
+	if err != nil {
+		t.Fatalf("NewFileAppender() error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("file should not exist before first append, stat error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("lazy-first", fixedTestTime())); err != nil {
+		t.Fatalf("Append(first) error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("lazy-second", fixedTestTime())); err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	assertCompleteJSONMessages(t, path, "lazy-first", "lazy-second")
+}
+
+func TestFileAppender_whenCompleteJSONLayoutShared_shouldIsolateLifecycleState(t *testing.T) {
+	dir := t.TempDir()
+	shared := NewJSONLayout(LayoutOptions{Compact: true, Complete: true})
+	first, err := NewFileAppender(filepath.Join(dir, "first.json"), WithFileLayout(shared), WithFileBufferSize(0))
+	if err != nil {
+		t.Fatalf("NewFileAppender(first) error = %v", err)
+	}
+	second, err := NewFileAppender(filepath.Join(dir, "second.json"), WithFileLayout(shared), WithFileBufferSize(0))
+	if err != nil {
+		t.Fatalf("NewFileAppender(second) error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = first.Close()
+		_ = second.Close()
+	})
+
+	for _, item := range []struct {
+		appender *FileAppender
+		message  string
+	}{
+		{first, "first-1"},
+		{second, "second-1"},
+		{first, "first-2"},
+		{second, "second-2"},
+	} {
+		if err := item.appender.Append(context.Background(), testEvent(item.message, fixedTestTime())); err != nil {
+			t.Fatalf("Append(%s) error = %v", item.message, err)
+		}
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close(first) error = %v", err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatalf("Close(second) error = %v", err)
+	}
+	assertCompleteJSONMessages(t, filepath.Join(dir, "first.json"), "first-1", "first-2")
+	assertCompleteJSONMessages(t, filepath.Join(dir, "second.json"), "second-1", "second-2")
 }
 
 func TestRFC5424Layout_whenEventFormatted_shouldWriteSyslogLine(t *testing.T) {
@@ -256,4 +367,26 @@ func mustAtoi(t *testing.T, value string) int {
 		t.Fatalf("Atoi(%q) error = %v", value, err)
 	}
 	return parsed
+}
+
+func assertCompleteJSONMessages(t *testing.T, path string, want ...string) {
+	t.Helper()
+	assertCompleteJSONContentMessages(t, readTextFile(t, path), want...)
+}
+
+func assertCompleteJSONContentMessages(t *testing.T, content string, want ...string) []map[string]any {
+	t.Helper()
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+		t.Fatalf("complete JSON output is invalid: %v\n%s", err, content)
+	}
+	if len(decoded) != len(want) {
+		t.Fatalf("decoded complete JSON has %d events, want %d: %#v", len(decoded), len(want), decoded)
+	}
+	for index, message := range want {
+		if decoded[index]["msg"] != message {
+			t.Fatalf("decoded complete JSON event %d msg = %#v, want %q", index, decoded[index]["msg"], message)
+		}
+	}
+	return decoded
 }

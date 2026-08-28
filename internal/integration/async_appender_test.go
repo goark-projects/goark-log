@@ -213,6 +213,25 @@ func TestNewAsyncAppender_whenWaitStrategyInvalid_shouldReject(t *testing.T) {
 	}
 }
 
+func TestAsyncAppender_whenOverflowAliasConfigured_shouldNormalizeStrategy(t *testing.T) {
+	delegate := newRecordingAppender("delegate")
+	appender, err := NewAsyncAppender([]Appender{delegate},
+		WithAsyncOverflowStrategy("discard-newest"),
+	)
+	if err != nil {
+		t.Fatalf("NewAsyncAppender() error = %v", err)
+	}
+	if err := appender.Append(context.Background(), testEvent("aliased strategy", fixedTestTime())); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if !delegate.Contains("aliased strategy") {
+		t.Fatalf("delegate events = %+v, want aliased strategy event", delegate.Events())
+	}
+}
+
 func TestAsyncAppender_whenErrorHandlerConfigured_shouldReceiveWriteFailure(t *testing.T) {
 	errCh := make(chan error, 1)
 	appender, err := NewAsyncAppender([]Appender{failingAppender{name: "broken"}},

@@ -277,3 +277,22 @@ func (l *JSONTemplateLayout) AppendFooter(buf *bytes.Buffer) error {
 	appendJSONCompleteFooter(buf, l.options)
 	return nil
 }
+
+// CloneLayout 为每个 appender 隔离 Complete 模式的事件计数。
+func (l *JSONTemplateLayout) CloneLayout() Layout {
+	if l == nil {
+		return nil
+	}
+	cloned := *l
+	if cloned.options.Complete {
+		cloned.state = &jsonLayoutState{}
+	} else {
+		cloned.state = nil
+	}
+	return &cloned
+}
+
+// RequiresSynchronizedFormatting 说明 Complete JSON 模板流需要按实际写入顺序生成分隔符。
+func (l *JSONTemplateLayout) RequiresSynchronizedFormatting() bool {
+	return l != nil && l.options.Complete
+}

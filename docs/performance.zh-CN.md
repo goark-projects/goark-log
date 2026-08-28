@@ -132,6 +132,7 @@ gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 - `NewNativeLogger` 避开通用 `slog.Record` facade。
 - `LogAttrs3` 写固定三属性 event，避免 common path 上的 variadic slice allocation。
 - `JSONTemplateLayout` 一次性编译 resolvers；built-in resolvers 直接 append JSON。
+- internal JSON fallback 只在受支持的 Go/architecture 组合上使用 Sonic；Go 1.27+ 或不受支持的架构使用标准库路径，避免 unsupported Sonic fast path 输出 runtime warning。
 - `LevelName` 对 built-in levels 使用 no-lock path；只有注册 custom levels 后才 fallback 到 registry。
 - `AsyncLogger` 和 `AsyncAppender` 使用内部 bounded ring buffer。
 - Rolling compression 和 delete actions 可由 background worker 串行化，避免 concurrent archive mutation。
@@ -146,7 +147,7 @@ gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 | Direct native logger JSON with three attrs | `0 B/op`, `0 allocs/op` | 高吞吐路径的主 API 预算。 |
 | Direct native JSON file parallel path | `0 B/op`, `0 allocs/op` | Buffered file write 必须保持完整 event lines。 |
 | Internal ring buffer publish/pop | `0 B/op`, `0 allocs/op` | 不得替换为 allocation-heavy queue。 |
-| `slog.Any` fallback | Sonic fast path 可用时快于 stdlib fallback | 平台 fallback 可能不同；优先保证行为正确。 |
+| `slog.Any` fallback | Sonic fast path 可用时快于 stdlib；其他平台不输出 unsupported runtime warning | 平台 fallback 可能不同；优先保证行为正确。 |
 | Async logger block strategy | no dropped events | `AsyncDropped` 对 `block` 应保持 0。 |
 | Rolling file parallel writes | complete lines | Active 和 archive files 必须包含完整 log events。 |
 | Compare module | no core dependency pollution | zap/zerolog dependencies 留在 `benchmarks/compare`。 |
@@ -179,8 +180,8 @@ gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 | `BenchmarkPressureJSONFileParallel/buffered-256k` | about `270.5 ns/op`, `0 B/op`, `0 allocs/op` |
 | `BenchmarkPressureRollingFileParallel/plain` | about `482.5 ns/op`, `140 B/op`, `1 alloc/op` |
 | `internal/disruptor` publish/pop | about `18 ns/op`, `0 B/op`, `0 allocs/op` |
-| `internal/jsoncodec` Sonic fallback | about `630 ns/op`, `341 B/op`, `4 allocs/op` |
-| `internal/jsoncodec` stdlib fallback | about `1335 ns/op`, `640 B/op`, `17 allocs/op` |
+| `internal/jsoncodec` goark fallback on Go 1.25 amd64 | about `630 ns/op`, `341 B/op`, `4 allocs/op` |
+| `internal/jsoncodec` stdlib comparison on Go 1.25 amd64 | about `1335 ns/op`, `640 B/op`, `17 allocs/op` |
 | `benchmarks/compare` goark direct file parallel | about `262.7 ns/op`, `0 B/op`, `0 allocs/op` |
 | `benchmarks/compare` zap file parallel | about `317.8 ns/op`, `193 B/op`, `1 alloc/op` |
 | `benchmarks/compare` zerolog file parallel | about `197.1 ns/op`, `0 B/op`, `0 allocs/op` |
