@@ -15,6 +15,7 @@ they must remain loadable by the current `LoadOptions` implementation.
 | [async-appender.yml](async-appender.yml) | Appender-level async around a selected JSON file sink. |
 | [rewrite-routing.yml](rewrite-routing.yml) | Attribute rewrite plus tenant-based routing. |
 | [goark-log.properties](goark-log.properties) | Flat properties configuration for deployment systems that render key-value files. |
+| [goark-log.toml](goark-log.toml) | TOML configuration using dotted tables and the structured config model. |
 | [log4j2-style.xml](log4j2-style.xml) | XML configuration using supported Log4j2-style element names. |
 
 The examples only use built-in core appenders and layouts. HTTP, Socket,

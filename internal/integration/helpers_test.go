@@ -272,6 +272,14 @@ func decodeStructuredConfig(reader io.Reader, lookups *goarklog.LookupResolver) 
 	return &fileConfig{Config: config}, nil
 }
 
+func decodeTOMLConfig(reader io.Reader, lookups *goarklog.LookupResolver) (*fileConfig, error) {
+	config, err := configfile.DecodeTOML(reader, lookups)
+	if err != nil {
+		return nil, err
+	}
+	return &fileConfig{Config: config}, nil
+}
+
 func decodeXMLConfig(reader io.Reader, lookups *goarklog.LookupResolver) (*fileConfig, error) {
 	config, err := configfile.DecodeXML(reader, lookups)
 	if err != nil {

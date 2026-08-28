@@ -14,6 +14,7 @@
 - 新增集成测试，加载每一个可复制的 `docs/examples` 配置文件。
 - 为所有公开文档页面新增简体中文版本，同时保持英文作为默认文档路径。
 - 新增公开 Markdown 文档 localization 覆盖测试。
+- 新增 TOML 配置加载，复用 YAML/JSON 使用的严格 structured configuration contract。
 
 ### 变更
 
@@ -52,7 +53,7 @@
 
 - 默认 lookup 限制为本地 `env`、`sys`、`go`、`date` 和 `property` namespace。
 - remote lookup namespace、script runtime、external-system appender 和 observability exporter 均不属于 core module。
-- TOML 配置会显式失败，不会被静默忽略。
+- 默认搜索路径保留了 `toml`；在 v0.0.2 支持前，TOML 输入会显式失败，不会被静默忽略。
 
 ### 验证
 

@@ -32,7 +32,7 @@
 | Filters | supported | Level、range、regex、attrs、marker、MDC、structured data、throwable、time windows、burst limiter 和 dynamic thresholds。 |
 | Composite appenders | supported | Async、Failover、Routing 和 Rewrite 可通过配置构建。 |
 | Lookups | supported local subset | `env`、`sys`、`go`、`date`、`prop` 和 `property`。 |
-| Configuration formats | supported | YAML、JSON、XML、properties；TOML 显式失败。 |
+| Configuration formats | supported | YAML、JSON、TOML、XML 和 properties。 |
 | Reload | supported with constraints | 轮询实际配置文件；async logger queue/runtime shape 不能 hot-replace。 |
 | Plugins | supported | `PluginRegistry`、`PluginRegistrar`、`PluginSet`、package helpers、lookup plugins、JSON Template resolvers 和 registrar generator。 |
 
@@ -56,6 +56,7 @@
 Core `go.mod` 依赖限制为：
 
 - `github.com/bytedance/sonic`
+- `github.com/pelletier/go-toml/v2`
 - `gopkg.in/yaml.v3`
 
 Zap 和 zerolog comparison dependencies 位于 `benchmarks/compare/go.mod`，不得移入 core module。

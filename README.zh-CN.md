@@ -81,7 +81,7 @@ func main() {
 4. 默认文件：`conf/goark-log.{yml,yaml,json,xml,toml,properties}`。
 5. 内置默认配置：stderr console，`INFO` 级别。
 
-当前支持 YAML、JSON、XML 和 properties。TOML 会明确报错，避免旧文件被误认为已经生效。
+当前支持 YAML、JSON、TOML、XML 和 properties。
 
 ## 生产 YAML 示例
 
@@ -201,7 +201,7 @@ func main() {
 | Appender | Console、File、JSON、RollingFile、Async、Failover、Routing、Rewrite。 |
 | Layout | Pattern、Text、JSON、JSON Template、XML、CSV、GELF、RFC5424/Syslog、YAML、HTML。 |
 | Filter | Threshold、Level、LevelRange、Regex、Attr、Marker、Map、Throwable、Time、Burst、DynamicThreshold 及相关别名。 |
-| 配置 | YAML、JSON、XML、properties、本地 lookup、轮询 reload。 |
+| 配置 | YAML、JSON、TOML、XML、properties、本地 lookup、轮询 reload。 |
 | 滚动文件 | size、time、cron、startup、`%d`/`%i`、gzip、保留策略、删除动作。 |
 | 异步 | 有界 ring buffer、批量写出、block/drop/drop-debug/sync-fallback、关闭 drain。 |
 | 扩展 | 显式插件注册、插件集合、lookup 插件、JSON Template resolver 插件、registrar 生成器。 |

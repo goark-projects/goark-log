@@ -15,6 +15,7 @@ func TestDocsExamples_whenLoaded_shouldBuildOptions(t *testing.T) {
 		"async-appender.yml",
 		"rewrite-routing.yml",
 		"goark-log.properties",
+		"goark-log.toml",
 		"log4j2-style.xml",
 	}
 	for _, example := range examples {

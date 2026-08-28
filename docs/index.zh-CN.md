@@ -31,6 +31,7 @@
 | [examples/async-appender.yml](examples/async-appender.yml) | 只包装指定 sink 的 appender-level async。 |
 | [examples/rewrite-routing.yml](examples/rewrite-routing.yml) | 属性 rewrite 和按 tenant routing。 |
 | [examples/goark-log.properties](examples/goark-log.properties) | 适合简单部署的 properties 配置。 |
+| [examples/goark-log.toml](examples/goark-log.toml) | 使用与 YAML/JSON 相同 structured model 的 TOML 配置。 |
 | [examples/log4j2-style.xml](examples/log4j2-style.xml) | 使用 parser 支持的 Log4j2-style element names 的 XML 配置。 |
 
 ## 支持的格式
@@ -39,7 +40,7 @@
 - JSON：使用同一套 structured decoder 和字段名。
 - XML：支持 Log4j2-style appender、layout、filter、policy、strategy 和 logger element。
 - properties：使用 `appender.console.type`、`rootLogger.level` 等 flat keys。
-- TOML：只识别并快速失败，返回明确 unsupported-format error。
+- TOML：通过与 YAML/JSON 相同的 structured schema 支持。
 
 ## 非 Core 范围
 

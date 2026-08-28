@@ -28,11 +28,11 @@
 | --- | --- | --- |
 | YAML | 支持 | 推荐默认格式。使用 strict known fields 解析。 |
 | JSON | 支持 | 使用与 YAML 相同的 structured schema 和字段名。 |
+| TOML | 支持 | TOML 解析后使用同一套 structured schema。 |
 | XML | 支持 | 使用 Log4j2-style elements 表达 appenders、layouts、filters、policies 和 loggers。 |
 | properties | 支持 | 使用 `appender.console.type` 这类 flat keys。 |
-| TOML | 拒绝 | 检测到 `.toml` 后会返回 `unsupported config format "toml"`。 |
 
-Structured YAML/JSON decoding 是严格模式：unknown fields 会导致解析失败。日志配置错误不应该被静默忽略。
+YAML/JSON/TOML 的结构化解码使用严格模式：未知字段会导致解析失败。日志配置错误不应该被静默忽略。
 
 ## 包装结构
 
@@ -343,6 +343,42 @@ logger.orm.additivity=false
 | `rootLogger.*`, `root.*` | Root logger definition。 |
 
 `logger.<id>.name=<actual.logger.name>` 和 `appender.<id>.name=<actualName>` 会作为后续 properties 的 alias。
+
+## TOML 格式
+
+TOML 使用与 YAML 和 JSON 相同的结构化模型。使用 dotted tables 表达 appenders、layouts、filters、root 和 named loggers：
+
+```toml
+[configuration]
+monitorInterval = "30s"
+
+[configuration.properties]
+LOG_DIR = "logs"
+
+[configuration.appenders.console]
+type = "console"
+target = "stderr"
+
+[configuration.appenders.console.layout]
+type = "pattern"
+pattern = "%d %5p %pid --- [%thread] %c : %m%attrs%n"
+
+[configuration.appenders.json]
+type = "json"
+fileName = "${LOG_DIR}/app.json"
+bufferSize = "256KiB"
+
+[configuration.root]
+level = "info"
+appenderRefs = ["console", "json"]
+
+[configuration.loggers."goark.orm"]
+level = "debug"
+appenderRefs = ["json"]
+additivity = false
+```
+
+Logger 名称包含点号时，table name 必须加引号，例如 `[configuration.loggers."goark.orm"]`。Duration 和 byte-size 值建议写为字符串，例如 `"30s"` 和 `"256KiB"`。
 
 ## XML Format
 

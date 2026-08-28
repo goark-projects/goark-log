@@ -20,6 +20,8 @@ This project follows Go module semantic versioning rules.
 - Added Simplified Chinese counterparts for every public documentation page
   while keeping English as the default documentation path.
 - Added a localization coverage test for public Markdown documentation.
+- Added TOML configuration loading through the same strict structured
+  configuration contract used by YAML and JSON.
 
 ### Changed
 
@@ -77,7 +79,8 @@ This project follows Go module semantic versioning rules.
   `property` namespaces.
 - Remote lookup namespaces, script runtimes, external-system appenders, and
   observability exporters are not part of the core module.
-- TOML configuration fails explicitly instead of being silently ignored.
+- The default search path reserved `toml`; before v0.0.2 support, TOML input
+  failed explicitly instead of being silently ignored.
 
 ### Validation
 

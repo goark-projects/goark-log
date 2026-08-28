@@ -1093,7 +1093,109 @@ appenders:
 	}
 }
 
-func TestLoadOptions_whenDefaultTomlExists_shouldRejectUnsupportedFormat(t *testing.T) {
+func TestLoadOptions_whenTomlConfigProvided_shouldBuildOptions(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "goark-log.toml")
+	logPath := filepath.Join(dir, "app.log")
+	writeConfig(t, configPath, `
+monitorInterval = "30s"
+
+[properties]
+LOG_DIR = "logs"
+
+[appenders.console]
+type = "console"
+target = "stderr"
+
+[appenders.console.layout]
+type = "pattern"
+pattern = "%d %-5p %c : %m%attrs%n"
+
+[appenders.file]
+type = "file"
+fileName = "`+filepath.ToSlash(logPath)+`"
+bufferSize = "0"
+
+[appenders.file.layout]
+type = "json"
+eventEol = true
+
+[filters.audit]
+type = "attr"
+key = "channel"
+value = "audit"
+onMatch = "accept"
+onMismatch = "neutral"
+
+[root]
+level = "info"
+appenderRefs = ["console"]
+
+[loggers."goark.audit"]
+level = "debug"
+appenderRefs = [{ ref = "file", level = "warn", filters = ["audit"] }]
+additivity = false
+includeLocation = true
+`)
+
+	options, result, err := LoadOptions(context.Background(), WithConfigPath(configPath))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppenderList(options.Appenders)
+	if result.Source != ConfigSourceExplicit || result.Path != configPath {
+		t.Fatalf("ConfigResult = %+v, want explicit %q", result, configPath)
+	}
+	if result.MonitorInterval != 30*time.Second {
+		t.Fatalf("MonitorInterval = %v, want 30s", result.MonitorInterval)
+	}
+	if len(options.Appenders) != 2 {
+		t.Fatalf("len(Appenders) = %d, want 2", len(options.Appenders))
+	}
+	if len(options.Filters) != 0 {
+		t.Fatalf("len(Filters) = %d, want 0", len(options.Filters))
+	}
+	if got := options.Root.Level; got != slog.LevelInfo {
+		t.Fatalf("Root.Level = %v, want info", got)
+	}
+	if refs := options.Root.AppenderRefs; len(refs) != 1 || refs[0] != "console" {
+		t.Fatalf("Root.AppenderRefs = %v, want [console]", refs)
+	}
+	if len(options.Loggers) != 1 {
+		t.Fatalf("len(Loggers) = %d, want 1", len(options.Loggers))
+	}
+	logger := options.Loggers[0]
+	if logger.Name != "goark.audit" {
+		t.Fatalf("Logger.Name = %q, want goark.audit", logger.Name)
+	}
+	if logger.Level == nil || *logger.Level != slog.LevelDebug {
+		t.Fatalf("Logger.Level = %v, want debug", logger.Level)
+	}
+	if !logger.AdditivitySet || logger.Additivity {
+		t.Fatalf("Logger additivity = set:%v value:%v, want set false", logger.AdditivitySet, logger.Additivity)
+	}
+	if logger.IncludeLocation == nil || !*logger.IncludeLocation {
+		t.Fatalf("Logger.IncludeLocation = %v, want true", logger.IncludeLocation)
+	}
+	if len(logger.AppenderRefs) != 0 {
+		t.Fatalf("Logger.AppenderRefs = %v, want structured refs only", logger.AppenderRefs)
+	}
+	if len(logger.AppenderRefControls) != 1 {
+		t.Fatalf("len(Logger.AppenderRefControls) = %d, want 1", len(logger.AppenderRefControls))
+	}
+	control := logger.AppenderRefControls[0]
+	if control.Ref != "file" {
+		t.Fatalf("AppenderRefControls[0].Ref = %q, want file", control.Ref)
+	}
+	if control.Level == nil || *control.Level != slog.LevelWarn {
+		t.Fatalf("AppenderRefControls[0].Level = %v, want warn", control.Level)
+	}
+	if len(control.Filters) != 1 {
+		t.Fatalf("len(AppenderRefControls[0].Filters) = %d, want 1", len(control.Filters))
+	}
+}
+
+func TestLoadOptions_whenDefaultTomlExists_shouldLoad(t *testing.T) {
 	dir := t.TempDir()
 	confDir := filepath.Join(dir, "conf")
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
@@ -1102,9 +1204,29 @@ func TestLoadOptions_whenDefaultTomlExists_shouldRejectUnsupportedFormat(t *test
 	if err := os.WriteFile(filepath.Join(confDir, "goark-log.toml"), []byte("root.level = \"info\"\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, _, err := LoadOptions(context.Background(), WithConfigWorkingDir(dir))
+	options, result, err := LoadOptions(context.Background(), WithConfigWorkingDir(dir))
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppenderList(options.Appenders)
+	if result.Source != ConfigSourceFile {
+		t.Fatalf("ConfigResult.Source = %q, want file", result.Source)
+	}
+	if got := options.Root.Level; got != slog.LevelInfo {
+		t.Fatalf("Root.Level = %v, want info", got)
+	}
+}
+
+func TestLoadOptions_whenTomlHasUnknownField_shouldReject(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "goark-log.toml")
+	writeConfig(t, configPath, `
+[root]
+level = "info"
+unknown = true
+`)
+	_, _, err := LoadOptions(context.Background(), WithConfigPath(configPath))
 	if err == nil {
-		t.Fatalf("LoadOptions() should reject unsupported TOML config in default search path")
+		t.Fatalf("LoadOptions() should reject unknown TOML fields")
 	}
 }
 

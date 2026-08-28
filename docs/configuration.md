@@ -35,12 +35,12 @@ Relative paths are resolved against `os.Getwd()` unless
 | --- | --- | --- |
 | YAML | Supported | Recommended default. Parsed with strict known fields. |
 | JSON | Supported | Uses the same structured schema and field names as YAML. |
+| TOML | Supported | Uses the same structured schema after TOML parsing. |
 | XML | Supported | Uses Log4j2-style elements for appenders, layouts, filters, policies, and loggers. |
 | properties | Supported | Uses flat keys such as `appender.console.type`. |
-| TOML | Rejected | A `.toml` file is detected but loading fails with `unsupported config format "toml"`. |
 
-Structured YAML/JSON decoding is strict: unknown fields fail parsing. This is
-intentional, because logging configuration mistakes should not be silently
+Structured YAML/JSON/TOML decoding is strict: unknown fields fail parsing. This
+is intentional, because logging configuration mistakes should not be silently
 ignored.
 
 ## Wrapper Forms
@@ -363,6 +363,45 @@ Supported properties prefixes:
 
 `logger.<id>.name=<actual.logger.name>` and `appender.<id>.name=<actualName>`
 act as aliases for subsequent properties.
+
+## TOML Format
+
+TOML uses the same structured model as YAML and JSON. Use dotted tables for
+appenders, layouts, filters, root, and named loggers:
+
+```toml
+[configuration]
+monitorInterval = "30s"
+
+[configuration.properties]
+LOG_DIR = "logs"
+
+[configuration.appenders.console]
+type = "console"
+target = "stderr"
+
+[configuration.appenders.console.layout]
+type = "pattern"
+pattern = "%d %5p %pid --- [%thread] %c : %m%attrs%n"
+
+[configuration.appenders.json]
+type = "json"
+fileName = "${LOG_DIR}/app.json"
+bufferSize = "256KiB"
+
+[configuration.root]
+level = "info"
+appenderRefs = ["console", "json"]
+
+[configuration.loggers."goark.orm"]
+level = "debug"
+appenderRefs = ["json"]
+additivity = false
+```
+
+Logger names containing dots must be quoted in the table name, for example
+`[configuration.loggers."goark.orm"]`. Duration and byte-size values should be
+strings, such as `"30s"` and `"256KiB"`.
 
 ## XML Format
 

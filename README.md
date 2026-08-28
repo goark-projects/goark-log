@@ -89,9 +89,7 @@ Configuration is resolved in this order:
 4. Default files under `conf/goark-log.{yml,yaml,json,xml,toml,properties}`.
 5. Built-in default: stderr console, `INFO`.
 
-YAML, JSON, XML, and properties are supported. TOML is intentionally rejected
-with an explicit error so a stale file cannot be mistaken for an active
-configuration.
+YAML, JSON, TOML, XML, and properties are supported.
 
 ## Production YAML
 
@@ -213,7 +211,7 @@ func main() {
 | Appenders | Console, File, JSON, RollingFile, Async, Failover, Routing, Rewrite. |
 | Layouts | Pattern, Text, JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog, YAML, HTML. |
 | Filters | Threshold, Level, LevelRange, Regex, Attr, Marker, Map, Throwable, Time, Burst, DynamicThreshold, and related aliases. |
-| Configuration | YAML, JSON, XML, properties, local lookups, reload polling. |
+| Configuration | YAML, JSON, TOML, XML, properties, local lookups, reload polling. |
 | Rolling files | Size, time, cron, startup rollover, `%d`/`%i`, gzip, retention, delete actions. |
 | Async | Bounded ring buffer, batching, block/drop/drop-debug/sync-fallback, shutdown drain. |
 | Extensibility | Explicit plugin registry, plugin set, lookup plugins, JSON Template resolver plugins, registrar generator. |

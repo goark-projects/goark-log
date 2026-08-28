@@ -351,6 +351,8 @@ func decodeConfig(reader io.Reader, format string, lookups *LookupResolver) (*fi
 	switch format {
 	case "yaml", "json":
 		return decodeStructuredConfig(reader, lookups)
+	case "toml":
+		return decodeTOMLConfig(reader, lookups)
 	case "xml":
 		return decodeXMLConfig(reader, lookups)
 	case "properties":

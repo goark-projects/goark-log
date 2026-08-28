@@ -77,6 +77,11 @@ func DecodeStructured(reader io.Reader, lookups *LookupResolver) (*Config, error
 	return decodeStructuredConfig(reader, lookups)
 }
 
+// DecodeTOML 解析 TOML 配置。
+func DecodeTOML(reader io.Reader, lookups *LookupResolver) (*Config, error) {
+	return decodeTOMLConfig(reader, lookups)
+}
+
 // DecodeXML 解析 Log4j2 风格 XML 配置。
 func DecodeXML(reader io.Reader, lookups *LookupResolver) (*Config, error) {
 	return decodeXMLConfig(reader, lookups)

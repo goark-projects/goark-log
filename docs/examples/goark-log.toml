@@ -1,0 +1,35 @@
+[configuration]
+monitorInterval = "30s"
+
+[configuration.properties]
+LOG_DIR = "logs"
+
+[configuration.asyncLogger]
+enabled = true
+queueSize = 8192
+batchSize = 256
+overflowStrategy = "block"
+waitStrategy = "yield"
+
+[configuration.appenders.console]
+type = "console"
+target = "stderr"
+
+[configuration.appenders.console.layout]
+type = "pattern"
+pattern = "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"
+
+[configuration.appenders.json]
+type = "json"
+fileName = "${LOG_DIR}/app.json"
+bufferSize = "256KiB"
+flushOnWrite = false
+
+[configuration.root]
+level = "info"
+appenderRefs = ["console", "json"]
+
+[configuration.loggers."goark.orm"]
+level = "debug"
+appenderRefs = ["json"]
+additivity = false

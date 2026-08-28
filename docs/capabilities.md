@@ -39,7 +39,7 @@ before release.
 | Filters | supported | Level, range, regex, attrs, marker, MDC, structured data, throwable, time windows, burst limiter, and dynamic thresholds. |
 | Composite appenders | supported | Async, Failover, Routing, and Rewrite are config-buildable. |
 | Lookups | supported local subset | `env`, `sys`, `go`, `date`, `prop`, and `property`. |
-| Configuration formats | supported | YAML, JSON, XML, properties; TOML explicitly fails. |
+| Configuration formats | supported | YAML, JSON, TOML, XML, and properties. |
 | Reload | supported with constraints | Polls a concrete config file; async logger queue/runtime shape cannot be hot-replaced. |
 | Plugins | supported | `PluginRegistry`, `PluginRegistrar`, `PluginSet`, package helpers, lookup plugins, JSON Template resolvers, and registrar generator. |
 
@@ -63,6 +63,7 @@ before release.
 Core `go.mod` dependencies are limited to:
 
 - `github.com/bytedance/sonic`
+- `github.com/pelletier/go-toml/v2`
 - `gopkg.in/yaml.v3`
 
 The zap and zerolog comparison dependencies live in `benchmarks/compare/go.mod`

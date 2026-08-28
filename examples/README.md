@@ -52,6 +52,7 @@ Copyable configuration files live under [../docs/examples](../docs/examples/READ
 - [async-appender.yml](../docs/examples/async-appender.yml)
 - [rewrite-routing.yml](../docs/examples/rewrite-routing.yml)
 - [goark-log.properties](../docs/examples/goark-log.properties)
+- [goark-log.toml](../docs/examples/goark-log.toml)
 - [log4j2-style.xml](../docs/examples/log4j2-style.xml)
 
 ## Reading Order

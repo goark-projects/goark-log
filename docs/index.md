@@ -33,6 +33,7 @@ scenarios, and release checks live here.
 | [examples/async-appender.yml](examples/async-appender.yml) | Appender-level async wrapping only selected sinks. |
 | [examples/rewrite-routing.yml](examples/rewrite-routing.yml) | Attribute rewrite and routing by tenant. |
 | [examples/goark-log.properties](examples/goark-log.properties) | Properties configuration equivalent for simpler deployments. |
+| [examples/goark-log.toml](examples/goark-log.toml) | TOML configuration using the same structured model as YAML and JSON. |
 | [examples/log4j2-style.xml](examples/log4j2-style.xml) | XML configuration using Log4j2-style element names supported by the parser. |
 
 ## Supported Formats
@@ -41,7 +42,7 @@ scenarios, and release checks live here.
 - JSON: supported through the same structured decoder and field names.
 - XML: supports Log4j2-style appender, layout, filter, policy, strategy, and logger elements.
 - properties: supported with flat keys such as `appender.console.type` and `rootLogger.level`.
-- TOML: recognized only to fail fast with an explicit unsupported-format error.
+- TOML: supported through the same structured schema as YAML and JSON.
 
 ## Non-Core Scope
 
