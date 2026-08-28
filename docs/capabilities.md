@@ -1,5 +1,7 @@
 # Capability Boundary
 
+[简体中文](capabilities.zh-CN.md)
+
 This document records what the `goark.dev/log` core module currently provides,
 what is intentionally out of scope, and which validation gates should be used
 before release.

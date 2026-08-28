@@ -1,5 +1,7 @@
 # Programmatic API Guide
 
+[简体中文](api.zh-CN.md)
+
 This guide covers the public programmatic API. Configuration files are covered
 in [Configuration](configuration.md).
 

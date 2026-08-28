@@ -210,18 +210,19 @@ HTTP、Socket、Syslog 网络输出、Kafka、SMTP、数据库输出、OpenTelem
 
 ## 文档
 
-- [文档索引](docs/index.md)
-- [编程式 API](docs/api.md)
-- [配置参考](docs/configuration.md)
-- [Appender 参考](docs/appenders.md)
-- [Layout 参考](docs/layouts.md)
-- [Filter 参考](docs/filters.md)
-- [使用场景](docs/scenarios.md)
-- [扩展指南](docs/extensibility.md)
-- [能力边界](docs/capabilities.md)
-- [性能和压测](docs/performance.md)
-- [v0.0.2 发布检查清单](docs/release-v0.0.2.md)
-- [可运行示例](examples/README.md)
+- [文档索引](docs/index.zh-CN.md)
+- [编程式 API](docs/api.zh-CN.md)
+- [配置参考](docs/configuration.zh-CN.md)
+- [Appender 参考](docs/appenders.zh-CN.md)
+- [Layout 参考](docs/layouts.zh-CN.md)
+- [Filter 参考](docs/filters.zh-CN.md)
+- [使用场景](docs/scenarios.zh-CN.md)
+- [扩展指南](docs/extensibility.zh-CN.md)
+- [能力边界](docs/capabilities.zh-CN.md)
+- [性能和压测](docs/performance.zh-CN.md)
+- [v0.0.2 发布检查清单](docs/release-v0.0.2.zh-CN.md)
+- [配置示例](docs/examples/README.zh-CN.md)
+- [可运行示例](examples/README.zh-CN.md)
 
 ## 验证
 
@@ -251,4 +252,4 @@ GOWORK=off go test ./...
 
 ## 发布说明
 
-`dev` 是集成分支。发布 tag 应在 `dev` 验证完成并按发布流程合入 `main` 后，从 `main` 打出。发布 `v0.0.2` 前请按 [docs/release-v0.0.2.md](docs/release-v0.0.2.md) 执行检查。
+`dev` 是集成分支。发布 tag 应在 `dev` 验证完成并按发布流程合入 `main` 后，从 `main` 打出。发布 `v0.0.2` 前请按 [docs/release-v0.0.2.zh-CN.md](docs/release-v0.0.2.zh-CN.md) 执行检查。

@@ -1,5 +1,7 @@
 # Appender Reference
 
+[简体中文](appenders.zh-CN.md)
+
 An appender is the final output boundary for a log event. Every appender must be
 safe for concurrent `Append` calls and must release resources on `Close`.
 

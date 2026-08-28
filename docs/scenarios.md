@@ -1,7 +1,9 @@
 # Usage Scenarios
 
+[简体中文](scenarios.zh-CN.md)
+
 This guide shows complete, production-oriented logging scenarios. Copyable
-configuration files are stored under [examples](examples/).
+configuration files are stored under [examples](examples/README.md).
 
 ## Scenario 1: Development Console
 

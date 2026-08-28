@@ -1,5 +1,7 @@
 # Configuration Reference
 
+[简体中文](configuration.zh-CN.md)
+
 This document describes the configuration contract implemented by
 `goark.dev/log` in the current worktree. It documents the supported field names,
 defaults, validation rules, and reload boundaries for v0.0.2 preparation.

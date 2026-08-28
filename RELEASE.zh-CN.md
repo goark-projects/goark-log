@@ -1,25 +1,21 @@
-# Release Process
+# 发布流程
 
-[简体中文](RELEASE.zh-CN.md)
+[English](RELEASE.md)
 
-This file records the release process for `goark.dev/log`. Day-to-day
-integration work happens on `dev`. Do not edit `main` directly. Release tags are
-cut from `main` after `dev` has passed validation and has been merged according
-to the approved flow.
+本文记录 `goark.dev/log` 的发布流程。日常集成工作在 `dev` 分支进行。不要直接修改 `main`。`dev` 通过验证并按批准流程合入后，才从 `main` 打 release tag。
 
-The current release preparation target is `v0.0.2`. Use
-[docs/release-v0.0.2.md](docs/release-v0.0.2.md) as the detailed checklist.
+当前发布准备目标是 `v0.0.2`。详细检查清单见 [docs/release-v0.0.2.zh-CN.md](docs/release-v0.0.2.zh-CN.md)。
 
-## Branches
+## 分支
 
-| Branch | Purpose |
+| 分支 | 目的 |
 | --- | --- |
-| `dev` | Integration branch for implementation, docs, and verification commits. |
-| `main` | Release branch. It should receive validated `dev` changes only through the release merge. |
+| `dev` | 实现、文档和验证提交的集成分支。 |
+| `main` | 发布分支。只应通过发布合并接收已验证的 `dev` 变更。 |
 
-## Local Gate
+## 本地关卡
 
-Unix shell:
+Unix shell：
 
 ```bash
 GOWORK=off go test ./...
@@ -29,7 +25,7 @@ cd benchmarks/compare
 GOWORK=off go test ./...
 ```
 
-PowerShell:
+PowerShell：
 
 ```powershell
 $env:GOWORK='off'
@@ -41,7 +37,7 @@ go test ./...
 Pop-Location
 ```
 
-Long stress gate:
+长压测关卡：
 
 ```bash
 GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
@@ -49,20 +45,20 @@ GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=
 
 ## GitHub Actions
 
-Confirm `dev` CI:
+确认 `dev` CI：
 
 ```bash
 gh run list --branch dev --workflow ci.yml --limit 5
 gh run watch <run-id> --exit-status
 ```
 
-Trigger pressure workflow when needed:
+需要时触发 pressure workflow：
 
 ```bash
 gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 ```
 
-PowerShell proxy example:
+PowerShell 代理示例：
 
 ```powershell
 $env:HTTP_PROXY='http://172.16.8.171:9444'
@@ -70,9 +66,9 @@ $env:HTTPS_PROXY='http://172.16.8.171:9444'
 gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 ```
 
-## Merge and Tag
+## 合并和打 Tag
 
-After `dev` is green:
+`dev` 绿灯后执行：
 
 ```bash
 git switch main
@@ -83,14 +79,13 @@ git tag -a v0.0.2 -m "release: v0.0.2"
 git push origin v0.0.2
 ```
 
-If `main` cannot fast-forward, stop and inspect the difference. Do not
-force-push a shared release branch.
+如果 `main` 无法 fast-forward，停止并检查差异。不要 force-push 共享发布分支。
 
-## Clean Module Verification
+## 干净模块下载验证
 
-After the tag is pushed, verify module resolution from a clean directory.
+tag 推送后，从干净目录验证模块解析。
 
-PowerShell:
+PowerShell：
 
 ```powershell
 $tmp = Join-Path $env:TEMP 'goark-log-v0.0.2-verify'
@@ -104,7 +99,7 @@ go test goark.dev/log/...
 Pop-Location
 ```
 
-Unix shell:
+Unix shell：
 
 ```bash
 tmp="$(mktemp -d)"
@@ -114,5 +109,4 @@ GOWORK=off go get goark.dev/log@v0.0.2
 GOWORK=off go test goark.dev/log/...
 ```
 
-Create the GitHub Release only after module verification passes. Use the
-`CHANGELOG.md` v0.0.2 section as the release body.
+只有模块验证通过后才创建 GitHub Release。默认英文 release body 使用 `CHANGELOG.md` 的 v0.0.2 部分；中文发布说明使用 `CHANGELOG.zh-CN.md`。

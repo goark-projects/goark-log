@@ -1,5 +1,7 @@
 # Documentation Index
 
+[简体中文](index.zh-CN.md)
+
 This directory is the reference documentation for `goark.dev/log` v0.0.2
 preparation. The root README stays short; detailed configuration, operational
 scenarios, and release checks live here.
@@ -23,6 +25,7 @@ scenarios, and release checks live here.
 
 | File | Scenario |
 | --- | --- |
+| [examples/README.md](examples/README.md) | Directory guide for copyable configuration examples. |
 | [examples/console.yml](examples/console.yml) | Human-readable development console output. |
 | [examples/json-stdout.yml](examples/json-stdout.yml) | Container and Kubernetes stdout JSON logs. |
 | [examples/production-rolling.yml](examples/production-rolling.yml) | Production JSON rolling file with gzip and retention. |

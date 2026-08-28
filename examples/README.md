@@ -1,5 +1,7 @@
 # Runnable Examples
 
+[简体中文](README.zh-CN.md)
+
 The `examples/` directory contains small runnable programs that compile against
 the core module only. They do not require external services.
 
@@ -41,7 +43,7 @@ go run ./examples/extensibility
 
 ## Config Examples
 
-Copyable configuration files live under [../docs/examples](../docs/examples):
+Copyable configuration files live under [../docs/examples](../docs/examples/README.md):
 
 - [console.yml](../docs/examples/console.yml)
 - [json-stdout.yml](../docs/examples/json-stdout.yml)

@@ -1,5 +1,7 @@
 # Filter Reference
 
+[简体中文](filters.zh-CN.md)
+
 Filters decide whether a log event should continue through the pipeline. Every
 filter must be concurrency-safe.
 

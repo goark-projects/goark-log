@@ -1,5 +1,7 @@
 # Layout Reference
 
+[简体中文](layouts.zh-CN.md)
+
 A layout converts an immutable log event snapshot into bytes. Console, file,
 and rolling file appenders use layouts. The direct JSON appender has its own
 fixed JSON encoder and does not use a configured layout.

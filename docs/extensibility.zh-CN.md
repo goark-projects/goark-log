@@ -1,14 +1,12 @@
-# Extensibility Guide
+# 扩展指南
 
-[简体中文](extensibility.zh-CN.md)
+[English](extensibility.md)
 
-`goark-log` uses explicit plugin registration. It does not scan packages,
-struct tags, file paths, or registries at runtime. This keeps startup
-deterministic and keeps the core hot path dependency-light.
+`goark-log` 使用显式 plugin registration。它不会在运行时扫描 packages、struct tags、file paths 或 registries。这能保持启动确定性，并让 core hot path 维持轻依赖。
 
 ## Extension Points
 
-| Extension point | Factory type | Register with |
+| Extension point | Factory type | 注册方式 |
 | --- | --- | --- |
 | Appender | `AppenderFactory` | `RegisterAppender`, `WithPluginAppender` |
 | Layout | `LayoutFactory` | `RegisterLayout`, `WithPluginLayout` |
@@ -16,13 +14,11 @@ deterministic and keeps the core hot path dependency-light.
 | Lookup | `LookupFunc` | `RegisterLookup`, `WithPluginLookup` |
 | JSON Template resolver | `JSONTemplateResolverFactory` | `RegisterJSONTemplateResolver`, `WithPluginJSONTemplateResolver` |
 
-Use the process default registry for simple applications. Use a dedicated
-registry when a framework, test, or embedded runtime needs isolated plugin
-state.
+简单应用可以使用 process default registry。Framework、test 或 embedded runtime 需要隔离 plugin state 时，应创建 dedicated registry。
 
 ## Registry Usage
 
-Default registry:
+Default registry：
 
 ```go
 err := goarklog.RegisterPlugins(goarklog.NewPluginSet(
@@ -31,7 +27,7 @@ err := goarklog.RegisterPlugins(goarklog.NewPluginSet(
 ))
 ```
 
-Isolated registry:
+Isolated registry：
 
 ```go
 registry := goarklog.NewPluginRegistry()
@@ -51,13 +47,13 @@ handler, _, err := goarklog.NewConfiguredHandler(ctx,
 
 ## Appender Plugin
 
-Factory signature:
+Factory signature：
 
 ```go
 type AppenderFactory func(config goarklog.AppenderBuildConfig) (goarklog.Appender, error)
 ```
 
-Minimal appender:
+Minimal appender：
 
 ```go
 type discardAppender struct {
@@ -93,7 +89,7 @@ func buildDiscardAppender(config goarklog.AppenderBuildConfig) (goarklog.Appende
 }
 ```
 
-Registration:
+Registration：
 
 ```go
 registry := goarklog.NewPluginRegistry()
@@ -102,7 +98,7 @@ err := registry.RegisterPlugins(goarklog.NewPluginSet(
 ))
 ```
 
-Configuration:
+Configuration：
 
 ```yaml
 appenders:
@@ -113,50 +109,47 @@ root:
   appenderRefs: [discard]
 ```
 
-Appender plugin rules:
+Appender plugin 规则：
 
-- Validate the appender name and required fields.
-- Respect `ctx.Err()` before expensive work.
-- Make `Append` safe for concurrent callers.
-- Make `Close` idempotent.
-- Own external connection lifecycle inside the appender.
-- Do not block forever on network writes; use timeouts, bounded queues, or
-  caller-visible errors.
-- Keep external dependencies in the plugin module, not in `goark.dev/log`.
+- 校验 appender name 和 required fields。
+- 执行昂贵工作前检查 `ctx.Err()`。
+- `Append` 必须对并发调用安全。
+- `Close` 必须 idempotent。
+- 外部连接生命周期由 appender 自己拥有。
+- 网络写入不能永久阻塞；使用 timeouts、bounded queues 或 caller-visible errors。
+- 外部依赖放在 plugin module，不放进 `goark.dev/log`。
 
 ## AppenderBuildConfig Fields
 
-`AppenderBuildConfig` receives normalized inputs from configuration:
+`AppenderBuildConfig` 接收配置归一化后的输入：
 
-| Field | Source |
+| 字段 | 来源 |
 | --- | --- |
-| `Name`, `Type` | Appender map key and configured type. |
-| `Target` | `target`. |
-| `URL`, `Method`, `Address`, `Network`, `Facility`, `AppName` | External appender fields. |
-| `ConnectTimeout`, `WriteTimeout` | External timeout strings. |
-| `FileName` | `fileName`, `file-name`, or `path`. |
-| `Layout` | Built layout object. |
-| `AppenderRefs` | Simple appender ref names. |
-| `Delegates` | Resolved downstream appenders for composite plugins. |
-| `Routes`, `DefaultRoute`, `RouteKey` | Resolved routing config. |
-| `QueueSize`, `BatchSize`, `OverflowStrategy`, `WaitStrategy`, `WaitOptions` | Async fields. |
-| `BufferSize`, `FlushOnWrite`, `Append`, `CreateOnDemand`, `FilePermissions` | File-style fields. |
-| `Rolling` | Rolling build config. |
-| `Rewrite` | Built-in rewrite policy config. |
+| `Name`, `Type` | Appender map key 和 configured type。 |
+| `Target` | `target`。 |
+| `URL`, `Method`, `Address`, `Network`, `Facility`, `AppName` | External appender fields。 |
+| `ConnectTimeout`, `WriteTimeout` | External timeout strings。 |
+| `FileName` | `fileName`、`file-name` 或 `path`。 |
+| `Layout` | 构建完成的 layout object。 |
+| `AppenderRefs` | Simple appender ref names。 |
+| `Delegates` | 已解析 downstream appenders，供 composite plugins 使用。 |
+| `Routes`, `DefaultRoute`, `RouteKey` | 已解析 routing config。 |
+| `QueueSize`, `BatchSize`, `OverflowStrategy`, `WaitStrategy`, `WaitOptions` | Async fields。 |
+| `BufferSize`, `FlushOnWrite`, `Append`, `CreateOnDemand`, `FilePermissions` | File-style fields。 |
+| `Rolling` | Rolling build config。 |
+| `Rewrite` | Built-in rewrite policy config。 |
 
-The factory still owns semantic validation. A field being present in
-`AppenderBuildConfig` does not mean the core module has a built-in appender for
-that transport.
+Factory 仍然要负责 semantic validation。`AppenderBuildConfig` 中存在某个字段，并不表示 core module 内置了对应 transport 的 appender。
 
 ## Layout Plugin
 
-Factory signature:
+Factory signature：
 
 ```go
 type LayoutFactory func(config goarklog.LayoutBuildConfig) (goarklog.Layout, error)
 ```
 
-Example:
+示例：
 
 ```go
 type lineLayout struct{}
@@ -172,7 +165,7 @@ func buildLineLayout(config goarklog.LayoutBuildConfig) (goarklog.Layout, error)
 }
 ```
 
-Configuration:
+Configuration：
 
 ```yaml
 appenders:
@@ -182,22 +175,22 @@ appenders:
       type: line
 ```
 
-Layout plugin rules:
+Layout plugin 规则：
 
-- Compile expensive templates or regex values in the factory, not in `Format`.
-- Do not retain mutable event slices without copying.
-- Write to the provided buffer only.
-- Keep `Format` deterministic and free of network or filesystem side effects.
+- 在 factory 中编译昂贵 templates 或 regex values，不要放在 `Format`。
+- 不要在未复制的情况下持有 mutable event slices。
+- 只写入传入的 buffer。
+- `Format` 应保持 deterministic，不做网络或文件系统副作用。
 
 ## Filter Plugin
 
-Factory signature:
+Factory signature：
 
 ```go
 type FilterFactory func(config goarklog.FilterBuildConfig) (goarklog.Filter, error)
 ```
 
-Example:
+示例：
 
 ```go
 type tenantFilter struct {
@@ -220,7 +213,7 @@ func buildTenantFilter(config goarklog.FilterBuildConfig) (goarklog.Filter, erro
 }
 ```
 
-Configuration:
+Configuration：
 
 ```yaml
 filters:
@@ -232,23 +225,22 @@ root:
   filters: [tenantA]
 ```
 
-Filter plugin rules:
+Filter plugin 规则：
 
-- Return `neutral` for pass-through unless the plugin intentionally accepts.
-- Return `deny` for policy rejection.
-- Avoid allocations, regex compilation, map construction, and reflection in
-  `Decide`.
-- Make shared state immutable or lock-protected.
+- pass-through 使用 `neutral`，除非 plugin 明确要 accept。
+- policy rejection 使用 `deny`。
+- `Decide` 中避免 allocations、regex compilation、map construction 和 reflection。
+- 共享状态必须 immutable 或受 lock 保护。
 
 ## Lookup Plugin
 
-Lookup signature:
+Lookup signature：
 
 ```go
 type LookupFunc func(key string) (string, bool)
 ```
 
-Example:
+示例：
 
 ```go
 func lookupTenant(key string) (string, bool) {
@@ -261,29 +253,29 @@ func lookupTenant(key string) (string, bool) {
 }
 ```
 
-Configuration:
+Configuration：
 
 ```yaml
 properties:
   LOG_DIR: "logs/${tenant:id}"
 ```
 
-Lookup plugin rules:
+Lookup plugin 规则：
 
-- Return `(value, true)` only when the value exists.
-- Keep lookups local and deterministic.
-- Do not perform unbounded network calls during configuration loading.
-- Namespaces `jndi`, `ldap`, and `rmi` are blocked and cannot be registered.
+- 只有值存在时才返回 `(value, true)`。
+- Lookups 应保持 local 和 deterministic。
+- 配置加载期间不要做无界网络调用。
+- `jndi`、`ldap`、`rmi` namespaces 被阻止，不能注册。
 
 ## JSON Template Resolver Plugin
 
-Factory signature:
+Factory signature：
 
 ```go
 type JSONTemplateResolverFactory func(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error)
 ```
 
-Example resolver:
+示例 resolver：
 
 ```go
 type constantResolver struct {
@@ -305,7 +297,7 @@ func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goa
 }
 ```
 
-Template:
+Template：
 
 ```json
 {
@@ -314,16 +306,16 @@ Template:
 }
 ```
 
-Resolver plugin rules:
+Resolver plugin 规则：
 
-- Parse and validate options in the factory.
-- Append valid JSON values only.
-- Avoid allocating in `AppendJSON` on hot paths.
-- Do not mutate the event.
+- 在 factory 中解析并校验 options。
+- 只能 append valid JSON values。
+- 热路径 `AppendJSON` 避免分配。
+- 不要修改 event。
 
 ## Registrar Generator
 
-The module includes a small generator for registrar boilerplate:
+模块包含一个生成 registrar boilerplate 的小工具：
 
 ```bash
 go run goark.dev/log/cmd/goark-log-plugin-gen \
@@ -336,22 +328,19 @@ go run goark.dev/log/cmd/goark-log-plugin-gen \
   -out zz_generated_plugins.go
 ```
 
-Use generated registrars when a plugin package exports several extension
-points. Keep generated files committed so consumers do not need to run
-generators during normal builds.
+当 plugin package 导出多个 extension points 时，使用 generated registrars。Generated files 应提交到仓库，消费者正常 build 不需要运行 generator。
 
 ## Dependency Boundary
 
-External integrations should live outside the core module:
+外部集成应放在 core module 之外：
 
-| Integration | Reason to keep external |
+| Integration | 保持外部的原因 |
 | --- | --- |
-| HTTP, Socket, Syslog network output | Connection management, retries, deadlines, TLS, and backpressure differ by deployment. |
-| Kafka, Pulsar, RabbitMQ | Client dependencies and delivery semantics are heavy and broker-specific. |
-| SMTP | Slow network I/O and credential handling should not enter the core logging path. |
-| Database sinks | Transactions, batching, schema, and failure modes vary by database. |
-| OpenTelemetry and Prometheus | Observability design should be consistent across Goark modules, not forced into the logging core. |
-| Script engines | Runtime and sandbox choices have security implications. |
+| HTTP, Socket, Syslog network output | Connection management、retries、deadlines、TLS 和 backpressure 因部署而异。 |
+| Kafka, Pulsar, RabbitMQ | Client dependencies 和 delivery semantics 重且 broker-specific。 |
+| SMTP | Slow network I/O 和 credential handling 不应进入 core logging path。 |
+| Database sinks | Transactions、batching、schema 和 failure modes 因数据库而异。 |
+| OpenTelemetry and Prometheus | Observability design 应在 Goark modules 间统一，而不是被 logging core 强制决定。 |
+| Script engines | Runtime 和 sandbox 选择有安全影响。 |
 
-This boundary keeps `goark.dev/log` small, predictable, and suitable for low
-level packages.
+这个边界让 `goark.dev/log` 保持小、可预测，并适合被 low level packages 使用。

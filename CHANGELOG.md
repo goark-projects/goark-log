@@ -1,5 +1,7 @@
 # Changelog
 
+[简体中文](CHANGELOG.zh-CN.md)
+
 This project follows Go module semantic versioning rules.
 
 ## v0.0.2 - Unreleased
@@ -15,6 +17,9 @@ This project follows Go module semantic versioning rules.
   rewrite/routing, properties, and XML.
 - Added an integration test that loads every copyable `docs/examples`
   configuration file.
+- Added Simplified Chinese counterparts for every public documentation page
+  while keeping English as the default documentation path.
+- Added a localization coverage test for public Markdown documentation.
 
 ### Changed
 

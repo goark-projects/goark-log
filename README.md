@@ -235,6 +235,7 @@ separate modules that register explicit plugins.
 - [Capability boundary](docs/capabilities.md)
 - [Performance and stress testing](docs/performance.md)
 - [v0.0.2 release checklist](docs/release-v0.0.2.md)
+- [Configuration examples](docs/examples/README.md)
 - [Runnable examples](examples/README.md)
 
 ## Verification

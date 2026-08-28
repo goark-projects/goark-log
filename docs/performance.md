@@ -1,5 +1,7 @@
 # Performance and Stress Testing
 
+[简体中文](performance.zh-CN.md)
+
 This document records the performance budget, validation commands, and tuning
 rules for `goark-log`. Benchmark numbers depend on CPU, Go version, operating
 system scheduler, disk cache, antivirus software, and CI runner noise. Always
