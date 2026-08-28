@@ -99,7 +99,7 @@ func (c *fileConfig) options(registry *PluginRegistry) (Options, error) {
 }
 
 func buildLayout(config layoutConfig, registry *PluginRegistry) (Layout, error) {
-	factory, ok := registry.layoutFactory(config.Type)
+	factory, ok := registry.LayoutFactory(config.Type)
 	if !ok {
 		return nil, fmt.Errorf("unsupported layout type %q", config.Type)
 	}

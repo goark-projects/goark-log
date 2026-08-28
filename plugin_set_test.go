@@ -27,7 +27,7 @@ func TestPluginSet_whenRegistered_shouldExposeCoreExtensionPoints(t *testing.T) 
 	if err := registry.RegisterPlugins(registrar); err != nil {
 		t.Fatalf("RegisterPlugins() error = %v", err)
 	}
-	resolved, err := registry.lookupResolver().Resolve("${tenant:acme}")
+	resolved, err := registry.LookupResolver().Resolve("${tenant:acme}")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}

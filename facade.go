@@ -284,7 +284,7 @@ func WithJSONTemplateResolverRegistry(registry *PluginRegistry) JSONTemplateLayo
 	if registry == nil {
 		registry = DefaultPluginRegistry()
 	}
-	return internallayout.WithJSONTemplateResolverLookup(registry.jsonTemplateResolverFactory)
+	return internallayout.WithJSONTemplateResolverLookup(registry.JSONTemplateResolverFactory)
 }
 
 // WithJSONTemplateLayoutOptions 设置 JSON Template 布局的通用输出参数。

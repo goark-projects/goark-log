@@ -99,7 +99,7 @@ func buildFilter(name string, spec filterConfig, nested []Filter, registry *Plug
 	if textutil.NormalizeKind(spec.Type) == "" {
 		return nil, fmt.Errorf("goark-log: filter %q type is empty", name)
 	}
-	factory, ok := registry.filterFactory(spec.Type)
+	factory, ok := registry.FilterFactory(spec.Type)
 	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported filter %q type %q", name, spec.Type)
 	}

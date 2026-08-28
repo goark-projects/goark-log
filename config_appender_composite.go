@@ -1,10 +1,7 @@
 package goarklog
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
-	"sort"
 	"strings"
 
 	internalrouter "goark.dev/log/internal/router"
@@ -50,60 +47,6 @@ func (c *rewriteBuildConfig) resolveLookups(lookups *LookupResolver) error {
 		return err
 	}
 	return nil
-}
-
-func newAttributeRewritePolicy(config RewriteBuildConfig) RewritePolicy {
-	additions := rewriteAdditions(config.Attrs)
-	removals := rewriteRemovalSet(config.RemoveAttrs)
-	if len(additions) == 0 && len(removals) == 0 {
-		return nil
-	}
-	return func(_ context.Context, event Event) (Event, error) {
-		rewritten := event
-		attrs := make([]slog.Attr, 0, len(event.Attrs)+len(additions))
-		for _, attr := range event.Attrs {
-			if _, remove := removals[attr.Key]; remove {
-				continue
-			}
-			attrs = append(attrs, attr)
-		}
-		attrs = append(attrs, additions...)
-		rewritten.Attrs = attrs
-		return rewritten, nil
-	}
-}
-
-func rewriteAdditions(values map[string]string) []slog.Attr {
-	if len(values) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	attrs := make([]slog.Attr, 0, len(keys))
-	for _, key := range keys {
-		attrs = append(attrs, slog.String(key, values[key]))
-	}
-	return attrs
-}
-
-func rewriteRemovalSet(keys []string) map[string]struct{} {
-	if len(keys) == 0 {
-		return nil
-	}
-	removals := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		key = strings.TrimSpace(key)
-		if key != "" {
-			removals[key] = struct{}{}
-		}
-	}
-	return removals
 }
 
 func buildCompositeAppender(name string, spec appenderConfig, specs map[string]appenderConfig, built map[string]Appender, filters map[string]Filter, registry *PluginRegistry) (Appender, bool, error) {
@@ -162,7 +105,7 @@ func buildAsyncAppender(name string, spec appenderConfig, specs map[string]appen
 		}
 		delegates = append(delegates, internalrouter.NewControlledAppender(control))
 	}
-	factory, ok := registry.appenderFactory(spec.Type)
+	factory, ok := registry.AppenderFactory(spec.Type)
 	if !ok {
 		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
@@ -182,7 +125,7 @@ func buildFailoverAppender(name string, spec appenderConfig, specs map[string]ap
 	if err != nil || waiting {
 		return nil, waiting, err
 	}
-	factory, ok := registry.appenderFactory(spec.Type)
+	factory, ok := registry.AppenderFactory(spec.Type)
 	if !ok {
 		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
@@ -199,7 +142,7 @@ func buildRoutingAppender(name string, spec appenderConfig, specs map[string]app
 	if err != nil || waiting {
 		return nil, waiting, err
 	}
-	factory, ok := registry.appenderFactory(spec.Type)
+	factory, ok := registry.AppenderFactory(spec.Type)
 	if !ok {
 		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
@@ -216,7 +159,7 @@ func buildRewriteAppender(name string, spec appenderConfig, specs map[string]app
 	if err != nil || waiting {
 		return nil, waiting, err
 	}
-	factory, ok := registry.appenderFactory(spec.Type)
+	factory, ok := registry.AppenderFactory(spec.Type)
 	if !ok {
 		return nil, false, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}

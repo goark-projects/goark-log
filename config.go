@@ -303,7 +303,7 @@ func newConfigLoadSettings(options ...ConfigLoadOption) (*configLoadSettings, er
 		settings.registry = DefaultPluginRegistry()
 	}
 	if settings.lookups == nil {
-		settings.lookups = settings.registry.lookupResolver()
+		settings.lookups = settings.registry.LookupResolver()
 	}
 	return settings, nil
 }

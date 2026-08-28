@@ -65,7 +65,7 @@ func buildConcreteAppender(name string, spec appenderConfig, filters map[string]
 	if kind == "" {
 		return nil, fmt.Errorf("goark-log: appender %q type is empty", name)
 	}
-	factory, ok := registry.appenderFactory(kind)
+	factory, ok := registry.AppenderFactory(kind)
 	if !ok {
 		return nil, fmt.Errorf("goark-log: unsupported appender %q type %q", name, spec.Type)
 	}
