@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"goark.dev/log/internal/configfile"
 	"goark.dev/log/internal/configvalue"
 	configlevel "goark.dev/log/internal/level"
 	"goark.dev/log/internal/logfile"
@@ -228,20 +229,20 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if path == "" {
 		return DefaultOptions(), result, nil
 	}
-	fileConfig, err := loadConfigFile(ctx, path, settings.lookups)
+	fileConfig, err := configfile.Load(ctx, path, settings.lookups)
 	if err != nil {
 		return Options{}, nil, err
 	}
-	monitorInterval, err := fileConfig.monitorInterval()
+	monitorInterval, err := fileConfig.MonitorIntervalDuration()
 	if err != nil {
 		return Options{}, nil, err
 	}
 	result.MonitorInterval = monitorInterval
-	handlerOptions, err := fileConfig.options(settings.registry)
+	handlerOptions, err := fileConfig.Options(settings.registry)
 	if err != nil {
 		return Options{}, nil, err
 	}
-	return handlerOptions, result, nil
+	return Options(handlerOptions), result, nil
 }
 
 // NewConfiguredHandler 从配置创建 Handler。
@@ -342,31 +343,6 @@ func (s *configLoadSettings) resolveUserPath(path string) string {
 		return path
 	}
 	return filepath.Join(s.workingDir, path)
-}
-
-func configFormat(path string) (string, error) {
-	switch strings.ToLower(strings.TrimPrefix(filepathExt(path), ".")) {
-	case "yml", "yaml":
-		return "yaml", nil
-	case "json":
-		return "json", nil
-	case "xml":
-		return "xml", nil
-	case "toml":
-		return "toml", nil
-	case "properties":
-		return "properties", nil
-	default:
-		return "", fmt.Errorf("goark-log: unsupported config file extension for %q", path)
-	}
-}
-
-func filepathExt(path string) string {
-	index := strings.LastIndexByte(path, '.')
-	if index < 0 {
-		return ""
-	}
-	return path[index:]
 }
 
 func closeAppenderList(appenders []Appender) error {

@@ -349,6 +349,14 @@ func (h *Handler) AsyncFailed() uint64 {
 	return h.async.Failed()
 }
 
+// AsyncOptions 返回 Handler 层异步管线归一化后的运行期配置。
+func (h *Handler) AsyncOptions() AsyncLoggerOptions {
+	if h == nil || h.async == nil {
+		return AsyncLoggerOptions{}
+	}
+	return h.async.Options()
+}
+
 // AsyncRemainingCapacity 返回 Handler 层异步队列剩余容量。
 func (h *Handler) AsyncRemainingCapacity() int64 {
 	if h == nil || h.async == nil {
