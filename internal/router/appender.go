@@ -1,25 +1,26 @@
-package goarklog
+package router
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
+
+	logfilter "goark.dev/log/internal/filter"
+	"goark.dev/log/internal/logevent"
 )
+
+// Event 是路由层处理的日志事件快照。
+type Event = logevent.Event
+
+// Filter 是日志事件过滤器。实现必须并发安全。
+type Filter = logfilter.Filter
 
 // Appender 是日志事件的最终写出端。
 type Appender interface {
 	Name() string
 	Append(ctx context.Context, event Event) error
 	Close() error
-}
-
-var bufferPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
 }
 
 // AppenderRef 描述一次到 appender 的结构化引用。
@@ -67,7 +68,8 @@ func WithAppenderRefFilters(filters ...Filter) AppenderRefOption {
 	}
 }
 
-type appenderControl struct {
+// AppenderControl 是一次 appender 引用解析后的运行期控制器。
+type AppenderControl struct {
 	ref             string
 	level           *slog.Level
 	includeLocation *bool
@@ -75,8 +77,9 @@ type appenderControl struct {
 	appender        Appender
 }
 
-type controlledAppender struct {
-	control appenderControl
+// ControlledAppender 把结构化引用控制适配成普通 appender。
+type ControlledAppender struct {
+	control AppenderControl
 }
 
 // FilteredAppender 为任意 appender 增加过滤器链。
@@ -90,27 +93,28 @@ func NewFilteredAppender(delegate Appender, filters ...Filter) (*FilteredAppende
 	if delegate == nil {
 		return nil, fmt.Errorf("goark-log: filtered appender delegate is nil")
 	}
-	chain, err := normalizeFilters("appender "+delegate.Name(), filters)
+	chain, err := logfilter.Normalize("appender "+delegate.Name(), filters)
 	if err != nil {
 		return nil, err
 	}
 	return &FilteredAppender{delegate: delegate, filters: chain}, nil
 }
 
-func newAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (appenderControl, error) {
+// NewAppenderControl 解析结构化 appender 引用。
+func NewAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (AppenderControl, error) {
 	name := strings.TrimSpace(ref.Ref)
 	if name == "" {
-		return appenderControl{}, fmt.Errorf("appender ref is empty")
+		return AppenderControl{}, fmt.Errorf("appender ref is empty")
 	}
 	appender, ok := appenderByName[name]
 	if !ok {
-		return appenderControl{}, fmt.Errorf("appender %q is not configured", name)
+		return AppenderControl{}, fmt.Errorf("appender %q is not configured", name)
 	}
-	filters, err := normalizeFilters("appender ref "+name, ref.Filters)
+	filters, err := logfilter.Normalize("appender ref "+name, ref.Filters)
 	if err != nil {
-		return appenderControl{}, err
+		return AppenderControl{}, err
 	}
-	control := appenderControl{
+	control := AppenderControl{
 		ref:      name,
 		filters:  filters,
 		appender: appender,
@@ -126,20 +130,25 @@ func newAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (ap
 	return control, nil
 }
 
-func (c appenderControl) Append(ctx context.Context, event Event) error {
-	_, err := c.append(ctx, event)
+// NewControlledAppender 把引用控制器封装成 appender。
+func NewControlledAppender(control AppenderControl) ControlledAppender {
+	return ControlledAppender{control: control}
+}
+
+func (c AppenderControl) Append(ctx context.Context, event Event) error {
+	_, err := c.AppendResult(ctx, event)
 	return err
 }
 
-// append 返回底层 appender 是否被实际调用，供核心指标区分跳过和写入。
-func (c appenderControl) append(ctx context.Context, event Event) (bool, error) {
+// AppendResult 返回底层 appender 是否被实际调用，供核心指标区分跳过和写入。
+func (c AppenderControl) AppendResult(ctx context.Context, event Event) (bool, error) {
 	if c.appender == nil {
 		return false, nil
 	}
 	if c.level != nil && event.Level < *c.level {
 		return false, nil
 	}
-	if applyFilters(ctx, c.filters, event) == FilterDeny {
+	if logfilter.Apply(ctx, c.filters, event) == logfilter.FilterDeny {
 		return false, nil
 	}
 	if c.includeLocation != nil && !*c.includeLocation {
@@ -148,37 +157,70 @@ func (c appenderControl) append(ctx context.Context, event Event) (bool, error) 
 	return true, c.appender.Append(ctx, event)
 }
 
-func (c appenderControl) requiresLocation() bool {
+func (c AppenderControl) requiresLocation() bool {
 	return c.includeLocation != nil && *c.includeLocation
 }
 
-func (c appenderControl) name() string {
+func (c AppenderControl) name() string {
 	if c.appender == nil {
 		return c.ref
 	}
 	return c.appender.Name()
 }
 
-func (a controlledAppender) Name() string {
+func (a ControlledAppender) Name() string {
 	return a.control.name()
 }
 
-func (a controlledAppender) Append(ctx context.Context, event Event) error {
-	_, err := a.control.append(ctx, event)
+func (a ControlledAppender) Append(ctx context.Context, event Event) error {
+	_, err := a.control.AppendResult(ctx, event)
 	return err
 }
 
-func (a controlledAppender) Close() error {
+func (a ControlledAppender) Close() error {
 	if a.control.appender == nil {
 		return nil
 	}
 	return a.control.appender.Close()
 }
 
-func resolveAppenderControls(appenderByName map[string]Appender, refs []AppenderRef) ([]appenderControl, error) {
-	controls := make([]appenderControl, 0, len(refs))
+// Delegate 返回被过滤器包装的下游 appender。
+func (a *FilteredAppender) Delegate() Appender {
+	if a == nil {
+		return nil
+	}
+	return a.delegate
+}
+
+func (a *FilteredAppender) Name() string {
+	if a == nil || a.delegate == nil {
+		return ""
+	}
+	return a.delegate.Name()
+}
+
+func (a *FilteredAppender) Append(ctx context.Context, event Event) error {
+	if a == nil || a.delegate == nil {
+		return fmt.Errorf("goark-log: filtered appender is nil")
+	}
+	ctx = logevent.NormalizeContext(ctx)
+	if logfilter.Apply(ctx, a.filters, event) == logfilter.FilterDeny {
+		return nil
+	}
+	return a.delegate.Append(ctx, event)
+}
+
+func (a *FilteredAppender) Close() error {
+	if a == nil || a.delegate == nil {
+		return nil
+	}
+	return a.delegate.Close()
+}
+
+func resolveAppenderControls(appenderByName map[string]Appender, refs []AppenderRef) ([]AppenderControl, error) {
+	controls := make([]AppenderControl, 0, len(refs))
 	for _, ref := range refs {
-		control, err := newAppenderControl(appenderByName, ref)
+		control, err := NewAppenderControl(appenderByName, ref)
 		if err != nil {
 			return nil, err
 		}
@@ -187,7 +229,7 @@ func resolveAppenderControls(appenderByName map[string]Appender, refs []Appender
 	return controls, nil
 }
 
-func appendUniqueAppenderControls(dst []appenderControl, src []appenderControl) []appenderControl {
+func appendUniqueAppenderControls(dst []AppenderControl, src []AppenderControl) []AppenderControl {
 	seen := make(map[string]struct{}, len(dst)+len(src))
 	out := dst[:0]
 	for _, control := range dst {
@@ -213,42 +255,6 @@ func appendUniqueAppenderControls(dst []appenderControl, src []appenderControl) 
 		out = append(out, control)
 	}
 	return out
-}
-
-func (a *FilteredAppender) Name() string {
-	if a == nil || a.delegate == nil {
-		return ""
-	}
-	return a.delegate.Name()
-}
-
-func (a *FilteredAppender) Append(ctx context.Context, event Event) error {
-	if a == nil || a.delegate == nil {
-		return fmt.Errorf("goark-log: filtered appender is nil")
-	}
-	ctx = normalizeContext(ctx)
-	if applyFilters(ctx, a.filters, event) == FilterDeny {
-		return nil
-	}
-	return a.delegate.Append(ctx, event)
-}
-
-func (a *FilteredAppender) Close() error {
-	if a == nil || a.delegate == nil {
-		return nil
-	}
-	return a.delegate.Close()
-}
-
-func isAsyncAppender(appender Appender) bool {
-	switch value := appender.(type) {
-	case *AsyncAppender:
-		return true
-	case *FilteredAppender:
-		return isAsyncAppender(value.delegate)
-	default:
-		return false
-	}
 }
 
 func mergeAppenderRefs(simple []string, controls []AppenderRef) []AppenderRef {
@@ -279,12 +285,4 @@ func copyAppenderRef(ref AppenderRef) AppenderRef {
 		copied.IncludeLocation = &includeLocation
 	}
 	return copied
-}
-
-func releaseBuffer(buf *bytes.Buffer) {
-	if buf.Cap() > 64*1024 {
-		return
-	}
-	buf.Reset()
-	bufferPool.Put(buf)
 }

@@ -13,6 +13,7 @@ import (
 	configlevel "goark.dev/log/internal/level"
 	"goark.dev/log/internal/logfile"
 	configlookup "goark.dev/log/internal/lookup"
+	internalrouter "goark.dev/log/internal/router"
 )
 
 const (
@@ -369,6 +370,5 @@ func filepathExt(path string) string {
 }
 
 func closeAppenderList(appenders []Appender) error {
-	config := &runtimeConfig{all: appenders}
-	return config.close()
+	return internalrouter.CloseAppenders(appenders, isAsyncAppender)
 }

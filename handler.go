@@ -9,6 +9,8 @@ import (
 	"time"
 
 	internalasynclogger "goark.dev/log/internal/asynclogger"
+	internalnativelogger "goark.dev/log/internal/nativelogger"
+	internalrouter "goark.dev/log/internal/router"
 )
 
 // Options 描述 Handler 的运行期结构。
@@ -21,25 +23,10 @@ type Options struct {
 }
 
 // RootLogger 描述根 logger。
-type RootLogger struct {
-	Level               slog.Level
-	AppenderRefs        []string
-	AppenderRefControls []AppenderRef
-	Filters             []Filter
-	IncludeLocation     bool
-}
+type RootLogger = internalrouter.RootLogger
 
 // LoggerRule 描述命名 logger 的级别和输出路由。
-type LoggerRule struct {
-	Name                string
-	Level               *slog.Level
-	AppenderRefs        []string
-	AppenderRefControls []AppenderRef
-	Filters             []Filter
-	Additivity          bool
-	AdditivitySet       bool
-	IncludeLocation     *bool
-}
+type LoggerRule = internalrouter.LoggerRule
 
 // DefaultOptions 返回默认 Spring Boot 风格 stderr 配置。
 func DefaultOptions() Options {
@@ -54,7 +41,7 @@ func DefaultOptions() Options {
 
 // Handler 是 goark-log 的 slog.Handler 实现。
 type Handler struct {
-	router *router
+	router *internalrouter.Router
 	name   string
 	attrs  []slog.Attr
 	groups []string
@@ -74,7 +61,8 @@ func New(options Options) (*slog.Logger, *Handler, error) {
 
 // NewHandler 创建 slog.Handler。
 func NewHandler(options Options) (*Handler, error) {
-	router, err := newRouter(options)
+	options = defaultRuntimeOptions(options)
+	router, err := internalrouter.New(toRouterOptions(options))
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +106,33 @@ func WithName(logger *slog.Logger, name string) *slog.Logger {
 	return logger.With(loggerNameKey, name)
 }
 
+// Logger 是 goark-log 的低分配原生日志入口。
+type Logger = internalnativelogger.Logger
+
+// LoggerOption 调整原生 Logger。
+type LoggerOption = internalnativelogger.Option
+
+// LogBuilder 是低分配链式事件构造器。
+type LogBuilder = internalnativelogger.LogBuilder
+
+// WithLoggerCaller 设置是否采集调用位置。
+func WithLoggerCaller(enabled bool) LoggerOption {
+	return internalnativelogger.WithCaller(enabled)
+}
+
+// WithLoggerMessageFactory 设置参数化消息工厂。
+func WithLoggerMessageFactory(factory MessageFactory) LoggerOption {
+	return internalnativelogger.WithMessageFactory(factory)
+}
+
+// NewNativeLogger 基于 Handler 创建低分配命名 logger。
+func NewNativeLogger(handler *Handler, name string, options ...LoggerOption) (*Logger, error) {
+	if handler == nil {
+		return nil, fmt.Errorf("goark-log: native logger handler is nil")
+	}
+	return internalnativelogger.New(nativeHandler{handler: handler}, name, options...)
+}
+
 func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
 	return h.enabled(h.name, level)
 }
@@ -126,11 +141,11 @@ func (h *Handler) enabled(name string, level slog.Level) bool {
 	if h == nil || h.router == nil {
 		return level >= slog.LevelInfo
 	}
-	plan := h.router.plan(name)
-	if len(plan.globalFilters) > 0 {
+	plan := h.router.Plan(name)
+	if len(plan.GlobalFilters) > 0 {
 		return true
 	}
-	return level >= plan.route.Level
+	return level >= plan.Route.Level
 }
 
 func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
@@ -140,37 +155,37 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	plan := h.router.plan(h.name)
-	if len(plan.globalFilters) == 0 {
-		if record.Level < plan.route.Level {
+	plan := h.router.Plan(h.name)
+	if len(plan.GlobalFilters) == 0 {
+		if record.Level < plan.Route.Level {
 			return nil
 		}
 		event := newEvent(ctx, h.name, h.attrs, h.groups, record)
 		if h.async != nil {
 			return h.async.Append(ctx, event, false)
 		}
-		return h.dispatchRoute(ctx, plan.route, event)
+		return h.dispatchRoute(ctx, plan.Route, event)
 	}
 	event := newEvent(ctx, h.name, h.attrs, h.groups, record)
-	levelAccepted, denied := applyGlobalFilters(ctx, plan.globalFilters, event)
+	levelAccepted, denied := applyGlobalFilters(ctx, plan.GlobalFilters, event)
 	if denied {
 		return nil
 	}
-	if !levelAccepted && record.Level < plan.route.Level {
+	if !levelAccepted && record.Level < plan.Route.Level {
 		return nil
 	}
 	if h.async != nil {
 		return h.async.Append(ctx, event, levelAccepted)
 	}
-	return h.dispatchRoute(ctx, plan.route, event)
+	return h.dispatchRoute(ctx, plan.Route, event)
 }
 
 func (h *Handler) dispatch(ctx context.Context, event Event, levelAccepted bool) error {
-	plan := h.router.plan(event.Logger)
-	if !levelAccepted && event.Level < plan.route.Level {
+	plan := h.router.Plan(event.Logger)
+	if !levelAccepted && event.Level < plan.Route.Level {
 		return nil
 	}
-	return h.dispatchRoute(ctx, plan.route, event)
+	return h.dispatchRoute(ctx, plan.Route, event)
 }
 
 func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error {
@@ -180,29 +195,29 @@ func (h *Handler) logAttrs(ctx context.Context, logger string, handlerAttrs []sl
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	plan := h.router.plan(logger)
-	if len(plan.globalFilters) == 0 {
-		if level < plan.route.Level {
+	plan := h.router.Plan(logger)
+	if len(plan.GlobalFilters) == 0 {
+		if level < plan.Route.Level {
 			return nil
 		}
 		if h.async == nil && pc == 0 {
-			if handled, err := h.dispatchAttrsFast(ctx, plan.route, logger, when, level, message, attrs); handled {
+			if handled, err := internalrouter.DispatchAttrsFast(ctx, plan.Route, h.attrs, h.groups, logger, when, level, message, attrs); handled {
 				return err
 			}
 		}
 	}
 	event := newEventFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, h.async != nil)
-	levelAccepted, denied := applyGlobalFilters(ctx, plan.globalFilters, event)
+	levelAccepted, denied := applyGlobalFilters(ctx, plan.GlobalFilters, event)
 	if denied {
 		return nil
 	}
-	if !levelAccepted && level < plan.route.Level {
+	if !levelAccepted && level < plan.Route.Level {
 		return nil
 	}
 	if h.async != nil {
 		return h.async.Append(ctx, event, levelAccepted)
 	}
-	return h.dispatchRoute(ctx, plan.route, event)
+	return h.dispatchRoute(ctx, plan.Route, event)
 }
 
 func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
@@ -212,13 +227,13 @@ func (h *Handler) log3Attrs(ctx context.Context, logger string, handlerAttrs []s
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	plan := h.router.plan(logger)
-	if len(plan.globalFilters) == 0 {
-		if level < plan.route.Level {
+	plan := h.router.Plan(logger)
+	if len(plan.GlobalFilters) == 0 {
+		if level < plan.Route.Level {
 			return nil
 		}
 		if h.async == nil && pc == 0 {
-			if handled, err := h.dispatchFixedAttrsFast(ctx, plan.route, logger, when, level, message, attr0, attr1, attr2); handled {
+			if handled, err := internalrouter.DispatchFixedAttrsFast(ctx, plan.Route, h.attrs, h.groups, logger, when, level, message, attr0, attr1, attr2); handled {
 				return err
 			}
 		}
@@ -238,13 +253,13 @@ func applyGlobalFilters(ctx context.Context, filters []Filter, event Event) (lev
 	}
 }
 
-func (h *Handler) dispatchRoute(ctx context.Context, route route, event Event) error {
+func (h *Handler) dispatchRoute(ctx context.Context, route internalrouter.Route, event Event) error {
 	if applyFilters(ctx, route.Filters, event) == FilterDeny {
 		return nil
 	}
 	var joined error
 	for _, appender := range route.Appenders {
-		_, err := appender.append(ctx, event)
+		_, err := appender.AppendResult(ctx, event)
 		if err != nil {
 			joined = errors.Join(joined, err)
 			continue
@@ -302,6 +317,7 @@ func (h *Handler) Reload(options Options) error {
 	if h == nil || h.router == nil {
 		return fmt.Errorf("goark-log: handler is nil")
 	}
+	options = defaultRuntimeOptions(options)
 	if options.Async.Enabled != (h.async != nil) {
 		return fmt.Errorf("goark-log: async logger enablement cannot be changed by reload")
 	}
@@ -314,7 +330,7 @@ func (h *Handler) Reload(options Options) error {
 			return fmt.Errorf("goark-log: async logger queue settings cannot be changed by reload")
 		}
 	}
-	return h.router.Replace(options)
+	return h.router.Replace(toRouterOptions(options))
 }
 
 // AsyncDropped 返回 Handler 层异步日志丢弃数量。
@@ -349,11 +365,7 @@ func (h *Handler) routeIncludeLocation(name string) bool {
 	if h == nil || h.router == nil {
 		return false
 	}
-	config := h.router.current.Load()
-	if config == nil || !config.includeLocation {
-		return false
-	}
-	return routePlanFromConfig(config, name).route.IncludeLocation
+	return h.router.IncludeLocation(name)
 }
 
 func (h *Handler) clone() *Handler {
@@ -361,4 +373,54 @@ func (h *Handler) clone() *Handler {
 	next.attrs = append([]slog.Attr(nil), h.attrs...)
 	next.groups = append([]string(nil), h.groups...)
 	return &next
+}
+
+func defaultRuntimeOptions(options Options) Options {
+	if len(options.Appenders) != 0 {
+		return options
+	}
+	defaults := DefaultOptions()
+	options.Appenders = defaults.Appenders
+	if len(options.Root.AppenderRefs) == 0 && len(options.Root.AppenderRefControls) == 0 {
+		options.Root.AppenderRefs = defaults.Root.AppenderRefs
+	}
+	return options
+}
+
+func toRouterOptions(options Options) internalrouter.Options {
+	return internalrouter.Options{
+		Appenders:       options.Appenders,
+		Filters:         options.Filters,
+		Root:            options.Root,
+		Loggers:         options.Loggers,
+		IsAsyncAppender: isAsyncAppender,
+	}
+}
+
+type nativeHandler struct {
+	handler *Handler
+}
+
+func (h nativeHandler) Enabled(_ context.Context, logger string, level slog.Level) bool {
+	return h.handler.enabled(logger, level)
+}
+
+func (h nativeHandler) IncludeCaller(logger string) bool {
+	return h.handler.asyncIncludeLocation() || h.handler.routeIncludeLocation(logger)
+}
+
+func (h nativeHandler) LogAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error {
+	return h.handler.logAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs)
+}
+
+func (h nativeHandler) Log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
+	return h.handler.log3Attrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attr0, attr1, attr2)
+}
+
+func (h nativeHandler) SlogHandler() slog.Handler {
+	return h.handler
+}
+
+func callerPC(skip int) uintptr {
+	return internalnativelogger.CallerPC(skip)
 }

@@ -6,9 +6,16 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
+
+var benchmarkBufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
 
 func BenchmarkLayout(b *testing.B) {
 	event := benchmarkEvent()
@@ -24,8 +31,8 @@ func BenchmarkLayout(b *testing.B) {
 	for _, benchmark := range benchmarks {
 		b.Run(benchmark.name, func(b *testing.B) {
 			b.ReportAllocs()
-			buf := bufferPool.Get().(*bytes.Buffer)
-			defer releaseBuffer(buf)
+			buf := benchmarkBufferPool.Get().(*bytes.Buffer)
+			defer releaseBenchmarkBuffer(buf)
 			for i := 0; i < b.N; i++ {
 				buf.Reset()
 				if err := benchmark.layout.Format(buf, event); err != nil {
@@ -44,8 +51,8 @@ func BenchmarkJSONLayoutAnyFallback(b *testing.B) {
 		"tags":    []string{"core", "json", "sonic"},
 	}))
 	layout := JSONLayout{}
-	buf := bufferPool.Get().(*bytes.Buffer)
-	defer releaseBuffer(buf)
+	buf := benchmarkBufferPool.Get().(*bytes.Buffer)
+	defer releaseBenchmarkBuffer(buf)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -534,4 +541,12 @@ func benchmarkAnyPayload() map[string]any {
 			"status":  "ready",
 		},
 	}
+}
+
+func releaseBenchmarkBuffer(buf *bytes.Buffer) {
+	if buf.Cap() > 64*1024 {
+		return
+	}
+	buf.Reset()
+	benchmarkBufferPool.Put(buf)
 }

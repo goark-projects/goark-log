@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	internalrouter "goark.dev/log/internal/router"
 	"goark.dev/log/internal/textutil"
 )
 
@@ -155,11 +156,11 @@ func buildAsyncAppender(name string, spec appenderConfig, specs map[string]appen
 		if _, waiting, err := resolveCompositeAppenderRef("async appender", name, ref.Ref, specs, built); err != nil || waiting {
 			return nil, waiting, err
 		}
-		control, err := newAppenderControl(built, ref)
+		control, err := internalrouter.NewAppenderControl(built, ref)
 		if err != nil {
 			return nil, false, fmt.Errorf("goark-log: async appender %q: %w", name, err)
 		}
-		delegates = append(delegates, controlledAppender{control: control})
+		delegates = append(delegates, internalrouter.NewControlledAppender(control))
 	}
 	factory, ok := registry.appenderFactory(spec.Type)
 	if !ok {

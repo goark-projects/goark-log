@@ -1,4 +1,4 @@
-package goarklog
+package nativelogger
 
 import (
 	"context"
@@ -7,13 +7,39 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	configlevel "goark.dev/log/internal/level"
+	"goark.dev/log/internal/logcontext"
+	"goark.dev/log/internal/logevent"
+	logmessage "goark.dev/log/internal/message"
 )
 
 const logBuilderInlineAttrs = 8
 
+// Handler 是原生 Logger 依赖的最小热路径端口。
+type Handler interface {
+	Enabled(ctx context.Context, logger string, level slog.Level) bool
+	IncludeCaller(logger string) bool
+	LogAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error
+	Log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error
+	SlogHandler() slog.Handler
+}
+
+// Message 表示可被日志事件快照化的消息对象。
+type Message = logmessage.Message
+
+// AttributedMessage 表示会同时贡献结构化属性的消息对象。
+type AttributedMessage = logmessage.AttributedMessage
+
+// MessageFactory 创建日志消息对象。
+type MessageFactory = logmessage.MessageFactory
+
+// Marker 表示事件标签。
+type Marker = logcontext.Marker
+
 // Logger 是 goark-log 的低分配原生日志入口。
 type Logger struct {
-	handler        *Handler
+	handler        Handler
 	name           string
 	attrs          []slog.Attr
 	groups         []string
@@ -21,18 +47,18 @@ type Logger struct {
 	messageFactory MessageFactory
 }
 
-// LoggerOption 调整原生 Logger。
-type LoggerOption func(*Logger)
+// Option 调整原生 Logger。
+type Option func(*Logger)
 
-// WithLoggerCaller 设置是否采集调用位置。
-func WithLoggerCaller(enabled bool) LoggerOption {
+// WithCaller 设置是否采集调用位置。
+func WithCaller(enabled bool) Option {
 	return func(logger *Logger) {
 		logger.includeCaller = enabled
 	}
 }
 
-// WithLoggerMessageFactory 设置参数化消息工厂。
-func WithLoggerMessageFactory(factory MessageFactory) LoggerOption {
+// WithMessageFactory 设置参数化消息工厂。
+func WithMessageFactory(factory MessageFactory) Option {
 	return func(logger *Logger) {
 		if factory != nil {
 			logger.messageFactory = factory
@@ -40,18 +66,18 @@ func WithLoggerMessageFactory(factory MessageFactory) LoggerOption {
 	}
 }
 
-// NewNativeLogger 基于 Handler 创建低分配命名 logger。
-func NewNativeLogger(handler *Handler, name string, options ...LoggerOption) (*Logger, error) {
+// New 基于 Handler 端口创建低分配命名 logger。
+func New(handler Handler, name string, options ...Option) (*Logger, error) {
 	if handler == nil {
 		return nil, fmt.Errorf("goark-log: native logger handler is nil")
 	}
 	logger := &Logger{
 		handler:        handler,
 		name:           strings.TrimSpace(name),
-		messageFactory: ParameterizedMessageFactory{},
+		messageFactory: logmessage.ParameterizedMessageFactory{},
 	}
 	if logger.name == "" {
-		logger.name = defaultLoggerName
+		logger.name = logevent.DefaultLoggerName
 	}
 	for _, option := range options {
 		if option != nil {
@@ -66,7 +92,11 @@ func (l *Logger) Slog() *slog.Logger {
 	if l == nil || l.handler == nil {
 		return slog.Default()
 	}
-	logger := slog.New(l.handler).With(loggerNameKey, l.name)
+	handler := l.handler.SlogHandler()
+	if handler == nil {
+		return slog.Default()
+	}
+	logger := slog.New(handler).With(logevent.LoggerNameKey, l.name)
 	if len(l.attrs) > 0 {
 		values := make([]any, 0, len(l.attrs)*2)
 		for _, attr := range l.attrs {
@@ -80,7 +110,7 @@ func (l *Logger) Slog() *slog.Logger {
 // Name 返回 logger 名称。
 func (l *Logger) Name() string {
 	if l == nil || strings.TrimSpace(l.name) == "" {
-		return defaultLoggerName
+		return logevent.DefaultLoggerName
 	}
 	return l.name
 }
@@ -90,7 +120,7 @@ func (l *Logger) Enabled(ctx context.Context, level slog.Level) bool {
 	if l == nil || l.handler == nil {
 		return false
 	}
-	return l.handler.enabled(l.Name(), level)
+	return l.handler.Enabled(ctx, l.Name(), level)
 }
 
 // WithAttrs 返回绑定额外属性的新 Logger。
@@ -100,11 +130,11 @@ func (l *Logger) WithAttrs(attrs ...slog.Attr) *Logger {
 	}
 	next := l.clone()
 	for _, attr := range attrs {
-		attr = normalizeAttr(attr)
-		if attr.Key == "" || attr.Key == loggerNameKey {
+		attr = logevent.NormalizeAttr(attr)
+		if attr.Key == "" || attr.Key == logevent.LoggerNameKey {
 			continue
 		}
-		next.attrs = appendAttr(next.attrs, next.groups, attr)
+		next.attrs = logevent.AppendAttr(next.attrs, next.groups, attr)
 	}
 	return next
 }
@@ -134,10 +164,10 @@ func (l *Logger) LogAttrs3(ctx context.Context, level slog.Level, message string
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
-	if l.includeCaller || l.handler.asyncIncludeLocation() || l.handler.routeIncludeLocation(l.Name()) {
-		pc = callerPC(2)
+	if l.includeCaller || l.handler.IncludeCaller(l.Name()) {
+		pc = CallerPC(2)
 	}
-	return l.handler.log3Attrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attr0, attr1, attr2)
+	return l.handler.Log3Attrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attr0, attr1, attr2)
 }
 
 func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string, attrs []slog.Attr, callerSkip int) error {
@@ -145,10 +175,10 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string,
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
 	pc := uintptr(0)
-	if l.includeCaller || l.handler.asyncIncludeLocation() || l.handler.routeIncludeLocation(l.Name()) {
-		pc = callerPC(callerSkip)
+	if l.includeCaller || l.handler.IncludeCaller(l.Name()) {
+		pc = CallerPC(callerSkip)
 	}
-	return l.handler.logAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)
+	return l.handler.LogAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)
 }
 
 // Debug 写出 DEBUG 级别日志。
@@ -193,12 +223,12 @@ func (l *Logger) ErrorContext(ctx context.Context, message string, attrs ...slog
 
 // Fatal 写出 FATAL 级别日志。
 func (l *Logger) Fatal(message string, attrs ...slog.Attr) error {
-	return l.logAttrs(context.Background(), LevelFatal, message, attrs, 2)
+	return l.logAttrs(context.Background(), configlevel.Fatal, message, attrs, 2)
 }
 
 // FatalContext 写出带 context 的 FATAL 级别日志。
 func (l *Logger) FatalContext(ctx context.Context, message string, attrs ...slog.Attr) error {
-	return l.logAttrs(ctx, LevelFatal, message, attrs, 2)
+	return l.logAttrs(ctx, configlevel.Fatal, message, attrs, 2)
 }
 
 func (l *Logger) clone() *Logger {
@@ -208,7 +238,8 @@ func (l *Logger) clone() *Logger {
 	return &next
 }
 
-func callerPC(skip int) uintptr {
+// CallerPC 返回指定 skip 对应的调用位置程序计数器。
+func CallerPC(skip int) uintptr {
 	var pcs [1]uintptr
 	if runtime.Callers(skip+2, pcs[:]) == 0 {
 		return 0
@@ -239,7 +270,7 @@ func (l *Logger) At(level slog.Level) LogBuilder {
 
 // AtTrace 创建 TRACE 级别事件构造器。
 func (l *Logger) AtTrace() LogBuilder {
-	return l.At(LevelTrace)
+	return l.At(configlevel.Trace)
 }
 
 // AtDebug 创建 DEBUG 级别事件构造器。
@@ -264,7 +295,7 @@ func (l *Logger) AtError() LogBuilder {
 
 // AtFatal 创建 FATAL 级别事件构造器。
 func (l *Logger) AtFatal() LogBuilder {
-	return l.At(LevelFatal)
+	return l.At(configlevel.Fatal)
 }
 
 // Enabled 判断事件构造器是否会写出日志。
@@ -299,12 +330,12 @@ func (b LogBuilder) WithAttr(attr slog.Attr) LogBuilder {
 	if !b.enabled {
 		return b
 	}
-	attr = normalizeAttr(attr)
-	if attr.Key == "" || attr.Key == loggerNameKey {
+	attr = logevent.NormalizeAttr(attr)
+	if attr.Key == "" || attr.Key == logevent.LoggerNameKey {
 		return b
 	}
 	if len(b.groups) > 0 {
-		attr.Key = groupKey(b.groups, attr.Key)
+		attr.Key = logevent.GroupKey(b.groups, attr.Key)
 	}
 	return b.appendOneAttr(attr)
 }
@@ -315,12 +346,12 @@ func (b LogBuilder) WithAttrs(attrs ...slog.Attr) LogBuilder {
 		return b
 	}
 	for _, attr := range attrs {
-		attr = normalizeAttr(attr)
-		if attr.Key == "" || attr.Key == loggerNameKey {
+		attr = logevent.NormalizeAttr(attr)
+		if attr.Key == "" || attr.Key == logevent.LoggerNameKey {
 			continue
 		}
 		if len(b.groups) > 0 {
-			attr.Key = groupKey(b.groups, attr.Key)
+			attr.Key = logevent.GroupKey(b.groups, attr.Key)
 		}
 		b = b.appendOneAttr(attr)
 	}
@@ -352,7 +383,7 @@ func (b LogBuilder) WithMarker(marker Marker) LogBuilder {
 	if marker.Name == "" {
 		return b
 	}
-	return b.WithAttr(MarkerAttr(marker))
+	return b.WithAttr(logcontext.MarkerAttr(marker))
 }
 
 // WithError 设置事件异常快照。
@@ -360,7 +391,7 @@ func (b LogBuilder) WithError(err error) LogBuilder {
 	if err == nil {
 		return b
 	}
-	return b.WithAttr(ThrowableAttr(err))
+	return b.WithAttr(logevent.ThrowableAttr(err))
 }
 
 // WithThrowable 是 WithError 的语义别名。
@@ -373,17 +404,17 @@ func (b LogBuilder) WithErrorStack(err error) LogBuilder {
 	if err == nil {
 		return b
 	}
-	return b.WithAttr(ThrowableWithStackAttr(err))
+	return b.WithAttr(logevent.ThrowableWithStackAttr(err))
 }
 
 // Log 写出字符串消息。
 func (b LogBuilder) Log(message string) error {
-	return b.LogMessage(SimpleMessage(message))
+	return b.LogMessage(logmessage.NewSimpleMessage(message))
 }
 
 // Logf 使用 {} 占位符写出参数化消息。
 func (b LogBuilder) Logf(pattern string, args ...any) error {
-	factory := MessageFactory(ParameterizedMessageFactory{})
+	factory := MessageFactory(logmessage.ParameterizedMessageFactory{})
 	if b.logger != nil && b.logger.messageFactory != nil {
 		factory = b.logger.messageFactory
 	}
@@ -399,7 +430,7 @@ func (b LogBuilder) LogMessage(message Message) error {
 		return nil
 	}
 	if message == nil {
-		message = SimpleMessage("")
+		message = logmessage.NewSimpleMessage("")
 	}
 	attrs := b.attrSlice()
 	if attributed, ok := message.(AttributedMessage); ok {

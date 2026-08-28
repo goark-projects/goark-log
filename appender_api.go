@@ -3,6 +3,7 @@ package goarklog
 import (
 	"io"
 	"io/fs"
+	"log/slog"
 	"time"
 
 	internalasyncappender "goark.dev/log/internal/asyncappender"
@@ -11,6 +12,7 @@ import (
 	internalfileappender "goark.dev/log/internal/fileappender"
 	internaljsonappender "goark.dev/log/internal/jsonappender"
 	internalrollingfile "goark.dev/log/internal/rollingfile"
+	internalrouter "goark.dev/log/internal/router"
 )
 
 const (
@@ -31,6 +33,43 @@ const (
 	// DefaultRollingActionQueueSize 是异步滚动动作队列默认长度。
 	DefaultRollingActionQueueSize = internalrollingfile.DefaultRollingActionQueueSize
 )
+
+// Appender 是日志事件的最终写出端。
+type Appender = internalrouter.Appender
+
+// AppenderRef 描述一次到 appender 的结构化引用。
+type AppenderRef = internalrouter.AppenderRef
+
+// AppenderRefOption 调整结构化 appender 引用。
+type AppenderRefOption = internalrouter.AppenderRefOption
+
+// FilteredAppender 为任意 appender 增加过滤器链。
+type FilteredAppender = internalrouter.FilteredAppender
+
+// NewAppenderRef 创建结构化 appender 引用。
+func NewAppenderRef(ref string, options ...AppenderRefOption) AppenderRef {
+	return internalrouter.NewAppenderRef(ref, options...)
+}
+
+// WithAppenderRefLevel 设置当前引用独有的级别下限。
+func WithAppenderRefLevel(level slog.Level) AppenderRefOption {
+	return internalrouter.WithAppenderRefLevel(level)
+}
+
+// WithAppenderRefLocation 设置当前引用是否采集调用位置。
+func WithAppenderRefLocation(enabled bool) AppenderRefOption {
+	return internalrouter.WithAppenderRefLocation(enabled)
+}
+
+// WithAppenderRefFilters 设置当前引用独有的过滤器链。
+func WithAppenderRefFilters(filters ...Filter) AppenderRefOption {
+	return internalrouter.WithAppenderRefFilters(filters...)
+}
+
+// NewFilteredAppender 创建带过滤器链的 appender。
+func NewFilteredAppender(delegate Appender, filters ...Filter) (*FilteredAppender, error) {
+	return internalrouter.NewFilteredAppender(delegate, filters...)
+}
 
 // AsyncOverflowStrategy 定义异步队列满时的处理策略。
 type AsyncOverflowStrategy = internalasync.OverflowStrategy
@@ -496,4 +535,15 @@ func sameAsyncLoggerRuntimeOptions(left AsyncLoggerOptions, right AsyncLoggerOpt
 
 func withRollingClock(clock func() time.Time) RollingFileOption {
 	return internalrollingfile.WithRollingClock(clock)
+}
+
+func isAsyncAppender(appender Appender) bool {
+	switch value := appender.(type) {
+	case *AsyncAppender:
+		return true
+	case *FilteredAppender:
+		return isAsyncAppender(value.Delegate())
+	default:
+		return false
+	}
 }
