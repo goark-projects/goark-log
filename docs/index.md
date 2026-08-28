@@ -29,6 +29,7 @@ Chinese counterpart.
 | Implemented and unsupported features | [Capabilities](capabilities.md) |
 | Benchmarks and hot-path constraints | [Performance](performance.md) |
 | Release validation | [v0.0.2 checklist](release-v0.0.2.md) |
+| GitHub release copy | [v0.0.2 release notes](github-release-v0.0.2.md) |
 
 ## Examples
 

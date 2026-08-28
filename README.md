@@ -131,6 +131,7 @@ They do not require external services.
 | [Capabilities](docs/capabilities.md) | Source-backed capability matrix and unsupported core boundaries. |
 | [Performance](docs/performance.md) | Benchmarks, hot-path rules, stress checks, and performance caveats. |
 | [Release checklist](docs/release-v0.0.2.md) | Validation gates for the next release. |
+| [GitHub release notes](docs/github-release-v0.0.2.md) | Copyable notes for the `v0.0.2` GitHub Release. |
 | [Configuration examples](docs/examples/README.md) | Loadable YAML, TOML, XML, and properties examples. |
 | [Runnable examples](examples/README.md) | Demo commands and expected behavior. |
 

@@ -125,6 +125,7 @@ GOWORK=off go run ./examples/log4j2_config
 | [能力边界](docs/capabilities.zh-CN.md) | 基于源码的能力矩阵和核心不支持边界。 |
 | [性能](docs/performance.zh-CN.md) | Benchmark、热路径规则、压测检查和性能注意事项。 |
 | [发布检查清单](docs/release-v0.0.2.zh-CN.md) | 下一版发布 gate。 |
+| [GitHub 发版说明](docs/github-release-v0.0.2.zh-CN.md) | 可直接复制到 `v0.0.2` GitHub Release 的说明。 |
 | [配置示例](docs/examples/README.zh-CN.md) | 可加载 YAML、TOML、XML 和 properties 示例。 |
 | [可运行示例](examples/README.zh-CN.md) | Demo 命令和预期行为。 |
 

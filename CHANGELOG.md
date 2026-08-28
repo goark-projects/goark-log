@@ -5,10 +5,21 @@
 This changelog records source-backed user-facing changes. The current working
 branch is `dev`; release tags are cut from `main` after validation.
 
-## Unreleased
+## v0.0.2 - 2026-08-28
 
 ### Added
 
+- TOML configuration loading alongside YAML, JSON, Log4j2-style XML, and Java
+  properties.
+- Log4j2-style configuration coverage for rolling policies, rollover strategy,
+  structured appender references, composite appenders, and additional filter
+  families.
+- Public API surface for appenders, appender refs, the native logger, plugin
+  registry, plugin sets, status logger, logger context, messages, markers,
+  context attrs, context stack, and throwable snapshots.
+- Focused internal packages for appenders, async runtime, configuration,
+  layouts, filters, routing, rolling files, lookups, log values, status, and
+  plugin construction.
 - Rewritten bilingual documentation system with English as the default public
   language and Simplified Chinese counterparts for every public Markdown file.
 - Exhaustive configuration reference covering wrappers, discovery order,
@@ -28,6 +39,22 @@ branch is `dev`; release tags are cut from `main` after validation.
   one-off snippets where practical.
 - Public documentation now separates implemented core features from external
   integration boundaries.
+- Root-level source files now act as a smaller public facade while
+  implementation details live under `internal`.
+- Benchmarks are split into core benchmarks and an isolated comparison module,
+  keeping zap and zerolog outside the core module graph.
+
+### Fixed
+
+- Composite appender filters are applied consistently to configured async,
+  failover, routing, and rewrite appenders.
+- File and rolling-file appenders no longer create or touch a lazy file when
+  `createOnDemand` is enabled and the appender is closed before the first
+  event.
+- Rolling file archive actions remain serialized under pressure, avoiding
+  concurrent gzip/delete races on Windows.
+- Production logging paths now validate and close buffered file lifecycle state
+  more defensively.
 
 ## v0.0.1
 

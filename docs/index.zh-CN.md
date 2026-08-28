@@ -28,6 +28,7 @@ Markdown 页面都提供简体中文版本。
 | 已实现和不支持能力 | [能力边界](capabilities.zh-CN.md) |
 | Benchmark 和热路径约束 | [性能](performance.zh-CN.md) |
 | 发布验证 | [v0.0.2 检查清单](release-v0.0.2.zh-CN.md) |
+| GitHub Release 文案 | [v0.0.2 发版说明](github-release-v0.0.2.zh-CN.md) |
 
 ## 示例
 

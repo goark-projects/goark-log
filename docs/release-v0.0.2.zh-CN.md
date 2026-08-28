@@ -4,6 +4,8 @@
 
 本清单用于下一个 `goark-log` release candidate。必须在将要打 tag 的精确 commit 上运行。
 
+GitHub Release 文案维护在 [github-release-v0.0.2.zh-CN.md](github-release-v0.0.2.zh-CN.md)。
+
 ## 需要验证的范围
 
 | 领域 | 必须成立 |
@@ -72,8 +74,9 @@ GOWORK=off go test -run '^$' -bench . -benchmem
 4. 运行 demo smoke 门禁。
 5. 如果发布说明提到性能，运行 benchmark。
 6. 更新 `CHANGELOG.md`、`CHANGELOG.zh-CN.md`、`RELEASE.md` 和 `RELEASE.zh-CN.md`。
-7. 合并到 `main`。
-8. 只有同一 commit 通过门禁后，才从 `main` 打 tag。
+7. 更新 `docs/github-release-v0.0.2.md` 和 `docs/github-release-v0.0.2.zh-CN.md`。
+8. 合并到 `main`。
+9. 只有同一 commit 通过门禁后，才从 `main` 打 tag。
 
 ## 网络代理
 

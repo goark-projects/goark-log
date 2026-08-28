@@ -5,6 +5,9 @@
 This checklist is for the next `goark-log` release candidate. Run it on the
 exact commit that will be tagged.
 
+GitHub release copy is maintained in
+[github-release-v0.0.2.md](github-release-v0.0.2.md).
+
 ## Scope To Verify
 
 | Area | Must be true |
@@ -74,8 +77,9 @@ performance statement.
 4. Run demo smoke gates.
 5. Run benchmarks if release notes mention performance.
 6. Update `CHANGELOG.md`, `CHANGELOG.zh-CN.md`, `RELEASE.md`, and `RELEASE.zh-CN.md`.
-7. Merge to `main`.
-8. Tag from `main` only after the same commit passes the gates.
+7. Update `docs/github-release-v0.0.2.md` and `docs/github-release-v0.0.2.zh-CN.md`.
+8. Merge to `main`.
+9. Tag from `main` only after the same commit passes the gates.
 
 ## Network Proxy
 

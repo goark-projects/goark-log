@@ -15,9 +15,11 @@
 
 ```bash
 git status --short --branch
+git diff --check
 GOWORK=off go test ./...
 GOWORK=off go vet ./...
 GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
+GOWORK=off go test -race -count=1 ./...
 GOWORK=off go test -run '^$' -bench . -benchmem ./benchmarks/core
 ```
 
@@ -32,6 +34,12 @@ GOWORK=off go test -run '^$' -bench . -benchmem
 运行公开 demo：
 
 ```bash
+GOWORK=off go run ./examples/console
+GOWORK=off go run ./examples/file
+GOWORK=off go run ./examples/rolling
+GOWORK=off go run ./examples/async
+GOWORK=off go run ./examples/reload
+GOWORK=off go run ./examples/extensibility
 GOWORK=off go run ./examples/production
 GOWORK=off go run ./examples/slf4j
 GOWORK=off go run ./examples/log4j2_config
@@ -40,7 +48,8 @@ GOWORK=off go run ./examples/log4j2_config
 ## 版本检查清单
 
 1. 更新 `CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`。
-2. 更新 `docs/release-v0.0.2.md`，或创建下一版本检查清单。
+2. 更新版本检查清单和 GitHub release notes，例如 `docs/release-v0.0.2.md` 和
+   `docs/github-release-v0.0.2.md`。
 3. 确认每个英文公开 Markdown 文件都有 `.zh-CN.md` 对应版本。
 4. 确认 `docs/examples` 下 `.yml`、`.yaml`、`.json`、`.toml`、`.xml`、`.properties` 文件都能通过 `LoadOptions` 加载。
 5. 确认核心依赖边界：zap 和 zerolog 仍只在 `benchmarks/compare`。

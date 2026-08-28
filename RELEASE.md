@@ -16,9 +16,11 @@ an unverified local worktree.
 
 ```bash
 git status --short --branch
+git diff --check
 GOWORK=off go test ./...
 GOWORK=off go vet ./...
 GOWORK=off go test ./internal/integration -run 'TestDocs(Examples|Localization)' -count=1
+GOWORK=off go test -race -count=1 ./...
 GOWORK=off go test -run '^$' -bench . -benchmem ./benchmarks/core
 ```
 
@@ -33,6 +35,12 @@ GOWORK=off go test -run '^$' -bench . -benchmem
 Run the public demos:
 
 ```bash
+GOWORK=off go run ./examples/console
+GOWORK=off go run ./examples/file
+GOWORK=off go run ./examples/rolling
+GOWORK=off go run ./examples/async
+GOWORK=off go run ./examples/reload
+GOWORK=off go run ./examples/extensibility
 GOWORK=off go run ./examples/production
 GOWORK=off go run ./examples/slf4j
 GOWORK=off go run ./examples/log4j2_config
@@ -41,7 +49,8 @@ GOWORK=off go run ./examples/log4j2_config
 ## Version Checklist
 
 1. Update `CHANGELOG.md` and `CHANGELOG.zh-CN.md`.
-2. Update `docs/release-v0.0.2.md` or create the next version checklist.
+2. Update the version checklist and GitHub release notes, such as
+   `docs/release-v0.0.2.md` and `docs/github-release-v0.0.2.md`.
 3. Verify that every English public Markdown file has a `.zh-CN.md` counterpart.
 4. Verify that every file under `docs/examples` with extension `.yml`, `.yaml`, `.json`, `.toml`, `.xml`, or `.properties` loads through `LoadOptions`.
 5. Confirm the core dependency boundary: zap and zerolog remain confined to `benchmarks/compare`.
