@@ -1,42 +1,66 @@
-# 发布流程
+# Release Process
 
-本文档记录 `goark.dev/log` 当前发布流程。`v0.0.1` 从 `main` 分支打 tag，`dev` 是发布前集成分支。
+This file records the release process for `goark.dev/log`. Day-to-day
+integration work happens on `dev`. Do not edit `main` directly. Release tags are
+cut from `main` after `dev` has passed validation and has been merged according
+to the approved flow.
 
-## 发布分支
+The current release preparation target is `v0.0.2`. Use
+[docs/release-v0.0.2.md](docs/release-v0.0.2.md) as the detailed checklist.
 
-- 日常集成分支：`dev`
-- 发布分支：`main`
-- 首个版本：`v0.0.1`
+## Branches
 
-发布前必须确认 `dev` 已推送，且所有待发布代码都已经包含在 `dev`。短期工作分支合并后应删除，避免后续误发布旧分支内容。
+| Branch | Purpose |
+| --- | --- |
+| `dev` | Integration branch for implementation, docs, and verification commits. |
+| `main` | Release branch. It should receive validated `dev` changes only through the release merge. |
 
-## 本地门禁
+## Local Gate
 
-Windows 本地建议显式关闭父级 workspace，并固定 Go 工具链：
+Unix shell:
+
+```bash
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
+cd benchmarks/compare
+GOWORK=off go test ./...
+```
+
+PowerShell:
 
 ```powershell
 $env:GOWORK='off'
-$env:GOTOOLCHAIN='local'
-$env:GOCACHE='G:\opensource\goark\.cache\go-build'
-& 'D:\Program Files\go\bin\gofmt.exe' -w .
-& 'D:\Program Files\go\bin\go.exe' test ./...
-& 'D:\Program Files\go\bin\go.exe' vet ./...
+go test ./...
+go vet ./...
+go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 Push-Location benchmarks\compare
-& 'D:\Program Files\go\bin\go.exe' test ./...
+go test ./...
 Pop-Location
 ```
 
-发布前建议再跑一次短 benchmark smoke：
+Long stress gate:
 
-```powershell
-$env:GOWORK='off'
-$env:GOTOOLCHAIN='local'
-$env:GOCACHE='G:\opensource\goark\.cache\go-build'
-& 'D:\Program Files\go\bin\go.exe' test -run '^$' -bench 'BenchmarkLayout/json$|BenchmarkNativeLoggerDirectJSON3$|BenchmarkAsyncLoggerParallel3$|BenchmarkFileAppenderParallel$' -benchmem -benchtime=1s -count=1
-& 'D:\Program Files\go\bin\go.exe' test -run '^$' -bench . -benchmem -benchtime=1s -count=1 ./internal/disruptor ./internal/jsoncodec
+```bash
+GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
 ```
 
-长压测不阻塞每次本地发布操作，建议通过 GitHub Actions 的 `pressure` workflow 执行：
+## GitHub Actions
+
+Confirm `dev` CI:
+
+```bash
+gh run list --branch dev --workflow ci.yml --limit 5
+gh run watch <run-id> --exit-status
+```
+
+Trigger pressure workflow when needed:
+
+```bash
+gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
+```
+
+PowerShell proxy example:
 
 ```powershell
 $env:HTTP_PROXY='http://172.16.8.171:9444'
@@ -44,49 +68,49 @@ $env:HTTPS_PROXY='http://172.16.8.171:9444'
 gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
 ```
 
-## GitHub Actions
+## Merge and Tag
 
-发布前必须确认 `dev` 的 `ci` workflow 通过：
+After `dev` is green:
 
-```powershell
-$env:HTTP_PROXY='http://172.16.8.171:9444'
-$env:HTTPS_PROXY='http://172.16.8.171:9444'
-gh run list --branch dev --workflow ci.yml --limit 5
-gh run watch <run-id> --exit-status
-```
-
-`pressure` workflow 是长期压测入口，适合手动触发或等待定时任务产物。
-
-## 合并和打 tag
-
-`v0.0.1` 必须从 `main` 打 tag：
-
-```powershell
+```bash
 git switch main
 git pull --ff-only origin main
 git merge --ff-only dev
 git push origin main
-git tag -a v0.0.1 -m "release: v0.0.1"
-git push origin v0.0.1
+git tag -a v0.0.2 -m "release: v0.0.2"
+git push origin v0.0.2
 ```
 
-如果 `main` 不能快进合并，先停止发布，检查差异来源，不要强推共享分支。
+If `main` cannot fast-forward, stop and inspect the difference. Do not
+force-push a shared release branch.
 
-## 模块拉取验证
+## Clean Module Verification
 
-tag 推送后，用干净临时目录验证 Go module 可解析：
+After the tag is pushed, verify module resolution from a clean directory.
+
+PowerShell:
 
 ```powershell
-$tmp = Join-Path $env:TEMP 'goark-log-v0.0.1-verify'
+$tmp = Join-Path $env:TEMP 'goark-log-v0.0.2-verify'
 Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $tmp | Out-Null
 Push-Location $tmp
 $env:GOWORK='off'
-$env:GOTOOLCHAIN='local'
-& 'D:\Program Files\go\bin\go.exe' mod init verify.local/goark-log
-& 'D:\Program Files\go\bin\go.exe' get goark.dev/log@v0.0.1
-& 'D:\Program Files\go\bin\go.exe' list -m goark.dev/log
+go mod init verify.local/goark-log
+go get goark.dev/log@v0.0.2
+go test goark.dev/log/...
 Pop-Location
 ```
 
-验证完成后再创建 GitHub Release，并使用 `CHANGELOG.md` 中的 `v0.0.1` 内容作为发布说明。
+Unix shell:
+
+```bash
+tmp="$(mktemp -d)"
+cd "$tmp"
+GOWORK=off go mod init verify.local/goark-log
+GOWORK=off go get goark.dev/log@v0.0.2
+GOWORK=off go test goark.dev/log/...
+```
+
+Create the GitHub Release only after module verification passes. Use the
+`CHANGELOG.md` v0.0.2 section as the release body.

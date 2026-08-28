@@ -1,0 +1,64 @@
+configuration:
+  properties:
+    LOG_DIR: logs
+  appenders:
+    app:
+      type: rolling-file
+      fileName: "${prop:LOG_DIR}/app.log"
+      layout:
+        type: json
+        eventEol: true
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/app-%d{yyyyMMdd}-%i.log.gz"
+        policies:
+          size:
+            size: 100MiB
+          time:
+            interval: daily
+            modulate: true
+        strategy:
+          max: 14
+          compression:
+            gzip: true
+            async: true
+    audit:
+      type: rolling-file
+      fileName: "${prop:LOG_DIR}/audit.log"
+      flushOnWrite: true
+      filePermissions: "0600"
+      layout:
+        type: jsonTemplate
+        eventTemplate: >
+          {
+            "timestamp": {"$resolver": "timestamp", "format": "UNIX_MILLIS"},
+            "level": {"$resolver": "level"},
+            "logger": {"$resolver": "logger"},
+            "message": {"$resolver": "message"},
+            "principal": {"$resolver": "attr", "key": "principal"},
+            "action": {"$resolver": "attr", "key": "action"},
+            "resource": {"$resolver": "attr", "key": "resource"},
+            "attrs": {"$resolver": "mdc"}
+          }
+        eventEol: true
+      rolling:
+        filePattern: "${prop:LOG_DIR}/archive/audit-%d{yyyyMMdd}-%i.log.gz"
+        policies:
+          size:
+            size: 50MiB
+          time:
+            interval: daily
+            modulate: true
+        strategy:
+          max: 90
+          maxAge: 90d
+          compression:
+            gzip: true
+            async: true
+  root:
+    level: info
+    appenderRefs: [app]
+  loggers:
+    goark.audit:
+      level: info
+      appenderRefs: [audit]
+      additivity: false

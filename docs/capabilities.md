@@ -1,73 +1,110 @@
-# 能力边界
+# Capability Boundary
 
-本文档记录 `goark.dev/log` 核心仓库当前提供的能力、刻意保留的边界，以及发布前需要关注的验证入口。
+This document records what the `goark.dev/log` core module currently provides,
+what is intentionally out of scope, and which validation gates should be used
+before release.
 
-## 设计原则
+## Design Principles
 
-- **Go-native**：公共 API 使用 Go 显式构造、接口和配置，不依赖运行时扫描。
-- **低分配热路径**：常见 JSON、文件和异步队列路径优先手写编码和固定容量结构。
-- **核心依赖轻量**：核心依赖保持在日志必需范围，性能比较依赖放在独立子模块。
-- **关闭可证明**：异步 logger、异步 appender、滚动压缩和删除动作都必须在 `Close` 时 drain。
-- **安全默认值**：危险远程 lookup、脚本引擎、外部系统连接和观测导出不进入核心仓库。
+- Go-native API: explicit construction, interfaces, options, and plugin
+  registration.
+- Low-allocation hot paths: common JSON, file, direct native logging, and
+  ring-buffer paths avoid reflection-heavy work.
+- Dependency-light core: comparison dependencies stay in the independent
+  `benchmarks/compare` module.
+- Deterministic shutdown: async logger, async appender, rolling compression, and
+  delete actions drain on `Close`.
+- Safe defaults: no remote lookup, no embedded script engine, no built-in
+  external-system appender, and no observability exporter in core.
 
-## 已支持能力
+## Supported in Core
 
-| 范围 | 状态 | 说明 |
+| Area | Status | Notes |
 | --- | --- | --- |
-| `slog.Handler` | 已支持 | `Enabled`、`Handle`、`WithAttrs`、`WithGroup`，可安装为 `slog.Default()`。 |
-| 原生 logger | 已支持 | `NewNativeLogger`、`LogAttrs`、`LogAttrs3`、fluent builder、消息工厂。 |
-| Logger 路由 | 已支持 | root、命名 logger、additivity、appenderRef level/filter、includeLocation。 |
-| 自定义级别 | 已支持 | `ALL/TRACE/DEBUG/INFO/WARN/ERROR/FATAL/OFF` 和 `RegisterLevel`。 |
-| 上下文属性 | 已支持 | `WithContextAttrs`、`ContextAttrs`、MDC/NDC 风格布局输出。 |
-| AsyncLogger | 已支持 | 有界 ring buffer、批量消费、block/drop/drop-debug/sync-fallback、等待策略和错误计数。 |
-| AsyncAppender | 已支持 | appender 包装型异步输出，关闭时 drain，可配置是否关闭子 appender。 |
-| FileAppender | 已支持 | append/truncate、createOnDemand、权限、buffer、flushOnWrite。 |
-| JSONFileAppender | 已支持 | 文件 JSON 直写，面向低分配结构化日志主路径。 |
-| RollingFileAppender | 已支持 | size/time/cron/startup、`%d/%i`、gzip、max/maxAge、delete action、异步动作队列。 |
-| PatternLayout | 已支持 | 时间、级别、logger、message、attrs、MDC、marker、caller、异常、host、sequence、ANSI 样式等。 |
-| 结构化 Layout | 已支持 | JSON、JSONTemplate、XML、CSV、GELF、RFC5424、YAML、HTML。 |
-| Filters | 已支持 | 级别、范围、正则、属性、marker、map、上下文、结构化数据、异常、时间、突发限流等。 |
-| 组合 appender | 已支持 | Async、Failover、Routing、Rewrite 均支持配置化构建。 |
-| Lookups | 已支持安全子集 | `env`、`sys`、`go`、`date`、`property`。 |
-| 配置格式 | 已支持 | YAML、JSON、XML、properties；TOML 明确拒绝。 |
-| Reload | 已支持 | 轮询文件变更；异步队列结构不允许热替换。 |
-| 插件注册 | 已支持 | `PluginRegistry`、`PluginRegistrar`、`PluginSet`、包级 helper、registrar 生成器。 |
+| `slog.Handler` | supported | Implements `Enabled`, `Handle`, `WithAttrs`, and `WithGroup`; can be installed as `slog.Default()`. |
+| Native logger | supported | `NewNativeLogger`, `LogAttrs`, `LogAttrs3`, builder API, and message factories. |
+| Logger routing | supported | Root logger, named rules, prefix matching, additivity, appender-ref level/filter, and includeLocation. |
+| Custom levels | supported | Built-in `ALL`, `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`, `OFF`, and `RegisterLevel`. |
+| Context attributes | supported | `WithContextAttrs`, `ContextAttrs`, MDC/NDC-style layout output. |
+| Marker and throwable | supported | Context marker, marker attr, throwable attr, and optional throwable stack snapshots. |
+| Async logger | supported | Bounded ring buffer, batch drain, block/drop/drop-debug/sync-fallback, wait strategies, counters, and drain on close. |
+| Async appender | supported | Appender wrapper with bounded queue, batch drain, counters, error handler, and drain on close. |
+| File appender | supported | Append/truncate, create-on-demand, permissions, buffering, and flush-on-write. |
+| JSON appender | supported | Direct single-line JSON to stdout/stderr or file; file mode supports buffering. |
+| Rolling file appender | supported | Size/time/cron/startup triggers, `%d`/`%i`, gzip, max count, max age, delete actions, and async action worker. |
+| PatternLayout | supported | Time, level, logger, message, attrs, MDC, marker, NDC, caller, throwable, host, sequence, ANSI style, and nested converters. |
+| Structured layouts | supported | JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog, YAML, and HTML. |
+| Filters | supported | Level, range, regex, attrs, marker, MDC, structured data, throwable, time windows, burst limiter, and dynamic thresholds. |
+| Composite appenders | supported | Async, Failover, Routing, and Rewrite are config-buildable. |
+| Lookups | supported local subset | `env`, `sys`, `go`, `date`, `prop`, and `property`. |
+| Configuration formats | supported | YAML, JSON, XML, properties; TOML explicitly fails. |
+| Reload | supported with constraints | Polls a concrete config file; async logger queue/runtime shape cannot be hot-replaced. |
+| Plugins | supported | `PluginRegistry`, `PluginRegistrar`, `PluginSet`, package helpers, lookup plugins, JSON Template resolvers, and registrar generator. |
 
-## 当前不进入核心的范围
+## Not in Core
 
-| 范围 | 原因 | 推荐处理 |
+| Area | Reason | Recommended approach |
 | --- | --- | --- |
-| HTTP、Socket、Syslog、Kafka、SMTP、Database 输出 | 外部连接生命周期、重试、限流、凭证和失败策略会污染核心热路径。 | 后续独立模块显式注册。 |
-| OpenTelemetry、Prometheus 等观测导出 | 当前发布范围不包含观测体系绑定。 | 后续统一观测设计后独立模块实现。 |
-| JavaScript、Lua、expr、Starlark 等脚本引擎 | 脚本运行时和安全沙箱差异大。 | 核心只保留 `ScriptEvaluator` 契约。 |
-| 远程 lookup namespace | 存在安全边界和供应链风险。 | 不提供。 |
-| 自动扫描插件 | 运行时扫描增加隐式行为和启动成本。 | 使用显式注册或生成 registrar。 |
+| HTTP appender | Connection lifecycle, retry, timeout, TLS, and response handling are deployment-specific. | Build an external module and register an appender plugin. |
+| Socket appender | Framing, reconnect, backpressure, and protocol choices vary. | Build an external module. |
+| Syslog network appender | Transport, TLS, facility/app name mapping, and retry policy are environment-specific. | Build an external module; core only provides RFC5424/Syslog layout. |
+| Kafka, Pulsar, RabbitMQ | Broker clients and delivery semantics are heavy dependencies. | Keep in dedicated Goark integration modules. |
+| SMTP appender | Slow network I/O and credential handling do not belong in the core hot path. | Build a plugin module with explicit queue and retry behavior. |
+| Database appender | Schema, transactions, batching, and failure handling are database-specific. | Build a database-specific plugin module. |
+| OpenTelemetry, Prometheus | Observability design should be shared across Goark modules and remain optional. | Add after a separate observability design. |
+| Script runtime | JavaScript/Lua/expr/Starlark runtime and sandbox decisions are security-sensitive. | Core exposes `ScriptEvaluator` API only. |
+| Remote lookup namespaces | JNDI/LDAP/RMI-style lookups are unsafe for config-time resolution. | Blocked by default. |
+| Runtime plugin scanning | Scanning adds implicit startup behavior and cost. | Use explicit registration or generated registrars. |
 
-## 发布前验证入口
+## Dependency Boundary
 
-短门禁：
+Core `go.mod` dependencies are limited to:
+
+- `github.com/bytedance/sonic`
+- `gopkg.in/yaml.v3`
+
+The zap and zerolog comparison dependencies live in `benchmarks/compare/go.mod`
+and must not be moved into the core module.
+
+## Validation Gates
+
+Short gates:
 
 ```bash
-go test ./...
-go vet ./...
-go test ./... ./cmd/goark-log-plugin-gen ./internal/disruptor ./internal/jsoncodec
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+GOWORK=off go test ./... ./cmd/goark-log-plugin-gen ./internal/disruptor ./internal/jsoncodec
 ```
 
-长压测：
+Focused hot-path benchmark:
 
 ```bash
-GOARK_LOG_STRESS=1 go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 ```
 
-压力 benchmark：
+Long stress gate:
 
 ```bash
-go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
 ```
 
-独立性能比较：
+Independent comparison module:
 
 ```bash
 cd benchmarks/compare
-go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+GOWORK=off go test ./...
+GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=5s -count=3 -cpu=1,4,16
 ```
+
+## Release Boundary
+
+Before publishing a tag, confirm:
+
+- `dev` contains every intended change.
+- `main` is updated through the approved release flow.
+- Core tests and compare-module tests pass.
+- Race and stress checks are either current or explicitly documented as deferred.
+- Benchmark paths use `./benchmarks/core` for core benchmarks after the benchmark
+  package split.
+- README and docs do not claim unsupported external appenders or observability
+  exporters.

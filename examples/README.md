@@ -1,10 +1,24 @@
-# 示例说明
+# Runnable Examples
 
-`examples/` 目录提供可直接运行的小示例，用于验证常见接入方式。示例只依赖核心库，不需要外部服务。
+The `examples/` directory contains small runnable programs that compile against
+the core module only. They do not require external services.
 
-## 运行命令
+## Commands
 
 ```bash
+GOWORK=off go test ./examples/...
+GOWORK=off go run ./examples/console
+GOWORK=off go run ./examples/file
+GOWORK=off go run ./examples/rolling
+GOWORK=off go run ./examples/async
+GOWORK=off go run ./examples/reload
+GOWORK=off go run ./examples/extensibility
+```
+
+PowerShell:
+
+```powershell
+$env:GOWORK='off'
 go test ./examples/...
 go run ./examples/console
 go run ./examples/file
@@ -14,36 +28,42 @@ go run ./examples/reload
 go run ./examples/extensibility
 ```
 
-Windows 本地如果父级 `go.work` 干扰独立模块验证，可以显式关闭：
+## Example Programs
 
-```powershell
-$env:GOWORK='off'
-& 'D:\Program Files\go\bin\go.exe' test ./examples/...
-```
-
-## 示例清单
-
-| 目录 | 说明 | 输出 |
+| Directory | Purpose | Output |
 | --- | --- | --- |
-| `console` | 默认 console logger 和命名 logger。 | stderr。 |
-| `file` | 普通文件 appender，适合最小文件落盘场景。 | 系统临时目录下的 `goark-log-example/file.log`。 |
-| `rolling` | 按大小滚动、启动滚动和 gzip 压缩。 | 系统临时目录下的 `goark-log-example/rolling.log` 及归档文件。 |
-| `async` | AsyncAppender 包装 rolling appender。 | 系统临时目录下的 `goark-log-example/async-rolling.log`。 |
-| `reload` | 配置文件 reload。 | 临时配置和 console 输出。 |
-| `extensibility` | `PluginRegistry`、自定义 JSON Template resolver、MessageFactory。 | stdout JSON。 |
+| `console` | Default console logger and named logger usage. | stderr. |
+| `file` | Plain file appender with explicit close. | `goark-log-example/file.log` under the system temp directory. |
+| `rolling` | Size rollover, startup rollover, archive pattern, and gzip compression. | `goark-log-example/rolling.log` and archive files under the system temp directory. |
+| `async` | AsyncAppender wrapping a rolling appender. | `goark-log-example/async-rolling.log` and archives under the system temp directory. |
+| `reload` | Config file loading and runtime reload. | Temporary config plus console output. |
+| `extensibility` | `PluginRegistry`, custom JSON Template resolver, and message factory. | stdout JSON. |
 
-## 推荐阅读顺序
+## Config Examples
 
-1. `console`：确认最小接入方式。
-2. `file`：确认普通文件写入和关闭。
-3. `rolling`：确认归档、压缩和保留策略。
-4. `async`：确认异步包装和关闭 drain。
-5. `reload`：确认配置重载入口。
-6. `extensibility`：确认插件注册和模板 resolver 扩展。
+Copyable configuration files live under [../docs/examples](../docs/examples):
 
-## 编写新示例的约束
+- [console.yml](../docs/examples/console.yml)
+- [json-stdout.yml](../docs/examples/json-stdout.yml)
+- [production-rolling.yml](../docs/examples/production-rolling.yml)
+- [split-audit.yml](../docs/examples/split-audit.yml)
+- [async-appender.yml](../docs/examples/async-appender.yml)
+- [rewrite-routing.yml](../docs/examples/rewrite-routing.yml)
+- [goark-log.properties](../docs/examples/goark-log.properties)
+- [log4j2-style.xml](../docs/examples/log4j2-style.xml)
 
-- 示例必须能通过 `go test ./examples/...` 编译。
-- 文件输出必须写入临时目录，不能污染仓库。
-- 示例只展示核心库能力，不引入外部系统依赖。
-- 示例代码保持简短，复杂说明放入 README 或 `docs/`。
+## Reading Order
+
+1. `console`: minimal integration.
+2. `file`: file write lifecycle and close behavior.
+3. `rolling`: archive, compression, and retention behavior.
+4. `async`: async wrapper and shutdown drain.
+5. `reload`: config reload entry points.
+6. `extensibility`: plugin registration and resolver extension.
+
+## Rules for New Examples
+
+- They must compile with `go test ./examples/...`.
+- File output must use a temp directory and must not write into the repository.
+- They should demonstrate core capabilities only.
+- Keep program code short; put detailed explanations in `docs/`.

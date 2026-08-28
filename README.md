@@ -1,15 +1,35 @@
 # goark-log
 
-`goark-log` 是面向 Go 服务的高性能结构化日志库，基于标准库 `log/slog`，提供并发安全的 `Handler`、低分配原生 `Logger`、Appender、Layout、层级路由、配置加载、异步队列和滚动文件能力。
+[简体中文](README.zh-CN.md)
 
-核心目标很明确：
+`goark-log` is a high-performance structured logging framework for Go services.
+It builds on the standard `log/slog` API while adding a production-oriented
+handler runtime, appenders, layouts, hierarchical routing, filters, safe
+configuration loading, bounded asynchronous queues, rolling files, and explicit
+plugin registration.
 
-- 保持 Go-native API，优先使用显式构造、显式配置和显式注册。
-- 热路径低分配，常见 JSON 和文件写入路径避免反射编码。
-- 核心依赖轻量，复杂 JSON fallback 使用 ByteDance Sonic。
-- 核心仓库只提供本地输出和组合型输出，不内置外部系统 appender，不内置观测导出。
+The module path is:
 
-## 快速开始
+```bash
+go get goark.dev/log
+```
+
+The module targets Go 1.25 or newer.
+
+## Design Goals
+
+- Go-native public APIs: explicit constructors, interfaces, options, and plugin
+  registration instead of runtime scanning.
+- Low allocation on hot paths: common JSON, file, direct native logging, and
+  ring-buffer paths avoid reflection-heavy encoding.
+- Dependency-light core: zap and zerolog are used only by the independent
+  `benchmarks/compare` module.
+- Safe defaults: no remote lookup namespaces, no embedded script runtime, and no
+  built-in external-system appenders in the core package.
+- Deterministic shutdown: async loggers, async appenders, rolling compression,
+  and delete actions drain on `Close`.
+
+## Quick Start
 
 ```go
 package main
@@ -29,75 +49,54 @@ func main() {
 }
 ```
 
-默认输出是可读的单行文本：
+Default output is a Spring Boot style single line written to stderr:
 
 ```text
 2026-08-25T10:15:30.123+08:00  INFO 12345 --- [main] goark.boot : service started profile=dev
 ```
 
-需要从配置文件加载时：
+## Configured Startup
 
 ```go
-handler, result, err := goarklog.ConfigureDefault(context.Background(),
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-)
-if err != nil {
-	panic(err)
-}
-defer handler.Close()
+package main
 
-slog.Info("configured", slog.String("source", string(result.Source)))
+import (
+	"context"
+	"log/slog"
+
+	goarklog "goark.dev/log"
+)
+
+func main() {
+	handler, result, err := goarklog.ConfigureDefault(context.Background(),
+		goarklog.WithConfigPath("conf/goark-log.yml"),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer handler.Close()
+
+	slog.Info("logging configured", slog.String("source", string(result.Source)))
+}
 ```
 
-延迟敏感路径可以使用原生 `Logger`，直接把 `slog.Attr` 写入事件管线：
+Configuration is resolved in this order:
 
-```go
-native, err := goarklog.NewNativeLogger(handler, "goark.http")
-if err != nil {
-	panic(err)
-}
-_ = native.LogAttrs3(context.Background(), slog.LevelInfo, "request done",
-	slog.String("method", "GET"),
-	slog.Int("status", 200),
-	slog.Duration("elapsed", 8*time.Millisecond),
-)
-```
+1. `WithConfigPath`.
+2. `GOARK_LOG_CONFIG`, or a custom key from `WithConfigEnvKey`.
+3. Boot property keys: `goark.log.config`, `goark.logging.config`,
+   `logging.config`.
+4. Default files under `conf/goark-log.{yml,yaml,json,xml,toml,properties}`.
+5. Built-in default: stderr console, `INFO`.
 
-## 功能概览
+YAML, JSON, XML, and properties are supported. TOML is intentionally rejected
+with an explicit error so a stale file cannot be mistaken for an active
+configuration.
 
-| 范围 | 当前能力 |
-| --- | --- |
-| 标准库集成 | `slog.Handler`、`slog.Logger`、`LogAttrs`、`WithAttrs`、`WithGroup`。 |
-| 原生入口 | `NewNativeLogger`、固定三属性 `LogAttrs3`、fluent builder、消息工厂。 |
-| 层级路由 | root、命名 logger、additivity、appenderRef 级别和过滤器。 |
-| 输出端 | Console、File、RollingFile、JSONFile、Async、Failover、Routing、Rewrite。 |
-| 异步管线 | 有界 ring buffer、批量 drain、block/drop/drop-debug/sync-fallback、wait strategy、关闭 drain。 |
-| 滚动文件 | size/time/cron/startup、`%d/%i`、gzip、max/maxAge、delete action、后台串行动作队列。 |
-| 布局 | Pattern、Text、JSON、JSONTemplate、XML、CSV、GELF、RFC5424/YAML/HTML。 |
-| 过滤器 | Threshold、Level、LevelRange、Regex、Attr、Marker、Map、Throwable、Time、Burst、DynamicThreshold 等。 |
-| 配置格式 | YAML、JSON、XML、properties；TOML 明确报错。 |
-| Reload | 文件轮询 reload，异步队列结构不热替换。 |
-| 扩展点 | PluginRegistry、PluginRegistrar、PluginSet、JSON Template resolver、插件生成器。 |
-
-更完整的能力边界见 [docs/capabilities.md](docs/capabilities.md)。
-
-## 配置
-
-配置加载优先级：
-
-1. 显式路径：`goarklog.WithConfigPath(...)`
-2. 环境变量：默认 `GOARK_LOG_CONFIG`
-3. boot 配置：`goark.log.config`、`goark.logging.config`、`logging.config`
-4. 默认文件：`conf/goark-log.yml`、`conf/goark-log.yaml`、`conf/goark-log.json`、`conf/goark-log.xml`、`conf/goark-log.toml`、`conf/goark-log.properties`
-5. 内置默认：`stderr` console，`INFO`
-
-配置支持 YAML、JSON、XML 和 properties。TOML 会明确报错，避免误以为配置已生效。
-
-生产配置建议从 YAML 开始：
+## Production YAML
 
 ```yaml
 configuration:
-  status: warn
   monitorInterval: 30s
   properties:
     LOG_DIR: logs
@@ -116,7 +115,6 @@ configuration:
       layout:
         type: pattern
         pattern: "${prop:LOG_PATTERN}"
-        disableAnsi: false
     rolling:
       type: rolling-file
       fileName: "${prop:LOG_DIR}/app.log"
@@ -158,131 +156,116 @@ configuration:
       additivity: false
 ```
 
-也可以把同样配置放在顶层，或放在 `goark.log` 下方便与 boot 主配置合并。`configuration`、顶层字段、`goark.log` 三种形式只能选一种，避免配置歧义。
+The same model can be placed at the top level, under `configuration`, or under
+`goark.log`. Use only one form per file.
 
-## MDC 和调用位置
+## Native Logger
 
-Go 没有线程局部变量，`goark-log` 用 `context.Context` 承载请求上下文属性：
+Use `slog` for ecosystem compatibility. Use the native logger when a hot path
+needs fewer allocations and direct `slog.Attr` handling.
 
 ```go
-ctx := goarklog.WithContextAttrs(context.Background(),
-	slog.String("trace_id", "trace-1"),
-	slog.String("span_id", "span-1"),
+package main
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"time"
+
+	goarklog "goark.dev/log"
 )
-logger.InfoContext(ctx, "request done")
+
+func main() {
+	appender := goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard))
+	handler, err := goarklog.NewHandler(goarklog.Options{
+		Appenders: []goarklog.Appender{appender},
+		Root: goarklog.RootLogger{
+			Level:        slog.LevelInfo,
+			AppenderRefs: []string{"json"},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer handler.Close()
+
+	logger, err := goarklog.NewNativeLogger(handler, "goark.http")
+	if err != nil {
+		panic(err)
+	}
+
+	_ = logger.LogAttrs3(context.Background(), slog.LevelInfo, "request done",
+		slog.String("method", "GET"),
+		slog.Int("status", 200),
+		slog.Duration("elapsed", 8*time.Millisecond),
+	)
+}
 ```
 
-调用位置默认不采集，避免热路径开销。需要 `%class`、`%method`、`%file`、`%line` 或 `%location` 时，显式开启：
+## Capability Summary
 
-```go
-native, err := goarklog.NewNativeLogger(handler, "goark.http", goarklog.WithLoggerCaller(true))
-```
+| Area | Supported in core |
+| --- | --- |
+| Standard library integration | `slog.Handler`, `slog.Logger`, `LogAttrs`, `WithAttrs`, `WithGroup`. |
+| Native logging | Named native logger, fixed three-attribute fast path, builder API, message factories. |
+| Routing | Root logger, named logger rules, prefix matching, additivity, appender-ref controls. |
+| Appenders | Console, File, JSON, RollingFile, Async, Failover, Routing, Rewrite. |
+| Layouts | Pattern, Text, JSON, JSON Template, XML, CSV, GELF, RFC5424/Syslog, YAML, HTML. |
+| Filters | Threshold, Level, LevelRange, Regex, Attr, Marker, Map, Throwable, Time, Burst, DynamicThreshold, and related aliases. |
+| Configuration | YAML, JSON, XML, properties, local lookups, reload polling. |
+| Rolling files | Size, time, cron, startup rollover, `%d`/`%i`, gzip, retention, delete actions. |
+| Async | Bounded ring buffer, batching, block/drop/drop-debug/sync-fallback, shutdown drain. |
+| Extensibility | Explicit plugin registry, plugin set, lookup plugins, JSON Template resolver plugins, registrar generator. |
 
-异步 logger 也可以通过 `asyncLogger.includeLocation: true` 在入队前采集 caller。
+HTTP, Socket, Syslog network output, Kafka, SMTP, database sinks, OpenTelemetry,
+Prometheus, and script engines are not built into the core module. Add them as
+separate modules that register explicit plugins.
 
-## JSON 热路径
+## Documentation
 
-JSON 主路径使用手写 `bytes.Buffer` 追加编码，常见 `slog` 基础类型保持低分配。复杂 `slog.Any` fallback 统一通过 `internal/jsoncodec` 调用 ByteDance Sonic：
+- [Documentation index](docs/index.md)
+- [Programmatic API](docs/api.md)
+- [Configuration reference](docs/configuration.md)
+- [Appender reference](docs/appenders.md)
+- [Layout reference](docs/layouts.md)
+- [Filter reference](docs/filters.md)
+- [Usage scenarios](docs/scenarios.md)
+- [Extensibility guide](docs/extensibility.md)
+- [Capability boundary](docs/capabilities.md)
+- [Performance and stress testing](docs/performance.md)
+- [v0.0.2 release checklist](docs/release-v0.0.2.md)
+- [Runnable examples](examples/README.md)
 
-```go
-appender := goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(os.Stdout))
-```
+## Verification
 
-文件直写建议使用 `NewJSONFileAppender`，它绕过通用 Layout 调度，适合高吞吐结构化文件输出：
-
-```go
-appender, err := goarklog.NewJSONFileAppender("logs/app.json",
-	goarklog.WithJSONAppenderBufferSize(256*1024),
-)
-```
-
-## 异步和滚动文件
-
-`AsyncLogger` 位于 Handler 层，适合把业务 goroutine 和实际写出解耦：
-
-```go
-handler, err := goarklog.NewHandler(goarklog.Options{
-	Appenders: []goarklog.Appender{goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(os.Stdout))},
-	Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
-	Async: goarklog.AsyncLoggerOptions{
-		Enabled:          true,
-		QueueSize:        8192,
-		BatchSize:        256,
-		OverflowStrategy: goarklog.AsyncOverflowBlock,
-		WaitStrategy:     goarklog.AsyncWaitYield,
-	},
-})
-```
-
-`RollingFileAppender` 支持按大小、时间、cron 和启动滚动。压缩和删除动作可以走后台串行队列，`Close` 会等待队列清空。
-
-配置级 `type: async` appender 支持 `queueSize`、`batchSize`、`overflowStrategy` 和 `waitStrategy`，适合只把部分下游输出异步化。
-
-## 过滤器和安全边界
-
-内置过滤器覆盖级别、属性、正则、marker、MDC、异常、时间窗口和突发限流等常见场景。顶层 `filterRefs` 是全局 filter 链，先于 logger level 裁决；root/logger/appenderRef/appender 自身 filter 在对应阶段执行。
-
-配置 lookup 默认只启用 `env`、`sys`、`go`、`date` 和 `property`。`jndi`、`ldap`、`rmi` 这类远程解析 namespace 被拒绝或忽略。
-
-脚本过滤器只保留 `ScriptEvaluator` 契约，核心库不内置脚本引擎。
-
-## 扩展点
-
-核心库提供显式插件注册，不做运行时扫描：
-
-```go
-registry := goarklog.NewPluginRegistry()
-err := registry.RegisterPlugins(goarklog.NewPluginSet(
-	goarklog.WithPluginLayout("plain", buildPlainLayout),
-	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
-))
-```
-
-需要生成 registrar 样板时：
+Unix shell:
 
 ```bash
-go run goark.dev/log/cmd/goark-log-plugin-gen -package mylog -layout plain=buildPlainLayout -out zz_generated_plugins.go
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 ```
 
-核心当前不内置 HTTP、Socket、Syslog、Kafka、SMTP、Database 等外部系统输出，也不内置 OpenTelemetry、Prometheus 等观测导出。后续如需扩展，应放在独立模块中显式注册。
+PowerShell:
 
-## 示例
-
-示例位于 [examples/](examples/)，说明见 [examples/README.md](examples/README.md)。
-
-```bash
-go test ./examples/...
-go run ./examples/console
-go run ./examples/rolling
-go run ./examples/extensibility
-```
-
-## 验证和性能
-
-常规验证：
-
-```bash
+```powershell
+$env:GOWORK='off'
 go test ./...
 go vet ./...
+go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
 ```
 
-长压测默认不进入普通测试，需要显式打开：
-
-```bash
-GOARK_LOG_STRESS=1 go test -race -run 'TestStress' -count=1 -timeout=20m ./...
-```
-
-核心 benchmark：
-
-```bash
-go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
-```
-
-独立性能比较模块：
+The comparison benchmarks live in a separate module:
 
 ```bash
 cd benchmarks/compare
-go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+GOWORK=off go test ./...
 ```
 
-更多性能预算、CI 长测入口和样例数字见 [docs/performance.md](docs/performance.md)。
+## Release Notes
+
+`dev` is the integration branch. Release tags should be cut from `main` after
+`dev` has been validated and fast-forwarded or merged according to the release
+process. Use [docs/release-v0.0.2.md](docs/release-v0.0.2.md) before publishing
+`v0.0.2`.

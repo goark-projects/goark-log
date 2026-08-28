@@ -1,0 +1,34 @@
+<Configuration monitorInterval="30s">
+  <Properties>
+    <Property name="LOG_DIR">logs</Property>
+  </Properties>
+  <Appenders>
+    <Console name="console" target="SYSTEM_ERR">
+      <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p %pid --- [%thread] %c : %m%attrs%n"/>
+    </Console>
+    <RollingFile name="rolling" fileName="${LOG_DIR}/app.log"
+                 filePattern="${LOG_DIR}/archive/app-%d{yyyyMMdd-HHmmss}-%06i.log.gz">
+      <JSONLayout eventEol="true" includeStacktrace="true"/>
+      <Policies>
+        <SizeBasedTriggeringPolicy size="100MiB"/>
+        <TimeBasedTriggeringPolicy interval="daily" modulate="true"/>
+        <OnStartupTriggeringPolicy enabled="true"/>
+      </Policies>
+      <DefaultRolloverStrategy max="30" fileIndex="nomax">
+        <Delete basePath="${LOG_DIR}/archive" maxDepth="1">
+          <IfFileName glob="*.log.gz"/>
+          <IfLastModified age="30d"/>
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingFile>
+  </Appenders>
+  <Loggers>
+    <Logger name="goark.orm" level="debug" additivity="false">
+      <AppenderRef ref="rolling"/>
+    </Logger>
+    <Root level="info">
+      <AppenderRef ref="console"/>
+      <AppenderRef ref="rolling"/>
+    </Root>
+  </Loggers>
+</Configuration>

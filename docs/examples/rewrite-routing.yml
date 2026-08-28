@@ -1,0 +1,34 @@
+configuration:
+  appenders:
+    defaultJson:
+      type: json
+      target: stdout
+    tenantA:
+      type: file
+      fileName: logs/tenant-a.log
+      layout:
+        type: json
+        eventEol: true
+    tenantB:
+      type: file
+      fileName: logs/tenant-b.log
+      layout:
+        type: json
+        eventEol: true
+    tenantRouter:
+      type: routing
+      routeKey: tenant
+      defaultRoute: defaultJson
+      routes:
+        tenant-a: tenantA
+        tenant-b: tenantB
+    redacted:
+      type: rewrite
+      appenderRefs: [tenantRouter]
+      rewrite:
+        attrs:
+          service: billing
+        removeAttrs: [password, token, authorization]
+  root:
+    level: info
+    appenderRefs: [redacted]

@@ -1,124 +1,213 @@
-# 性能和压测
+# Performance and Stress Testing
 
-本文档记录 `goark-log` 的性能预算、压测入口和当前样例数字。所有数字都会受 CPU、Go 版本、操作系统调度、磁盘缓存、杀毒软件和 CI runner 抖动影响，发布前必须以当前工作树命令重新验证。
+This document records the performance budget, validation commands, and tuning
+rules for `goark-log`. Benchmark numbers depend on CPU, Go version, operating
+system scheduler, disk cache, antivirus software, and CI runner noise. Always
+rerun the commands on the current worktree before making release claims.
 
-## 本地验证命令
+## Short Validation
 
-根模块短测：
+Unix shell:
 
 ```bash
+GOWORK=off go test ./...
+GOWORK=off go vet ./...
+```
+
+PowerShell:
+
+```powershell
+$env:GOWORK='off'
 go test ./...
 go vet ./...
 ```
 
-长压测默认跳过，需要显式打开：
-
-```bash
-GOARK_LOG_STRESS=1 go test -race -run 'TestStress' -count=1 -timeout=20m ./...
-```
-
-核心压力 benchmark：
-
-```bash
-go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
-go test -run '^$' -bench . -benchmem ./internal/disruptor
-go test -run '^$' -bench . -benchmem ./internal/jsoncodec
-```
-
-独立性能比较模块：
+Comparison module:
 
 ```bash
 cd benchmarks/compare
-go test ./...
-go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+GOWORK=off go test ./...
 ```
 
-Windows 本地建议显式关闭父级 workspace：
+PowerShell:
+
+```powershell
+Push-Location benchmarks\compare
+$env:GOWORK='off'
+go test ./...
+Pop-Location
+```
+
+## Benchmark Commands
+
+Core benchmarks live in `./benchmarks/core`.
+
+Focused zero-allocation JSON path:
+
+```bash
+GOWORK=off go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
+```
+
+Core pressure benchmarks:
+
+```bash
+GOWORK=off go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16 ./benchmarks/core
+```
+
+Internal data-structure benchmarks:
+
+```bash
+GOWORK=off go test -run '^$' -bench . -benchmem ./internal/disruptor ./internal/jsoncodec
+```
+
+Independent comparison benchmarks:
+
+```bash
+cd benchmarks/compare
+GOWORK=off go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+```
+
+PowerShell equivalent:
 
 ```powershell
 $env:GOWORK='off'
-$env:GOTOOLCHAIN='local'
-$env:GOCACHE='G:\opensource\goark\.cache\go-build'
-& 'D:\Program Files\go\bin\go.exe' test ./...
+go test -run '^$' -bench 'BenchmarkNativeLoggerDirectJSON3|BenchmarkNativeLoggerDirectJSONParallel3' -benchmem ./benchmarks/core
+go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime=10s -count=5 -cpu=1,4,16 ./benchmarks/core
+go test -run '^$' -bench . -benchmem ./internal/disruptor ./internal/jsoncodec
+Push-Location benchmarks\compare
+go test -run '^$' -bench 'BenchmarkCompareParallelDiscard|BenchmarkPressureParallelFile' -benchmem -benchtime=10s -count=5 -cpu=1,4,16
+Pop-Location
 ```
 
-## CI 分层
+## Long Stress Tests
 
-短 CI：`.github/workflows/ci.yml`
+Stress tests are skipped by default. Enable them explicitly:
 
-- push 和 pull request 触发。
-- 运行根模块测试、compare 子模块测试。
-- 对 async、rolling、file、JSON 关键路径跑 race 子集。
-- 对核心热路径 benchmark 做 1s smoke，防止 benchmark 入口损坏。
+```bash
+GOARK_LOG_STRESS=1 GOWORK=off go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+```
 
-长压测：`.github/workflows/pressure.yml`
+PowerShell:
 
-- 支持 `workflow_dispatch` 手动触发。
-- 每日定时运行。
-- 设置 `GOARK_LOG_STRESS=1`，执行 `TestStress` race。
-- 输出 root、internal、compare benchmark artifact。
+```powershell
+$env:GOARK_LOG_STRESS='1'
+$env:GOWORK='off'
+go test -race -run 'TestStress' -count=1 -timeout=20m ./...
+```
 
-## 热路径设计
+## CI Layers
 
-- `JSONLayout` 对常见 `slog` 基础类型走手写 `bytes.Buffer` 编码。
-- 复杂 `slog.Any` fallback 使用 ByteDance Sonic；JSONTemplate resolver 选项解析也复用 Sonic 封装。
-- `LevelName` 对内置级别走无锁路径；注册自定义级别后才回到 registry map 查询。
-- `NewNativeLogger` 绕过 `slog.Record` facade，`LogAttrs3` 可以在常见三字段场景走固定数组路径。
-- `JSONAppender` 是完整 JSON 直写链路，`NewJSONFileAppender` 直接写文件缓冲。
-- `AsyncLogger` 和 `AsyncAppender` 使用内部 ring buffer，支持批量 drain、队列满策略、等待策略参数和异步错误处理。
-- 文件类 appender 使用互斥锁保护单 writer，不能用无保护并发写换吞吐。
+Short CI: `.github/workflows/ci.yml`
 
-## 性能预算
+- Runs root-module tests.
+- Runs comparison-module tests.
+- Runs a focused race subset for async, rolling, file, and JSON paths.
+- Runs a short benchmark smoke to catch broken benchmark entry points.
 
-| 场景 | 预算 | 说明 |
+Long pressure workflow: `.github/workflows/pressure.yml`
+
+- Manual `workflow_dispatch`.
+- Daily scheduled run.
+- Sets `GOARK_LOG_STRESS=1`.
+- Runs `TestStress` under race.
+- Uploads core, internal, and comparison benchmark artifacts.
+
+Manual trigger:
+
+```bash
+gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
+```
+
+If an HTTP proxy is required:
+
+```powershell
+$env:HTTP_PROXY='http://172.16.8.171:9444'
+$env:HTTPS_PROXY='http://172.16.8.171:9444'
+gh workflow run pressure.yml --ref dev -f benchtime=5s -f count=3
+```
+
+## Hot-Path Design
+
+- `JSONLayout` hand-encodes common `slog.Value` kinds.
+- The direct JSON appender writes a fixed JSON event shape without general
+  layout dispatch.
+- `NewNativeLogger` bypasses the general `slog.Record` facade.
+- `LogAttrs3` writes a fixed three-attribute event and avoids variadic slice
+  allocation on the common path.
+- `JSONTemplateLayout` compiles resolvers once; built-in resolvers append JSON
+  directly.
+- `LevelName` uses a no-lock path for built-in levels and falls back to the
+  registry only after custom levels are registered.
+- `AsyncLogger` and `AsyncAppender` use the internal bounded ring buffer.
+- Rolling compression and delete actions can be serialized on a background
+  worker to avoid concurrent archive mutation.
+- File appenders use a mutex around each writer; this preserves line integrity
+  under concurrent callers.
+
+## Performance Budget
+
+| Scenario | Budget | Notes |
 | --- | --- | --- |
-| JSONLayout 基础字段 | 0 alloc/op | 基础字段不能退化为反射 JSON 编码。 |
-| JSONTemplate 默认模板 | 0 alloc/op | resolver 热路径必须继续手写追加 JSON。 |
-| Sonic fallback | 明显快于 stdlib fallback | 如果某平台退化，应允许构建标签或配置切回标准库。 |
-| internal/disruptor ring buffer | 0 alloc/op | ring buffer 不能退化为 channel 队列。 |
-| native logger direct JSON | 0 alloc/op | 固定三属性主路径不能产生堆分配。 |
-| JSON file 并发写 | 0 alloc/op | 缓冲文件写入必须保持完整行边界。 |
-| AsyncLogger block | 不丢事件 | block 策略下 `Close` 必须 drain，`AsyncDropped` 为 0。 |
-| RollingFile 并发写 | 行完整 | active 和 archive 都必须是完整 JSON/text 行。 |
-| compare 子模块 | 不污染核心 go.mod | zap/zerolog 只能位于 `benchmarks/compare`。 |
+| JSONLayout with common fields | `0 B/op`, `0 allocs/op` | Must not regress to reflection JSON encoding. |
+| JSONTemplate default template | `0 B/op`, `0 allocs/op` | Built-in resolvers should append directly. |
+| Direct native logger JSON with three attrs | `0 B/op`, `0 allocs/op` | Main API budget for high-throughput paths. |
+| Direct native JSON file parallel path | `0 B/op`, `0 allocs/op` | Buffered file write must keep full event lines. |
+| Internal ring buffer publish/pop | `0 B/op`, `0 allocs/op` | Must not be replaced by an allocation-heavy queue. |
+| `slog.Any` fallback | Faster than stdlib fallback where Sonic fast path is available | Platform fallback can vary; keep behavior correct first. |
+| Async logger block strategy | no dropped events | `AsyncDropped` should stay zero for `block`. |
+| Rolling file parallel writes | complete lines | Active and archive files must contain complete log events. |
+| Compare module | no core dependency pollution | zap/zerolog dependencies stay in `benchmarks/compare`. |
 
-## 当前本地样例
+## Tuning Guide
 
-以下数字来自 Windows 本地 i9-11900KF、Go 1.25、`GOWORK=off` 的抽样，只作为回归参考。
-
-| 场景 | 样例结果 |
+| Need | Preferred setting |
 | --- | --- |
-| `BenchmarkLayout/json` | 约 708 ns/op，0 B/op，0 allocs/op |
-| `BenchmarkNativeLoggerDirectJSONParallel3` | 约 326.8 ns/op，0 B/op，0 allocs/op |
-| `BenchmarkFileAppenderParallel` | 约 286.9 ns/op，0 B/op，0 allocs/op |
-| `BenchmarkPressureAsyncLoggerQueueMatrix/q8192-b256-block-yield` | 约 1303 ns/op，257 B/op，2 allocs/op，0 dropped，0 failed |
-| `BenchmarkPressureJSONFileParallel/buffered-256k` | 约 270.5 ns/op，0 B/op，0 allocs/op |
-| `BenchmarkPressureRollingFileParallel/plain` | 约 482.5 ns/op，140 B/op，1 alloc/op |
-| `internal/disruptor` publish/pop | 约 18 ns/op，0 B/op，0 allocs/op |
-| `internal/jsoncodec` Sonic fallback | 约 630 ns/op，341 B/op，4 allocs/op |
-| `internal/jsoncodec` stdlib fallback | 约 1335 ns/op，640 B/op，17 allocs/op |
-| `benchmarks/compare` goark direct file parallel | 约 262.7 ns/op，0 B/op，0 allocs/op |
-| `benchmarks/compare` zap file parallel | 约 317.8 ns/op，193 B/op，1 alloc/op |
-| `benchmarks/compare` zerolog file parallel | 约 197.1 ns/op，0 B/op，0 allocs/op |
+| Lowest allocation structured output | Direct JSON appender plus native `LogAttrs3`. |
+| Human-readable local logs | Console appender with PatternLayout. |
+| Container logs | JSON appender to stdout. |
+| Durable VM logs | Rolling file, `overflowStrategy: block`, explicit `Close`. |
+| High burst tolerance | Increase async `queueSize` and `batchSize`. |
+| Better tail latency under queue pressure | Use `drop-debug` or `sync-fallback` after deciding loss semantics. |
+| Compliance/audit logs | Avoid lossy overflow; consider `flushOnWrite` only for audit sink. |
+| Caller fields | Enable `includeLocation` only on the narrow logger or appender ref that needs it. |
+| Expensive dynamic payloads | Prefer typed `slog` values; avoid large `slog.Any` on the hottest path. |
 
-## 压测覆盖
+## Sample Numbers
 
-`pressure_test.go` 覆盖：
+The following sample numbers are historical local regression references from a
+Windows i9-11900KF run with Go 1.25 and `GOWORK=off`. They are not release
+claims; rerun current-worktree commands for v0.0.2.
 
-- `AsyncLogger` 多生产者 block 策略 drain。
-- `AsyncLogger` 队列满时并发关闭唤醒。
-- `RollingFileAppender` 多生产者真实文件写入和 JSON 行完整性。
-- `RollingFileAppender` 异步 gzip 动作在 `Close` 后完成。
+| Scenario | Sample result |
+| --- | --- |
+| `BenchmarkLayout/json` | about `708 ns/op`, `0 B/op`, `0 allocs/op` |
+| `BenchmarkNativeLoggerDirectJSON3` | about `770.6 ns/op`, `0 B/op`, `0 allocs/op` |
+| `BenchmarkNativeLoggerDirectJSONParallel3` | about `153.4 ns/op`, `0 B/op`, `0 allocs/op` |
+| `BenchmarkFileAppenderParallel` | about `286.9 ns/op`, `0 B/op`, `0 allocs/op` |
+| `BenchmarkPressureAsyncLoggerQueueMatrix/q8192-b256-block-yield` | about `1303 ns/op`, `257 B/op`, `2 allocs/op`, `0 dropped`, `0 failed` |
+| `BenchmarkPressureJSONFileParallel/buffered-256k` | about `270.5 ns/op`, `0 B/op`, `0 allocs/op` |
+| `BenchmarkPressureRollingFileParallel/plain` | about `482.5 ns/op`, `140 B/op`, `1 alloc/op` |
+| `internal/disruptor` publish/pop | about `18 ns/op`, `0 B/op`, `0 allocs/op` |
+| `internal/jsoncodec` Sonic fallback | about `630 ns/op`, `341 B/op`, `4 allocs/op` |
+| `internal/jsoncodec` stdlib fallback | about `1335 ns/op`, `640 B/op`, `17 allocs/op` |
+| `benchmarks/compare` goark direct file parallel | about `262.7 ns/op`, `0 B/op`, `0 allocs/op` |
+| `benchmarks/compare` zap file parallel | about `317.8 ns/op`, `193 B/op`, `1 alloc/op` |
+| `benchmarks/compare` zerolog file parallel | about `197.1 ns/op`, `0 B/op`, `0 allocs/op` |
 
-`pressure_bench_test.go` 覆盖：
+## Stress Coverage
 
-- async queue、batch、overflow、wait strategy 的关键组合。
-- JSON file 并发写和 flushOnWrite。
-- rolling file plain、gzip sync、gzip async。
-- caller 采集开销。
+Stress tests cover:
 
-`benchmarks/compare/pressure_bench_test.go` 覆盖：
+- multi-producer async logger block-strategy drain,
+- concurrent close wakeups when async queues are full,
+- rolling file multi-producer writes to real files,
+- complete JSON/text line validation,
+- async gzip rolling action completion after `Close`.
 
-- goark direct JSON file 并发写。
-- goark rolling file 并发写。
-- zap 和 zerolog 并发文件写。对非线程安全 buffered writer 使用互斥封装，保证比较代码自身不破坏并发写语义。
+Pressure benchmarks cover:
+
+- async queue, batch, overflow, and wait-strategy combinations,
+- JSON file parallel write with and without buffering,
+- rolling file plain, gzip sync, and gzip async,
+- caller-location cost,
+- direct native logger JSON file paths.

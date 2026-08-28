@@ -42,7 +42,7 @@ jobs:
       - name: Root pressure benchmarks
         run: |
           set -o pipefail
-          go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime="${BENCHTIME}" -count="${BENCH_COUNT}" -cpu=1,4,16 2>&1 | tee artifacts/root-pressure-bench.txt
+          go test -run '^$' -bench 'BenchmarkPressure|BenchmarkAsyncLoggerParallel3|BenchmarkFileAppenderParallel|BenchmarkNativeLoggerDirectJSONFileParallel3' -benchmem -benchtime="${BENCHTIME}" -count="${BENCH_COUNT}" -cpu=1,4,16 ./benchmarks/core 2>&1 | tee artifacts/root-pressure-bench.txt
 
       - name: Internal pressure benchmarks
         run: |
