@@ -2,6 +2,7 @@ package goarklog
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
@@ -73,6 +74,7 @@ type configSignature struct {
 	path    string
 	modTime time.Time
 	size    int64
+	digest  [sha256.Size]byte
 }
 
 // LoggerContextOption 调整 LoggerContext。
@@ -382,6 +384,11 @@ func (r *ConfigReloader) currentSignature() (configSignature, error) {
 	}
 	signature.modTime = info.ModTime()
 	signature.size = info.Size()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return configSignature{}, fmt.Errorf("goark-log: read config file %q for signature: %w", path, err)
+	}
+	signature.digest = sha256.Sum256(content)
 	return signature, nil
 }
 

@@ -864,6 +864,10 @@ func TestLoggerContext_whenMonitorIntervalConfigured_shouldReloadChangedFile(t *
 	logPath := filepath.Join(dir, "logs", "monitor.log")
 	configPath := filepath.Join(dir, "goark-log.yml")
 	writeMonitoredFileConfig(t, configPath, logPath, "error")
+	originalInfo, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
 
 	context, result, err := NewConfiguredLoggerContext(ctx, WithConfigPath(configPath))
 	if err != nil {
@@ -877,6 +881,9 @@ func TestLoggerContext_whenMonitorIntervalConfigured_shouldReloadChangedFile(t *
 	logger.Debug("hidden before monitor reload")
 
 	writeMonitoredFileConfig(t, configPath, logPath, "debug")
+	if err := os.Chtimes(configPath, originalInfo.ModTime(), originalInfo.ModTime()); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		logger.Debug("visible after monitor reload")
