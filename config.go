@@ -150,6 +150,9 @@ type ConfigResult struct {
 // ConfigLoadOption 调整配置加载过程。
 type ConfigLoadOption func(*configLoadSettings)
 
+// OptionsCustomizer 在配置文件解析完成后定制日志运行期选项。
+type OptionsCustomizer func(context.Context, Options, *ConfigResult) (Options, error)
+
 type configLoadSettings struct {
 	explicitPath string
 	envKey       string
@@ -158,6 +161,7 @@ type configLoadSettings struct {
 	defaultPaths []string
 	lookups      *LookupResolver
 	registry     *PluginRegistry
+	customizers  []OptionsCustomizer
 }
 
 // WithConfigPath 设置显式配置文件路径，优先级最高。
@@ -209,6 +213,18 @@ func WithPluginRegistry(registry *PluginRegistry) ConfigLoadOption {
 	}
 }
 
+// WithOptionsCustomizer 注册配置加载后的日志选项定制器。
+func WithOptionsCustomizer(customizers ...OptionsCustomizer) ConfigLoadOption {
+	copied := append([]OptionsCustomizer(nil), customizers...)
+	return func(settings *configLoadSettings) {
+		for _, customizer := range copied {
+			if customizer != nil {
+				settings.customizers = append(settings.customizers, customizer)
+			}
+		}
+	}
+}
+
 // LoadOptions 按优先级加载并构建 Handler Options。
 func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *ConfigResult, error) {
 	if ctx == nil {
@@ -227,7 +243,7 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	}
 	result := &ConfigResult{Source: source, Path: path}
 	if path == "" {
-		return DefaultOptions(), result, nil
+		return settings.customize(ctx, DefaultOptions(), result)
 	}
 	fileConfig, err := configfile.Load(ctx, path, settings.lookups)
 	if err != nil {
@@ -242,7 +258,21 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if err != nil {
 		return Options{}, nil, err
 	}
-	return Options(handlerOptions), result, nil
+	return settings.customize(ctx, Options(handlerOptions), result)
+}
+
+func (s *configLoadSettings) customize(ctx context.Context, options Options, result *ConfigResult) (Options, *ConfigResult, error) {
+	current := options
+	for _, customizer := range s.customizers {
+		updated, err := customizer(ctx, current, result)
+		if err != nil {
+			_ = closeAppenderList(current.Appenders)
+			_ = closeAppenderList(updated.Appenders)
+			return Options{}, nil, fmt.Errorf("goark-log: customize loaded options: %w", err)
+		}
+		current = updated
+	}
+	return current, result, nil
 }
 
 // NewConfiguredHandler 从配置创建 Handler。

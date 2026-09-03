@@ -28,7 +28,7 @@ type RootLogger = internalrouter.RootLogger
 // LoggerRule 描述命名 logger 的级别和输出路由。
 type LoggerRule = internalrouter.LoggerRule
 
-// DefaultOptions 返回默认 Spring Boot 风格 stderr 配置。
+// DefaultOptions 返回默认 Spring Boot 风格 stdout 配置。
 func DefaultOptions() Options {
 	return Options{
 		Appenders: []Appender{NewConsoleAppender()},
@@ -78,7 +78,7 @@ func NewHandler(options Options) (*Handler, error) {
 	return handler, nil
 }
 
-// NewDefaultHandler 创建默认 stderr INFO Handler。
+// NewDefaultHandler 创建默认 stdout INFO Handler。
 func NewDefaultHandler() *Handler {
 	handler, err := NewHandler(DefaultOptions())
 	if err != nil {
@@ -87,7 +87,7 @@ func NewDefaultHandler() *Handler {
 	return handler
 }
 
-// NewDefault 创建默认 stderr INFO logger。
+// NewDefault 创建默认 stdout INFO logger。
 func NewDefault() (*slog.Logger, *Handler) {
 	handler := NewDefaultHandler()
 	return NewLogger(handler, defaultLoggerName), handler
