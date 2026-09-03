@@ -37,7 +37,7 @@ func TestLoggerAbbreviator_shouldFollowLog4j2PrecisionRules(t *testing.T) {
 }
 
 func TestPatternLayout_whenLoggerPrecisionUsed_shouldApplyLog4j2Rules(t *testing.T) {
-	layout, err := NewPatternLayout("%logger|%logger{2}|%logger{-1}|%logger{1.}|%.8logger")
+	layout, err := NewPatternLayout("%logger|%logger{2}|%logger{-1}|%logger{1.}|%.8logger|%.-8logger")
 	if err != nil {
 		t.Fatalf("NewPatternLayout() error = %v", err)
 	}
@@ -45,9 +45,27 @@ func TestPatternLayout_whenLoggerPrecisionUsed_shouldApplyLog4j2Rules(t *testing
 	if err := layout.Format(&buf, Event{Logger: "org.apache.commons.Foo"}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
-	const want = "org.apache.commons.Foo|commons.Foo|apache.commons.Foo|o.a.c.Foo|org.apac"
+	const want = "org.apache.commons.Foo|commons.Foo|apache.commons.Foo|o.a.c.Foo|mons.Foo|org.apac"
 	if got := buf.String(); got != want {
 		t.Fatalf("formatted logger names = %q, want %q", got, want)
+	}
+}
+
+func TestPatternLayout_whenDefaultLoggerPatternUsed_shouldAbbreviateDisplayOnly(t *testing.T) {
+	layout, err := NewPatternLayout("%logger{1.2*}")
+	if err != nil {
+		t.Fatalf("NewPatternLayout() error = %v", err)
+	}
+	event := Event{Logger: "goark.dev.arkhos.hertz"}
+	var buf bytes.Buffer
+	if err := layout.Format(&buf, event); err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	if got, want := buf.String(), "g.d.arkhos.hertz"; got != want {
+		t.Fatalf("formatted logger = %q, want %q", got, want)
+	}
+	if got, want := event.Logger, "goark.dev.arkhos.hertz"; got != want {
+		t.Fatalf("event logger = %q, want full name %q", got, want)
 	}
 }
 

@@ -45,11 +45,17 @@ separate files produce valid independent streams.
 Default pattern:
 
 ```text
-%d %5level %pid --- [%thread] %logger : %msg%attrs%n
+%d{yyyy-MM-dd HH:mm:ss.SSS}  %5level %pid - [%15.15thread] %-40.40logger{1.2*} : %msg%attrs%n
 ```
 
-Field width and truncation follow Log4j-style syntax: `%5p`, `%-5p`, `%.30c`,
-and combinations are accepted.
+This produces Spring Boot-style console lines while retaining the full logger
+name in the event. For example, the event logger `goark.dev.arkhos.hertz` is
+displayed as `g.d.arkhos.hertz` by `%logger{1.2*}`.
+
+Field width and truncation follow Log4j2 syntax. `%5p` pads on the left,
+`%-5p` pads on the right, and `%05p` pads with zeros. `%.30c` removes excess
+characters from the beginning and `%.-30c` removes them from the end. Minimum
+and maximum widths can be combined.
 
 | Converter | Aliases | Output |
 | --- | --- | --- |
@@ -96,11 +102,14 @@ Given the logger name `org.apache.commons.Foo`:
 | `%logger{-1}` | `apache.commons.Foo` | Drop one leftmost component. |
 | `%logger{1.}` | `o.a.c.Foo` | Retain one character from each non-final component. |
 | `%logger{1~.2~}` | `o~.ap~.co~.Foo` | Apply per-component lengths and abbreviation markers. |
-| `%.8logger` | `org.apac` | Apply the Log4j maximum-width modifier after conversion. |
+| `%.8logger` | `mons.Foo` | Apply maximum width and remove excess characters from the beginning. |
+| `%.-8logger` | `org.apac` | Apply maximum width and remove excess characters from the end. |
 
 `%logger{1.2*}` retains the two rightmost components in full and abbreviates
 each earlier component to one character. Precision is compiled with the layout;
-it is not parsed for every event.
+it is not parsed for every event. Abbreviation changes only rendered output;
+filters, routing, structured layouts, and exporters continue to receive the
+full logger name stored in the event.
 
 Caller converters require location capture through logger options, logger
 config, async config, or appender-ref `includeLocation`.

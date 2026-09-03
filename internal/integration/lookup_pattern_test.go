@@ -74,7 +74,7 @@ func TestPatternLayout_whenUnixMillisDateUsed_shouldRenderEpochMillis(t *testing
 }
 
 func TestPatternLayout_whenUnicodeValueIsTruncated_shouldKeepValidUTF8(t *testing.T) {
-	layout, err := NewPatternLayout("%.1msg|%4.2msg|%maxLen{%msg}{2}%n")
+	layout, err := NewPatternLayout("%.1msg|%.-2msg|%4.2msg|%05msg|%maxLen{%msg}{2}%n")
 	if err != nil {
 		t.Fatalf("NewPatternLayout() error = %v", err)
 	}
@@ -88,7 +88,7 @@ func TestPatternLayout_whenUnicodeValueIsTruncated_shouldKeepValidUTF8(t *testin
 	if !utf8.ValidString(got) {
 		t.Fatalf("formatted line is not valid UTF-8: %q", got)
 	}
-	want := "界|  界a|界a\n"
+	want := "c|界a|  bc|0界abc|界a\n"
 	if got != want {
 		t.Fatalf("formatted line = %q, want %q", got, want)
 	}

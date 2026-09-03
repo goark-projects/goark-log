@@ -147,5 +147,5 @@ func ansiStyleCode(value string) (string, bool) {
 
 // MaxPatternLength 按 pattern 宽度规则截断字符串。
 func MaxPatternLength(value string, limit int) string {
-	return truncatePatternWidth(value, limit)
+	return truncatePatternWidth(value, limit, true)
 }

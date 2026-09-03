@@ -46,13 +46,33 @@ func TestAppendJSONValue_whenGroupProvided_shouldWriteObject(t *testing.T) {
 	}
 }
 
-func TestAppendPadded_whenUnicodeMaxWidthProvided_shouldTruncateByRune(t *testing.T) {
+func TestAppendFormatted_whenUnicodeMaxWidthProvided_shouldTruncateFromStartByRune(t *testing.T) {
 	var buf bytes.Buffer
 
-	AppendPadded(&buf, "日志abc", 5, 2, false)
+	AppendFormatted(&buf, "日志abc", FieldFormat{MinWidth: 5, MaxWidth: 2})
 
-	if got, want := buf.String(), "   日志"; got != want {
-		t.Fatalf("AppendPadded() = %q, want %q", got, want)
+	if got, want := buf.String(), "   bc"; got != want {
+		t.Fatalf("AppendFormatted() = %q, want %q", got, want)
+	}
+}
+
+func TestAppendFormatted_whenTruncateFromEndEnabled_shouldKeepPrefix(t *testing.T) {
+	var buf bytes.Buffer
+
+	AppendFormatted(&buf, "日志abc", FieldFormat{MaxWidth: 2, TruncateFromEnd: true})
+
+	if got, want := buf.String(), "日志"; got != want {
+		t.Fatalf("AppendFormatted() = %q, want %q", got, want)
+	}
+}
+
+func TestAppendFormatted_whenZeroPaddingEnabled_shouldPadWithZeros(t *testing.T) {
+	var buf bytes.Buffer
+
+	AppendFormatted(&buf, "42", FieldFormat{MinWidth: 5, ZeroPad: true})
+
+	if got, want := buf.String(), "00042"; got != want {
+		t.Fatalf("AppendFormatted() = %q, want %q", got, want)
 	}
 }
 

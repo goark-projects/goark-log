@@ -44,10 +44,16 @@ Complete JSON 和 JSON Template layout 会为每个 appender 克隆生命周期�
 默认 pattern：
 
 ```text
-%d %5level %pid --- [%thread] %logger : %msg%attrs%n
+%d{yyyy-MM-dd HH:mm:ss.SSS}  %5level %pid - [%15.15thread] %-40.40logger{1.2*} : %msg%attrs%n
 ```
 
-字段宽度和截断使用 Log4j 风格语法：`%5p`、`%-5p`、`%.30c` 以及组合形式。
+该默认格式生成 Spring Boot 风格的控制台日志，同时事件内部始终保留完整 logger 名。
+例如，事件 logger `goark.dev.arkhos.hertz` 会由 `%logger{1.2*}` 显示为
+`g.d.arkhos.hertz`。
+
+字段宽度和截断遵循 Log4j2 语法。`%5p` 在左侧补空格，`%-5p` 在右侧补空格，
+`%05p` 使用零填充；`%.30c` 从开头删除超长字符，`%.-30c` 从末尾删除超长字符。
+最小宽度和最大宽度可以组合使用。
 
 | 转换器 | 别名 | 输出 |
 | --- | --- | --- |
@@ -94,10 +100,12 @@ Complete JSON 和 JSON Template layout 会为每个 appender 克隆生命周期�
 | `%logger{-1}` | `apache.commons.Foo` | 删除最左侧一段。 |
 | `%logger{1.}` | `o.a.c.Foo` | 非末尾段各保留一个字符。 |
 | `%logger{1~.2~}` | `o~.ap~.co~.Foo` | 按段应用长度和缩写标记。 |
-| `%.8logger` | `org.apac` | 转换后应用 Log4j 最大宽度，保留最前 8 个字符。 |
+| `%.8logger` | `mons.Foo` | 应用最大宽度，并从开头删除超长字符。 |
+| `%.-8logger` | `org.apac` | 应用最大宽度，并从末尾删除超长字符。 |
 
 `%logger{1.2*}` 会完整保留最右侧两段，并把此前各段缩写为一个字符。
-精度规则在 layout 编译阶段完成解析，不会在每条日志上重复解析。
+精度规则在 layout 编译阶段完成解析，不会在每条日志上重复解析。缩写只改变最终显示；
+过滤、路由、结构化 layout 和 exporter 仍然使用事件中保存的完整 logger 名。
 
 调用位置转换器需要通过 logger 选项、logger 配置、async 配置或 appender-ref
 `includeLocation` 开启位置采集。

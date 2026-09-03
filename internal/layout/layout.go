@@ -22,7 +22,7 @@ import (
 
 const (
 	// DefaultSpringBootPattern 是默认控制台输出格式，风格对齐 Spring Boot。
-	DefaultSpringBootPattern = "%d %5level %pid --- [%thread] %logger : %msg%attrs%n"
+	DefaultSpringBootPattern = "%d{yyyy-MM-dd HH:mm:ss.SSS}  %5level %pid - [%15.15thread] %-40.40logger{1.2*} : %msg%attrs%n"
 	defaultTimeFormat        = timepattern.DefaultLayout
 	defaultThreadName        = logevent.DefaultThreadName
 )

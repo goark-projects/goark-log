@@ -3,7 +3,9 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -25,18 +27,17 @@ func TestHandler_whenDefaultPatternUsed_shouldRenderSpringBootStyleLine(t *testi
 
 	record := slog.NewRecord(time.Date(2026, 8, 25, 10, 15, 30, 123000000, time.FixedZone("CST", 8*3600)), slog.LevelInfo, "service started", 0)
 	record.AddAttrs(slog.String("profile", "dev"))
-	if err := NewLogger(handler, "goark.boot").Handler().Handle(context.Background(), record); err != nil {
+	if err := NewLogger(handler, "goark.dev.arkhos.hertz").Handler().Handle(context.Background(), record); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
-	line := out.String()
-	if !strings.HasPrefix(line, "2026-08-25T10:15:30.123+08:00  INFO ") {
-		t.Fatalf("line should start with Spring Boot timestamp and level, got %q", line)
-	}
-	for _, want := range []string{" --- [main] goark.boot : service started", "profile=dev\n"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("line should contain %q, got %q", want, line)
-		}
+	want := fmt.Sprintf(
+		"2026-08-25 10:15:30.123   INFO %d - [           main] %-40s : service started profile=dev\n",
+		os.Getpid(),
+		"g.d.arkhos.hertz",
+	)
+	if got := out.String(); got != want {
+		t.Fatalf("default formatted line = %q, want %q", got, want)
 	}
 }
 

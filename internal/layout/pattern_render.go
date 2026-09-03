@@ -49,7 +49,13 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, call
 		return
 	}
 	value := patternTokenString(token, event, caller, options)
-	logvalue.AppendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
+	logvalue.AppendFormatted(buf, value, logvalue.FieldFormat{
+		MinWidth:        token.minWidth,
+		MaxWidth:        token.maxWidth,
+		LeftAlign:       token.leftAlign,
+		TruncateFromEnd: token.truncateFromEnd,
+		ZeroPad:         token.zeroPad,
+	})
 }
 
 func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {

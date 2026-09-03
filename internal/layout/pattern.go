@@ -19,21 +19,23 @@ type PatternLayout struct {
 }
 
 type patternToken struct {
-	kind      patternTokenKind
-	literal   string
-	format    string
-	key       string
-	minWidth  int
-	maxWidth  int
-	logger    loggerAbbreviator
-	repeat    int
-	leftAlign bool
-	timeUnix  timepattern.UnixMode
-	child     *PatternLayout
-	regex     *regexp.Regexp
-	value     string
-	repl      string
-	ignore    bool
+	kind            patternTokenKind
+	literal         string
+	format          string
+	key             string
+	minWidth        int
+	maxWidth        int
+	logger          loggerAbbreviator
+	repeat          int
+	leftAlign       bool
+	truncateFromEnd bool
+	zeroPad         bool
+	timeUnix        timepattern.UnixMode
+	child           *PatternLayout
+	regex           *regexp.Regexp
+	value           string
+	repl            string
+	ignore          bool
 }
 
 type patternTokenKind int
@@ -141,12 +143,19 @@ func readPatternToken(pattern string, layoutOptions LayoutOptions) (patternToken
 		token.leftAlign = true
 		index++
 	}
+	if index < len(pattern) && pattern[index] == '0' {
+		token.zeroPad = true
+	}
 	for index < len(pattern) && logvalue.IsPatternDigit(pattern[index]) {
 		token.minWidth = token.minWidth*10 + int(pattern[index]-'0')
 		index++
 	}
 	if index < len(pattern) && pattern[index] == '.' {
 		index++
+		if index < len(pattern) && pattern[index] == '-' {
+			token.truncateFromEnd = true
+			index++
+		}
 		for index < len(pattern) && logvalue.IsPatternDigit(pattern[index]) {
 			token.maxWidth = token.maxWidth*10 + int(pattern[index]-'0')
 			index++

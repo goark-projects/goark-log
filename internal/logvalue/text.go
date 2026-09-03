@@ -10,23 +10,32 @@ import (
 	"unicode/utf8"
 )
 
-// AppendPadded 按 pattern 宽度规则写入字符串。
-func AppendPadded(buf *bytes.Buffer, value string, minWidth int, maxWidth int, leftAlign bool) {
-	if maxWidth > 0 {
-		value = truncatePatternWidth(value, maxWidth)
+// FieldFormat 描述 Log4j PatternLayout 的字段宽度和对齐规则。
+type FieldFormat struct {
+	MinWidth        int
+	MaxWidth        int
+	LeftAlign       bool
+	TruncateFromEnd bool
+	ZeroPad         bool
+}
+
+// AppendFormatted 按 Log4j PatternLayout 字段格式写入字符串。
+func AppendFormatted(buf *bytes.Buffer, value string, format FieldFormat) {
+	if format.MaxWidth > 0 {
+		value = truncatePatternWidth(value, format.MaxWidth, format.TruncateFromEnd)
 	}
 	width := patternWidth(value)
-	if minWidth <= width {
+	if format.MinWidth <= width {
 		buf.WriteString(value)
 		return
 	}
-	padding := minWidth - width
-	if leftAlign {
+	padding := format.MinWidth - width
+	if format.LeftAlign {
 		buf.WriteString(value)
-		writeSpaces(buf, padding)
+		writePadding(buf, padding, format.ZeroPad)
 		return
 	}
-	writeSpaces(buf, padding)
+	writePadding(buf, padding, format.ZeroPad)
 	buf.WriteString(value)
 }
 
@@ -39,7 +48,7 @@ func patternWidth(value string) int {
 	return len(value)
 }
 
-func truncatePatternWidth(value string, limit int) string {
+func truncatePatternWidth(value string, limit int, fromEnd bool) string {
 	if limit <= 0 {
 		return ""
 	}
@@ -48,13 +57,30 @@ func truncatePatternWidth(value string, limit int) string {
 	}
 	for index := 0; index < len(value); index++ {
 		if value[index] >= utf8.RuneSelf {
-			return truncatePatternRunes(value, limit)
+			return truncatePatternRunes(value, limit, fromEnd)
 		}
+	}
+	if !fromEnd {
+		return value[len(value)-limit:]
 	}
 	return value[:limit]
 }
 
-func truncatePatternRunes(value string, limit int) string {
+func truncatePatternRunes(value string, limit int, fromEnd bool) string {
+	if !fromEnd {
+		count := utf8.RuneCountInString(value)
+		if count <= limit {
+			return value
+		}
+		drop := count - limit
+		for index := range value {
+			if drop == 0 {
+				return value[index:]
+			}
+			drop--
+		}
+		return value
+	}
 	count := 0
 	for index := range value {
 		if count == limit {
@@ -65,9 +91,13 @@ func truncatePatternRunes(value string, limit int) string {
 	return value
 }
 
-func writeSpaces(buf *bytes.Buffer, count int) {
+func writePadding(buf *bytes.Buffer, count int, zero bool) {
+	value := byte(' ')
+	if zero {
+		value = '0'
+	}
 	for index := 0; index < count; index++ {
-		buf.WriteByte(' ')
+		buf.WriteByte(value)
 	}
 }
 
