@@ -18,17 +18,17 @@ import (
 func buildConsolePlugin(config AppenderBuildConfig) (internalrouter.Appender, error) {
 	target := strings.ToLower(strings.TrimSpace(config.Target))
 	switch target {
-	case "", "stderr":
-		return fileappender.NewConsoleAppender(
-			fileappender.WithConsoleName(config.Name),
-			fileappender.WithConsoleLayout(config.Layout),
-			fileappender.WithConsoleWriter(os.Stderr),
-		), nil
-	case "stdout":
+	case "", "stdout":
 		return fileappender.NewConsoleAppender(
 			fileappender.WithConsoleName(config.Name),
 			fileappender.WithConsoleLayout(config.Layout),
 			fileappender.WithConsoleWriter(os.Stdout),
+		), nil
+	case "stderr":
+		return fileappender.NewConsoleAppender(
+			fileappender.WithConsoleName(config.Name),
+			fileappender.WithConsoleLayout(config.Layout),
+			fileappender.WithConsoleWriter(os.Stderr),
 		), nil
 	default:
 		return nil, fmt.Errorf("goark-log: appender %q console target %q is invalid", config.Name, config.Target)
@@ -87,10 +87,10 @@ func buildJSONPlugin(config AppenderBuildConfig) (internalrouter.Appender, error
 		return jsonappender.NewFile(config.FileName, options...)
 	}
 	switch strings.ToLower(strings.TrimSpace(config.Target)) {
-	case "", "stderr":
-		return jsonappender.New(jsonappender.WithName(config.Name), jsonappender.WithWriter(os.Stderr)), nil
-	case "stdout":
+	case "", "stdout":
 		return jsonappender.New(jsonappender.WithName(config.Name), jsonappender.WithWriter(os.Stdout)), nil
+	case "stderr":
+		return jsonappender.New(jsonappender.WithName(config.Name), jsonappender.WithWriter(os.Stderr)), nil
 	case "file":
 		return nil, fmt.Errorf("goark-log: appender %q JSON target file requires fileName", config.Name)
 	default:

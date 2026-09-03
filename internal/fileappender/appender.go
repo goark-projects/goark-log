@@ -67,7 +67,7 @@ func WithConsoleLayout(layout Layout) ConsoleOption {
 func NewConsoleAppender(options ...ConsoleOption) *ConsoleAppender {
 	appender := &ConsoleAppender{
 		name:   "console",
-		writer: os.Stderr,
+		writer: os.Stdout,
 		layout: internallayout.NewDefaultLayout(),
 	}
 	for _, option := range options {
@@ -76,7 +76,7 @@ func NewConsoleAppender(options ...ConsoleOption) *ConsoleAppender {
 		}
 	}
 	if appender.writer == nil {
-		appender.writer = os.Stderr
+		appender.writer = os.Stdout
 	}
 	if appender.layout == nil {
 		appender.layout = internallayout.NewDefaultLayout()
