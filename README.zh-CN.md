@@ -54,7 +54,7 @@ func main() {
 }
 ```
 
-默认输出写入 stderr，使用 Spring Boot 风格 pattern：
+默认输出写入 stdout，使用 Spring Boot 风格 pattern：
 
 ```text
 2026-08-28T09:30:00.000+08:00  INFO 12345 --- [main] goark.demo : service started profile=dev
@@ -92,7 +92,7 @@ func main() {
 2. 环境变量 `GOARK_LOG_CONFIG`，或 `WithConfigEnvKey` 设置的键。
 3. Boot 属性键 `goark.log.config`、`goark.logging.config`、`logging.config`。
 4. `conf/goark-log.yml`、`.yaml`、`.json`、`.xml`、`.toml`、`.properties`。
-5. 内置默认配置：stderr console，级别 `INFO`。
+5. 内置默认配置：stdout console，级别 `INFO`。
 
 建议从 [docs/examples/production-service.yml](docs/examples/production-service.yml)
 开始生产配置。该示例覆盖控制台诊断、异步滚动 JSON 文件、审计日志、健康检查过滤、保留策略和配置重载。

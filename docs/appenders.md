@@ -27,7 +27,7 @@ first, then the remaining appenders, and skips duplicate appender names.
 | `type` | all configured appenders | Required. Kind matching ignores case, hyphen, and underscore. |
 | `layout` | console, file, rolling-file | Omitted layout defaults to the Spring Boot style pattern. |
 | `filters`, `filterRefs`, `filter-refs` | all | Appender-level filters wrap the appender before it is used. |
-| `target` | console, JSON direct | `stderr` is default; `stdout` is supported. |
+| `target` | console, JSON direct | `stdout` is default; `stderr` is supported. |
 | `fileName`, `file-name`, `path` | file sinks | File path. Required for file and rolling-file. Optional for JSON direct file output. |
 | `bufferSize`, `buffer-size` | file sinks | Byte size string. `0` disables application buffering. |
 | `flushOnWrite`, `flush-on-write` | file sinks | Flushes the buffered writer after each event. |
@@ -44,7 +44,7 @@ plugins. The core module does not implement remote appenders.
 
 Type: `console`.
 
-Console writes to stderr by default, or stdout when `target: stdout` is set.
+Console writes to stdout by default, or stderr when `target: stderr` is set.
 It supports every layout and writes layout headers on first event and footers
 on close when the layout is in complete mode.
 

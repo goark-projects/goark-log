@@ -26,7 +26,7 @@ appender。
 | `type` | 所有配置 appender | 必填。类型匹配忽略大小写、连字符和下划线。 |
 | `layout` | console、file、rolling-file | 省略时使用 Spring Boot 风格默认 pattern。 |
 | `filters`, `filterRefs`, `filter-refs` | 所有 | 在 appender 被使用前包裹过滤器链。 |
-| `target` | console、JSON direct | 默认 `stderr`，支持 `stdout`。 |
+| `target` | console、JSON direct | 默认 `stdout`，支持 `stderr`。 |
 | `fileName`, `file-name`, `path` | 文件输出 | 文件路径。file 和 rolling-file 必填，JSON direct 可选。 |
 | `bufferSize`, `buffer-size` | 文件输出 | 字节大小字符串。`0` 禁用应用层缓冲。 |
 | `flushOnWrite`, `flush-on-write` | 文件输出 | 每条事件后刷新 buffered writer。 |
@@ -43,7 +43,7 @@ appender。
 
 类型：`console`。
 
-Console 默认写 stderr，`target: stdout` 时写 stdout。支持所有 layout。layout
+Console 默认写 stdout，`target: stderr` 时写 stderr。支持所有 layout。
 处于 complete 模式时，第一次事件写 header，关闭时写 footer。
 
 ```yaml

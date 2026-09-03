@@ -17,10 +17,10 @@ import goarklog "goark.dev/log"
 
 | 函数 | 用途 |
 | --- | --- |
-| `DefaultOptions()` | 返回 stderr、`INFO`、Spring Boot 风格 pattern 的默认配置。 |
+| `DefaultOptions()` | 返回 stdout、`INFO`、Spring Boot 风格 pattern 的默认配置。 |
 | `NewHandler(options)` | 从编程式 `Options` 构建 `*Handler`。 |
 | `New(options)` | 构建默认命名的 `*slog.Logger` 和对应 `*Handler`。 |
-| `NewDefaultHandler()` | 构建默认 stderr handler；仅在内置默认值非法时 panic。 |
+| `NewDefaultHandler()` | 构建默认 stdout handler；仅在内置默认值非法时 panic。 |
 | `NewDefault()` | 构建默认 `*slog.Logger` 和 `*Handler`。 |
 | `LoadOptions(ctx, opts...)` | 解析配置并构建 `Options`。 |
 | `NewConfiguredHandler(ctx, opts...)` | 从配置构建 handler。 |

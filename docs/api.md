@@ -18,10 +18,10 @@ handler contract.
 
 | Function | Use |
 | --- | --- |
-| `DefaultOptions()` | Returns stderr console logging at `INFO` with the Spring Boot style pattern. |
+| `DefaultOptions()` | Returns stdout console logging at `INFO` with the Spring Boot style pattern. |
 | `NewHandler(options)` | Builds a `*Handler` from programmatic `Options`. |
 | `New(options)` | Builds a default-named `*slog.Logger` and its `*Handler`. |
-| `NewDefaultHandler()` | Builds the default stderr handler and panics only if the built-in defaults are invalid. |
+| `NewDefaultHandler()` | Builds the default stdout handler and panics only if the built-in defaults are invalid. |
 | `NewDefault()` | Builds the default `*slog.Logger` and `*Handler`. |
 | `LoadOptions(ctx, opts...)` | Resolves and parses configuration into `Options`. |
 | `NewConfiguredHandler(ctx, opts...)` | Loads config and builds a handler. |

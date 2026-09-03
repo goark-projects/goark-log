@@ -57,7 +57,7 @@ func main() {
 }
 ```
 
-Default output uses the Spring Boot style pattern and writes to stderr:
+Default output uses the Spring Boot style pattern and writes to stdout:
 
 ```text
 2026-08-28T09:30:00.000+08:00  INFO 12345 --- [main] goark.demo : service started profile=dev
@@ -95,7 +95,7 @@ Configuration path resolution order:
 2. Environment variable `GOARK_LOG_CONFIG`, or the key set by `WithConfigEnvKey`.
 3. Boot property keys `goark.log.config`, `goark.logging.config`, and `logging.config`.
 4. Default files under `conf/goark-log.yml`, `.yaml`, `.json`, `.xml`, `.toml`, and `.properties`.
-5. Built-in default configuration: stderr console at `INFO`.
+5. Built-in default configuration: stdout console at `INFO`.
 
 Use [docs/examples/production-service.yml](docs/examples/production-service.yml)
 as the starting production configuration. It covers console diagnostics,
