@@ -25,7 +25,7 @@ type patternToken struct {
 	key       string
 	minWidth  int
 	maxWidth  int
-	precision int
+	logger    loggerAbbreviator
 	repeat    int
 	leftAlign bool
 	timeUnix  timepattern.UnixMode
@@ -222,7 +222,7 @@ func configurePatternToken(token *patternToken, converter string, options []stri
 		token.kind = tokenThread
 	case normalized == "logger" || converter == "c":
 		token.kind = tokenLogger
-		token.precision = parsePatternPrecision(option)
+		token.logger = newLoggerAbbreviator(option)
 	case normalized == "msg" || normalized == "message" || converter == "m":
 		token.kind = tokenMessage
 	case normalized == "attrs" || normalized == "kvp" || normalized == "map":

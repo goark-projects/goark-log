@@ -57,7 +57,7 @@ and combinations are accepted.
 | `%p` | `%level` | Level name. |
 | `%pid` | `%processId` | Process ID. |
 | `%thread` | `%t` | Logical thread name, default `main`. |
-| `%logger{precision}` | `%c{precision}` | Logger name, optionally shortened to trailing segments. |
+| `%logger{precision}` | `%c{precision}` | Logger name with Log4j2-compatible precision and abbreviation rules. |
 | `%msg` | `%message`, `%m` | Message text. |
 | `%attrs` | `%kvp`, `%map` | Event attributes as pattern key/value text. |
 | `%X{key}` | `%mdc{key}` | Single attribute value. Without a key, emits all attrs. |
@@ -83,6 +83,24 @@ and combinations are accepted.
 | `%maxLen{pattern}{length}` | `%maxLength{pattern}{length}` | Truncates child output. |
 | `%repeat{pattern}{count}` | none | Repeats child output. |
 | `%%` | none | Literal percent sign. |
+
+### Logger Name Precision
+
+Given the logger name `org.apache.commons.Foo`:
+
+| Pattern | Output | Meaning |
+| --- | --- | --- |
+| `%logger` | `org.apache.commons.Foo` | Full logger name. |
+| `%logger{1}` | `Foo` | Retain one rightmost component. |
+| `%logger{2}` | `commons.Foo` | Retain two rightmost components. |
+| `%logger{-1}` | `apache.commons.Foo` | Drop one leftmost component. |
+| `%logger{1.}` | `o.a.c.Foo` | Retain one character from each non-final component. |
+| `%logger{1~.2~}` | `o~.ap~.co~.Foo` | Apply per-component lengths and abbreviation markers. |
+| `%.8logger` | `org.apac` | Apply the Log4j maximum-width modifier after conversion. |
+
+`%logger{1.2*}` retains the two rightmost components in full and abbreviates
+each earlier component to one character. Precision is compiled with the layout;
+it is not parsed for every event.
 
 Caller converters require location capture through logger options, logger
 config, async config, or appender-ref `includeLocation`.

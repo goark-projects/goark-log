@@ -55,7 +55,7 @@ Complete JSON 和 JSON Template layout 会为每个 appender 克隆生命周期�
 | `%p` | `%level` | 级别名称。 |
 | `%pid` | `%processId` | 进程 ID。 |
 | `%thread` | `%t` | 逻辑线程名，默认 `main`。 |
-| `%logger{precision}` | `%c{precision}` | logger 名称，可保留尾部段数。 |
+| `%logger{precision}` | `%c{precision}` | logger 名称，支持与 Log4j2 兼容的精度和缩写规则。 |
 | `%msg` | `%message`, `%m` | 消息文本。 |
 | `%attrs` | `%kvp`, `%map` | 事件属性的 pattern key/value 文本。 |
 | `%X{key}` | `%mdc{key}` | 单个属性值。不带 key 时输出全部 attrs。 |
@@ -81,6 +81,23 @@ Complete JSON 和 JSON Template layout 会为每个 appender 克隆生命周期�
 | `%maxLen{pattern}{length}` | `%maxLength{pattern}{length}` | 截断子输出。 |
 | `%repeat{pattern}{count}` | 无 | 重复子输出。 |
 | `%%` | 无 | 字面 `%`。 |
+
+### Logger 名称精度
+
+假设 logger 名称为 `org.apache.commons.Foo`：
+
+| Pattern | 输出 | 含义 |
+| --- | --- | --- |
+| `%logger` | `org.apache.commons.Foo` | 输出完整 logger 名称。 |
+| `%logger{1}` | `Foo` | 保留最右侧一段。 |
+| `%logger{2}` | `commons.Foo` | 保留最右侧两段。 |
+| `%logger{-1}` | `apache.commons.Foo` | 删除最左侧一段。 |
+| `%logger{1.}` | `o.a.c.Foo` | 非末尾段各保留一个字符。 |
+| `%logger{1~.2~}` | `o~.ap~.co~.Foo` | 按段应用长度和缩写标记。 |
+| `%.8logger` | `org.apac` | 转换后应用 Log4j 最大宽度，保留最前 8 个字符。 |
+
+`%logger{1.2*}` 会完整保留最右侧两段，并把此前各段缩写为一个字符。
+精度规则在 layout 编译阶段完成解析，不会在每条日志上重复解析。
 
 调用位置转换器需要通过 logger 选项、logger 配置、async 配置或 appender-ref
 `includeLocation` 开启位置采集。

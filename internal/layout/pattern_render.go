@@ -44,6 +44,10 @@ func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, call
 		buf.WriteString(layoutsupport.HostName())
 		return
 	}
+	if token.kind == tokenLogger && token.minWidth == 0 && token.maxWidth == 0 {
+		token.logger.append(buf, event.Logger)
+		return
+	}
 	value := patternTokenString(token, event, caller, options)
 	logvalue.AppendPadded(buf, value, token.minWidth, token.maxWidth, token.leftAlign)
 }
@@ -93,7 +97,7 @@ func patternTokenString(token patternToken, event Event, caller *callsite.Cache,
 	case tokenThread:
 		return eventThreadName(event)
 	case tokenLogger:
-		return loggerNameWithPrecision(event.Logger, token.precision)
+		return token.logger.format(event.Logger)
 	case tokenMessage:
 		return event.Message
 	case tokenAttr:
@@ -186,14 +190,6 @@ func patternOption(options []string, index int) string {
 		return ""
 	}
 	return options[index]
-}
-
-func parsePatternPrecision(option string) int {
-	value, err := strconv.Atoi(strings.TrimSpace(option))
-	if err != nil || value <= 0 {
-		return 0
-	}
-	return value
 }
 
 func loggerNameWithPrecision(name string, precision int) string {
