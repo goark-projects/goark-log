@@ -106,6 +106,39 @@ type SyslogLayout = internallayout.SyslogLayout
 // JSONLayout 输出 JSON 事件。
 type JSONLayout = internallayout.JSONLayout
 
+// StructuredFormat 标识受支持的结构化日志协议。
+type StructuredFormat = internallayout.StructuredFormat
+
+const (
+	StructuredFormatECS      = internallayout.StructuredFormatECS
+	StructuredFormatGELF     = internallayout.StructuredFormatGELF
+	StructuredFormatLogstash = internallayout.StructuredFormatLogstash
+)
+
+// StructuredStacktraceOptions 描述异常链输出规则。
+type StructuredStacktraceOptions = internallayout.StructuredStacktraceOptions
+
+// StructuredECSOptions 描述 ECS 服务元数据。
+type StructuredECSOptions = internallayout.StructuredECSOptions
+
+// StructuredGELFOptions 描述 GELF 主机与服务元数据。
+type StructuredGELFOptions = internallayout.StructuredGELFOptions
+
+// StructuredJSONOptions 描述结构化 JSON 的编译参数。
+type StructuredJSONOptions = internallayout.StructuredJSONOptions
+
+// StructuredJSONLayout 输出 Spring Boot 兼容的结构化 JSON。
+type StructuredJSONLayout = internallayout.StructuredJSONLayout
+
+// StructuredJSONFieldAppender 接收自定义结构化成员。
+type StructuredJSONFieldAppender = internallayout.StructuredJSONFieldAppender
+
+// StructuredJSONCustomizer 以显式 Go API 追加结构化成员。
+type StructuredJSONCustomizer = internallayout.StructuredJSONCustomizer
+
+// StructuredJSONCustomizerFunc 把函数适配为 StructuredJSONCustomizer。
+type StructuredJSONCustomizerFunc = internallayout.StructuredJSONCustomizerFunc
+
 // XMLLayout 输出单事件 XML 片段。
 type XMLLayout = internallayout.XMLLayout
 
@@ -257,6 +290,11 @@ func NewGELFLayout(options LayoutOptions) GELFLayout {
 // NewJSONLayout 创建可配置 JSON 布局。
 func NewJSONLayout(options LayoutOptions) JSONLayout {
 	return internallayout.NewJSONLayout(options)
+}
+
+// NewStructuredJSONLayout 编译 ECS、GELF 或 Logstash 布局。
+func NewStructuredJSONLayout(options StructuredJSONOptions) (*StructuredJSONLayout, error) {
+	return internallayout.NewStructuredJSONLayout(options)
 }
 
 // NewXMLLayout 创建可配置 XML 布局。
