@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	logfilter "goark.dev/log/internal/filter"
@@ -47,6 +48,9 @@ type LoggerRule struct {
 // Router 保存不可变路由快照，并为 reload 提供原子替换边界。
 type Router struct {
 	current atomic.Pointer[runtimeConfig]
+	mu      sync.Mutex
+	base    *runtimeConfig
+	levels  map[string]slog.Level
 }
 
 type runtimeConfig struct {
@@ -59,8 +63,16 @@ type runtimeConfig struct {
 }
 
 type loggerRuntime struct {
-	name  string
-	route Route
+	name            string
+	configuredLevel *slog.Level
+	route           Route
+}
+
+// LoggerConfiguration 描述 Logger 的显式级别与最终生效级别。
+type LoggerConfiguration struct {
+	Name            string
+	ConfiguredLevel *slog.Level
+	EffectiveLevel  slog.Level
 }
 
 // Route 是一次 logger 匹配后的最终输出计划。
@@ -83,9 +95,55 @@ func New(options Options) (*Router, error) {
 	if err != nil {
 		return nil, err
 	}
-	router := &Router{}
+	router := &Router{base: config, levels: make(map[string]slog.Level)}
 	router.current.Store(config)
 	return router, nil
+}
+
+// SetLevel 原子设置 Logger 级别；level 为 nil 时恢复配置文件定义或继承关系。
+func (r *Router) SetLevel(name string, level *slog.Level) error {
+	if r == nil {
+		return fmt.Errorf("goark-log: router is nil")
+	}
+	name = normalizeLevelName(name)
+	if name == "" {
+		return fmt.Errorf("goark-log: logger name is empty")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.base == nil {
+		return fmt.Errorf("goark-log: router is closed")
+	}
+	if level == nil {
+		delete(r.levels, name)
+	} else {
+		r.levels[name] = *level
+	}
+	r.current.Store(applyLevelOverrides(r.base, r.levels))
+	return nil
+}
+
+// Configurations 返回 Root 和命名 Logger 的稳定配置快照。
+func (r *Router) Configurations() []LoggerConfiguration {
+	if r == nil {
+		return nil
+	}
+	config := r.current.Load()
+	if config == nil {
+		return nil
+	}
+	result := make([]LoggerConfiguration, 0, len(config.loggers)+1)
+	rootLevel := config.root.Level
+	result = append(result, LoggerConfiguration{Name: "ROOT", ConfiguredLevel: levelPointer(rootLevel), EffectiveLevel: rootLevel})
+	for _, logger := range config.loggers {
+		result = append(result, LoggerConfiguration{
+			Name:            logger.name,
+			ConfiguredLevel: cloneLevel(logger.configuredLevel),
+			EffectiveLevel:  logger.route.Level,
+		})
+	}
+	sort.Slice(result[1:], func(i, j int) bool { return result[i+1].Name < result[j+1].Name })
+	return result
 }
 
 // Plan 返回指定 logger 名称的路由计划。
@@ -117,10 +175,14 @@ func (r *Router) Close() error {
 	if r == nil {
 		return nil
 	}
-	config := r.current.Load()
-	if config == nil {
+	r.mu.Lock()
+	if r.base == nil {
+		r.mu.Unlock()
 		return nil
 	}
+	config := r.current.Load()
+	r.base = nil
+	r.mu.Unlock()
 	return config.close()
 }
 
@@ -133,11 +195,98 @@ func (r *Router) Replace(options Options) error {
 	if err != nil {
 		return err
 	}
-	old := r.current.Swap(config)
+	r.mu.Lock()
+	if r.base == nil {
+		r.mu.Unlock()
+		_ = config.close()
+		return fmt.Errorf("goark-log: router is closed")
+	}
+	r.base = config
+	current := applyLevelOverrides(config, r.levels)
+	old := r.current.Swap(current)
+	r.mu.Unlock()
 	if old == nil {
 		return nil
 	}
 	return old.close()
+}
+
+func applyLevelOverrides(base *runtimeConfig, levels map[string]slog.Level) *runtimeConfig {
+	if base == nil || len(levels) == 0 {
+		return base
+	}
+	config := *base
+	config.loggers = append([]loggerRuntime(nil), base.loggers...)
+	names := make([]string, 0, len(levels))
+	for name := range levels {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		level := levels[name]
+		if name == "ROOT" {
+			continue
+		}
+		found := false
+		for index := range config.loggers {
+			if config.loggers[index].name != name {
+				continue
+			}
+			config.loggers[index].configuredLevel = levelPointer(level)
+			config.loggers[index].route.Level = level
+			found = true
+			break
+		}
+		if found {
+			continue
+		}
+		route := routePlanFromConfig(base, name).Route
+		config.loggers = append(config.loggers, loggerRuntime{name: name, configuredLevel: levelPointer(level), route: route})
+	}
+	sort.Slice(config.loggers, func(i, j int) bool {
+		return loggerSpecificity(config.loggers[i].name) > loggerSpecificity(config.loggers[j].name)
+	})
+	config.root.Level = effectiveRootLevel(base.root.Level, levels)
+	for index := range config.loggers {
+		config.loggers[index].route.Level = effectiveLoggerLevel(config.root.Level, config.loggers[index].name, config.loggers)
+	}
+	return &config
+}
+
+func effectiveRootLevel(configured slog.Level, levels map[string]slog.Level) slog.Level {
+	if level, exists := levels["ROOT"]; exists {
+		return level
+	}
+	return configured
+}
+
+func effectiveLoggerLevel(root slog.Level, name string, loggers []loggerRuntime) slog.Level {
+	for _, logger := range loggers {
+		if logger.configuredLevel != nil && loggerMatches(name, logger.name) {
+			return *logger.configuredLevel
+		}
+	}
+	return root
+}
+
+func normalizeLevelName(name string) string {
+	name = strings.TrimSpace(name)
+	if strings.EqualFold(name, "root") {
+		return "ROOT"
+	}
+	return name
+}
+
+func cloneLevel(level *slog.Level) *slog.Level {
+	if level == nil {
+		return nil
+	}
+	return levelPointer(*level)
+}
+
+func levelPointer(level slog.Level) *slog.Level {
+	copy := level
+	return &copy
 }
 
 // CloseAppenders 按运行期关闭顺序关闭一组 appender。
@@ -242,6 +391,9 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	sort.Slice(config.loggers, func(i, j int) bool {
 		return loggerSpecificity(config.loggers[i].name) > loggerSpecificity(config.loggers[j].name)
 	})
+	for index := range config.loggers {
+		config.loggers[index].route.Level = effectiveLoggerLevel(config.root.Level, config.loggers[index].name, config.loggers)
+	}
 	return config, nil
 }
 
@@ -284,8 +436,9 @@ func appendLoggerRuntime(config *runtimeConfig, appenderByName map[string]Append
 		config.includeLocation = true
 	}
 	config.loggers = append(config.loggers, loggerRuntime{
-		name:  name,
-		route: loggerRoute,
+		name:            name,
+		configuredLevel: cloneLevel(rule.Level),
+		route:           loggerRoute,
 	})
 	return nil
 }

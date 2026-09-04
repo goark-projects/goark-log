@@ -153,6 +153,22 @@ func (c *LoggerContext) Handler() *Handler {
 	return c.handler
 }
 
+// SetLevel 原子设置 Logger 级别；level 为 nil 时恢复配置文件定义或继承关系。
+func (c *LoggerContext) SetLevel(name string, level *slog.Level) error {
+	if c == nil || c.handler == nil {
+		return fmt.Errorf("goark-log: logger context is nil")
+	}
+	return c.handler.SetLevel(name, level)
+}
+
+// LoggerConfigurations 返回 Root 和命名 Logger 的级别配置快照。
+func (c *LoggerContext) LoggerConfigurations() []LoggerConfiguration {
+	if c == nil || c.handler == nil {
+		return nil
+	}
+	return c.handler.LoggerConfigurations()
+}
+
 // StatusLogger 返回内部状态日志器。
 func (c *LoggerContext) StatusLogger() *StatusLogger {
 	if c == nil {

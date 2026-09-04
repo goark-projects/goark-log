@@ -80,6 +80,7 @@ type (
 	RollingFileOption     = goarklog.RollingFileOption
 	RootLogger            = goarklog.RootLogger
 	LoggerRule            = goarklog.LoggerRule
+	LoggerConfiguration   = goarklog.LoggerConfiguration
 	Marker                = goarklog.Marker
 	Message               = goarklog.Message
 	MessageFactoryFunc    = goarklog.MessageFactoryFunc

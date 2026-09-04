@@ -28,6 +28,9 @@ type RootLogger = internalrouter.RootLogger
 // LoggerRule 描述命名 logger 的级别和输出路由。
 type LoggerRule = internalrouter.LoggerRule
 
+// LoggerConfiguration 描述 Logger 的显式级别与最终生效级别。
+type LoggerConfiguration = internalrouter.LoggerConfiguration
+
 // DefaultOptions 返回默认 Spring Boot 风格 stdout 配置。
 func DefaultOptions() Options {
 	return Options{
@@ -331,6 +334,22 @@ func (h *Handler) Reload(options Options) error {
 		}
 	}
 	return h.router.Replace(toRouterOptions(options))
+}
+
+// SetLevel 原子设置 Logger 级别；level 为 nil 时恢复配置文件定义或继承关系。
+func (h *Handler) SetLevel(name string, level *slog.Level) error {
+	if h == nil || h.router == nil {
+		return fmt.Errorf("goark-log: handler is nil")
+	}
+	return h.router.SetLevel(name, level)
+}
+
+// LoggerConfigurations 返回 Root 和命名 Logger 的级别配置快照。
+func (h *Handler) LoggerConfigurations() []LoggerConfiguration {
+	if h == nil || h.router == nil {
+		return nil
+	}
+	return h.router.Configurations()
 }
 
 // AsyncDropped 返回 Handler 层异步日志丢弃数量。
