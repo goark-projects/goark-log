@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func TestStructuredJSONLayoutStacktraceLimits(t *testing.T) {
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
 	stack, _ := errorFields["stack_trace"].(string)
-	if len(stack) > 80 || stack == "" {
+	if len(stack) > 80 || !strings.Contains(stack, "<#") {
 		t.Fatalf("stack trace = %q", stack)
 	}
 }

@@ -31,6 +31,9 @@ func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktra
 				builder.WriteString("\nCaused by: ")
 			}
 		}
+		if options.IncludeHashes {
+			appendStackHash(&builder, current)
+		}
 		if current.Type != "" {
 			builder.WriteString(current.Type)
 			builder.WriteString(": ")
@@ -43,10 +46,6 @@ func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktra
 		for _, frame := range frames {
 			builder.WriteString("\n\tat ")
 			builder.WriteString(frame)
-			if options.IncludeHashes {
-				builder.WriteString(" #")
-				builder.WriteString(strconv.FormatUint(uint64(fnv1a(frame)), 16))
-			}
 		}
 	}
 	result := builder.String()
@@ -59,6 +58,24 @@ func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktra
 	return result
 }
 
+func appendStackHash(builder *strings.Builder, throwable *Throwable) {
+	hash := uint32(2166136261)
+	for current := throwable; current != nil; current = current.Cause {
+		hash = fnv1aContinue(hash, current.Type)
+		hash = fnv1aContinue(hash, current.Message)
+		for _, frame := range current.Stack {
+			hash = fnv1aContinue(hash, frame)
+		}
+	}
+	hex := strconv.FormatUint(uint64(hash), 16)
+	builder.WriteString("<#")
+	for padding := 8 - len(hex); padding > 0; padding-- {
+		builder.WriteByte('0')
+	}
+	builder.WriteString(hex)
+	builder.WriteString("> ")
+}
+
 func trimCommonFrames(frames, parent []string) []string {
 	end, parentEnd := len(frames), len(parent)
 	for end > 0 && parentEnd > 0 && frames[end-1] == parent[parentEnd-1] {
@@ -68,9 +85,8 @@ func trimCommonFrames(frames, parent []string) []string {
 	return frames[:end]
 }
 
-func fnv1a(value string) uint32 {
+func fnv1aContinue(hash uint32, value string) uint32 {
 	const prime = 16777619
-	hash := uint32(2166136261)
 	for index := 0; index < len(value); index++ {
 		hash ^= uint32(value[index])
 		hash *= prime
