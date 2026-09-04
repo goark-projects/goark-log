@@ -2,10 +2,11 @@ package logvalue
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestString_whenGroupValueProvided_shouldKeepStableOrder(t *testing.T) {
@@ -38,7 +39,7 @@ func TestAppendJSONValue_whenGroupProvided_shouldWriteObject(t *testing.T) {
 	))
 
 	var fields map[string]string
-	if err := json.Unmarshal(buf.Bytes(), &fields); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &fields); err != nil {
 		t.Fatalf("AppendJSONValue() invalid JSON: %v", err)
 	}
 	if fields["trace_id"] != "abc" || fields["elapsed"] != "1.5s" {

@@ -27,7 +27,8 @@ const (
 	defaultThreadName        = logevent.DefaultThreadName
 )
 
-var processIDString = strconv.Itoa(os.Getpid())
+var processID = os.Getpid()
+var processIDString = strconv.Itoa(processID)
 var patternSequence atomic.Uint64
 var patternStartTime = time.Now()
 var bufferPool = sync.Pool{

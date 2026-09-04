@@ -17,6 +17,10 @@ go get goark.dev/log
 
 The module targets Go 1.25 or newer.
 
+All JSON encoding, decoding, streaming, and raw-message handling uses
+Bytedance Sonic. The module does not fall back to `encoding/json` on newer Go
+toolchains or secondary architectures.
+
 ## What It Provides
 
 | Area | Current implementation |

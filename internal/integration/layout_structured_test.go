@@ -3,7 +3,6 @@ package integration
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"math"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 
 	"gopkg.in/yaml.v3"
 )
@@ -71,7 +72,7 @@ func TestJSONTemplateLayout_whenSourceAndProcessResolversUsed_shouldWriteObjects
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, buf.String())
 	}
 	source, ok := decoded["source"].(map[string]any)
@@ -96,7 +97,7 @@ func TestGELFLayout_whenEventFormatted_shouldWriteGELFJSON(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, buf.String())
 	}
 	if decoded["version"] != "1.1" || decoded["short_message"] != "service started" {
@@ -134,7 +135,7 @@ func TestJSONLayout_whenOptionsEnabled_shouldWriteListPropertiesAndStackString(t
 		t.Fatalf("JSON output = %q, compact layout should not add newline", string(output))
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
+	if err := sonic.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, string(output))
 	}
 	contextMap, ok := decoded["contextMap"].([]any)
@@ -164,7 +165,7 @@ func TestJSONLayout_whenNonFiniteFloatAttrsUsed_shouldWriteValidJSON(t *testing.
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("JSON output is invalid: %v\n%s", err, buf.String())
 	}
 	for key, want := range map[string]string{
@@ -202,7 +203,7 @@ func TestFileAppender_whenCompleteJSONLayoutUsed_shouldWriteValidArray(t *testin
 
 	var decoded []map[string]any
 	content := readTextFile(t, path)
-	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+	if err := sonic.Unmarshal([]byte(content), &decoded); err != nil {
 		t.Fatalf("complete JSON output is invalid: %v\n%s", err, content)
 	}
 	if len(decoded) != 2 || decoded[1]["msg"] != "second event" {
@@ -377,7 +378,7 @@ func assertCompleteJSONMessages(t *testing.T, path string, want ...string) {
 func assertCompleteJSONContentMessages(t *testing.T, content string, want ...string) []map[string]any {
 	t.Helper()
 	var decoded []map[string]any
-	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+	if err := sonic.Unmarshal([]byte(content), &decoded); err != nil {
 		t.Fatalf("complete JSON output is invalid: %v\n%s", err, content)
 	}
 	if len(decoded) != len(want) {

@@ -3,10 +3,11 @@ package integration
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 
 	"goark.dev/log/internal/callsite"
 	"goark.dev/log/internal/logvalue"
@@ -112,7 +113,7 @@ func TestNativeLogger_whenDirectJSONFastPathUsed_shouldKeepBoundAttrs(t *testing
 		t.Fatalf("LogAttrs3() error = %v", err)
 	}
 
-	decoder := json.NewDecoder(&out)
+	decoder := sonic.ConfigFastest.NewDecoder(&out)
 	first := decodeJSONLogLine(t, decoder)
 	if first["service"] != "billing" || first["status"] != float64(200) {
 		t.Fatalf("first event = %+v, want bound service and status", first)
@@ -193,7 +194,7 @@ func TestNativeLogger_whenCallerEnabled_shouldCaptureCallSite(t *testing.T) {
 	}
 }
 
-func decodeJSONLogLine(t *testing.T, decoder *json.Decoder) map[string]any {
+func decodeJSONLogLine(t *testing.T, decoder sonic.Decoder) map[string]any {
 	t.Helper()
 	var fields map[string]any
 	if err := decoder.Decode(&fields); err != nil {

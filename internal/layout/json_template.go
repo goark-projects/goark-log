@@ -2,10 +2,11 @@ package layout
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/bytedance/sonic"
 
 	"goark.dev/log/internal/jsoncodec"
 	"goark.dev/log/internal/jsontemplate"
@@ -56,7 +57,7 @@ type JSONTemplateResolverLookup func(kind string) (JSONTemplateResolverFactory, 
 // JSONTemplateResolverBuildConfig 是 JSON Template resolver 插件的构建输入。
 type JSONTemplateResolverBuildConfig struct {
 	Name    string
-	Options map[string]json.RawMessage
+	Options map[string]sonic.NoCopyRawMessage
 }
 
 // WithJSONTemplateResolverLookup 设置用于解析自定义 resolver 的查找函数。
@@ -124,8 +125,8 @@ func newJSONTemplateLayoutOptions(options ...JSONTemplateLayoutOption) jsonTempl
 	return settings
 }
 
-func compileJSONTemplateResolver(raw json.RawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
-	var object map[string]json.RawMessage
+func compileJSONTemplateResolver(raw sonic.NoCopyRawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+	var object map[string]sonic.NoCopyRawMessage
 	if err := jsoncodec.Unmarshal(raw, &object); err == nil {
 		if resolverRaw, ok := object["$resolver"]; ok {
 			var name string
@@ -138,7 +139,7 @@ func compileJSONTemplateResolver(raw json.RawMessage, lookup JSONTemplateResolve
 	return rawJSONResolver{raw: append([]byte(nil), raw...)}, nil
 }
 
-func newJSONTemplateResolver(name string, options map[string]json.RawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+func newJSONTemplateResolver(name string, options map[string]sonic.NoCopyRawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
 	switch textutil.NormalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
@@ -198,7 +199,7 @@ func newJSONTemplateResolver(name string, options map[string]json.RawMessage, lo
 	}
 }
 
-func jsonTemplateStringOption(options map[string]json.RawMessage, key string) string {
+func jsonTemplateStringOption(options map[string]sonic.NoCopyRawMessage, key string) string {
 	raw, ok := options[key]
 	if !ok {
 		return ""
@@ -210,7 +211,7 @@ func jsonTemplateStringOption(options map[string]json.RawMessage, key string) st
 	return strings.TrimSpace(value)
 }
 
-func jsonTemplateBoolOption(options map[string]json.RawMessage, key string) bool {
+func jsonTemplateBoolOption(options map[string]sonic.NoCopyRawMessage, key string) bool {
 	raw, ok := options[key]
 	if !ok {
 		return false
@@ -219,7 +220,7 @@ func jsonTemplateBoolOption(options map[string]json.RawMessage, key string) bool
 	return jsoncodec.Unmarshal(raw, &value) == nil && value
 }
 
-func jsonTemplateIntOption(options map[string]json.RawMessage, key string) int {
+func jsonTemplateIntOption(options map[string]sonic.NoCopyRawMessage, key string) int {
 	raw, ok := options[key]
 	if !ok {
 		return 0
@@ -239,8 +240,8 @@ func jsonTemplateIntOption(options map[string]json.RawMessage, key string) int {
 	return parsed
 }
 
-func copyJSONRawOptions(options map[string]json.RawMessage) map[string]json.RawMessage {
-	copied := make(map[string]json.RawMessage, len(options))
+func copyJSONRawOptions(options map[string]sonic.NoCopyRawMessage) map[string]sonic.NoCopyRawMessage {
+	copied := make(map[string]sonic.NoCopyRawMessage, len(options))
 	for key, raw := range options {
 		copied[key] = append([]byte(nil), raw...)
 	}

@@ -123,7 +123,7 @@ Resolvers append raw JSON into the event output.
 type constantResolver string
 
 func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
-	data, err := json.Marshal(string(r))
+	data, err := sonic.ConfigFastest.Marshal(string(r))
 	if err != nil {
 		buf.WriteString("null")
 		return
@@ -137,7 +137,7 @@ Factory options are raw JSON values from the resolver object:
 ```go
 func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
 	var value string
-	if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(config.Options["value"], &value); err != nil {
 		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
 	}
 	return constantResolver(value), nil

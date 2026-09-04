@@ -2,10 +2,11 @@ package integration
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestJSONLayout_whenAnyAttrIsMap_shouldEncodeStructuredJSON(t *testing.T) {
@@ -31,7 +32,7 @@ func TestJSONLayout_whenAnyAttrIsMap_shouldEncodeStructuredJSON(t *testing.T) {
 	var decoded struct {
 		Payload map[string]any `json:"payload"`
 	}
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("JSON output is invalid: %v\n%s", err, buf.String())
 	}
 	if decoded.Payload["traceId"] != "abc-123" {

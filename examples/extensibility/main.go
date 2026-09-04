@@ -3,10 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+
+	"github.com/bytedance/sonic"
 
 	goarklog "goark.dev/log"
 )
@@ -66,7 +67,7 @@ func tenantLookup(key string) (string, bool) {
 
 func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
 	var value string
-	if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+	if err := sonic.Unmarshal(config.Options["value"], &value); err != nil {
 		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)
 	}
 	return constantResolver(value), nil
@@ -75,7 +76,7 @@ func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goa
 type constantResolver string
 
 func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
-	data, err := json.Marshal(string(r))
+	data, err := sonic.Marshal(string(r))
 	if err != nil {
 		buf.WriteString("null")
 		return

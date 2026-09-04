@@ -1,56 +1,48 @@
 package jsontemplate
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/ast"
 )
 
 // RawField 保存模板字段名和未解析的 resolver 配置。
 type RawField struct {
 	Key string
-	Raw json.RawMessage
+	Raw sonic.NoCopyRawMessage
 }
 
 // DecodeRawFields 解码 JSON Template 顶层字段，保持字段顺序。
 func DecodeRawFields(template string) ([]RawField, error) {
-	decoder := json.NewDecoder(strings.NewReader(template))
-	token, err := decoder.Token()
+	if !sonic.ValidString(template) {
+		return nil, fmt.Errorf("event template is invalid JSON")
+	}
+	root, err := sonic.GetFromString(template)
 	if err != nil {
 		return nil, err
 	}
-	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
+	if root.Type() != ast.V_OBJECT {
 		return nil, fmt.Errorf("event template must be a JSON object")
 	}
-	fields := make([]RawField, 0, 8)
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return nil, err
-		}
-		key, ok := token.(string)
-		if !ok {
-			return nil, fmt.Errorf("event template field key must be a string")
-		}
-		var raw json.RawMessage
-		if err := decoder.Decode(&raw); err != nil {
-			return nil, err
-		}
-		fields = append(fields, RawField{Key: key, Raw: append([]byte(nil), raw...)})
+	if err := root.Load(); err != nil {
+		return nil, err
 	}
-	token, err = decoder.Token()
+	count, err := root.Len()
 	if err != nil {
 		return nil, err
 	}
-	if delimiter, ok := token.(json.Delim); !ok || delimiter != '}' {
-		return nil, fmt.Errorf("event template object is not closed")
-	}
-	if token, err = decoder.Token(); err != io.EOF {
+	fields := make([]RawField, 0, count)
+	for index := 0; index < count; index++ {
+		pair := root.IndexPair(index)
+		if pair == nil {
+			return nil, fmt.Errorf("event template field %d is unavailable", index)
+		}
+		raw, err := pair.Value.Raw()
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("event template has trailing token %v", token)
+		fields = append(fields, RawField{Key: pair.Key, Raw: sonic.NoCopyRawMessage(append([]byte(nil), raw...))})
 	}
 	return fields, nil
 }

@@ -2,12 +2,13 @@ package goarklog_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 
 	goarklog "goark.dev/log"
 )
@@ -52,7 +53,7 @@ func TestStructuredJSONLayoutFormats(t *testing.T) {
 				t.Fatalf("Format() error = %v", err)
 			}
 			var decoded map[string]any
-			if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+			if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 				t.Fatalf("Unmarshal() error = %v, output=%s", err, output.String())
 			}
 			for _, key := range test.want {
@@ -100,7 +101,7 @@ func TestStructuredJSONLayoutTransformsAndCustomizer(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	if decoded["msg"] != "hello" || decoded["fixed"] != "value" || decoded["custom"] != "ok" || len(decoded) != 3 {
@@ -130,7 +131,7 @@ func TestStructuredJSONLayoutKeepsFirstMemberOnNameCollision(t *testing.T) {
 		t.Fatalf("output contains duplicate message members: %s", output.String())
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	if decoded["message"] != "original" {
@@ -164,7 +165,7 @@ func TestStructuredJSONLayoutECSFieldFilters(t *testing.T) {
 				t.Fatalf("Format() error = %v", err)
 			}
 			var decoded map[string]any
-			if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+			if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 				t.Fatalf("Unmarshal() error = %v", err)
 			}
 			_, hasLog := decoded["log"]
@@ -208,7 +209,7 @@ func TestStructuredJSONLayoutStacktraceLimits(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
@@ -236,7 +237,7 @@ func TestStructuredJSONLayoutStacktraceMaximumLengthUsesEllipsis(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
@@ -262,7 +263,7 @@ func TestStructuredJSONLayoutStacktraceOmitsCommonFrames(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
@@ -288,7 +289,7 @@ func TestStructuredJSONLayoutRootFirstComparesCommonFramesWithWrapper(t *testing
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
@@ -318,7 +319,7 @@ func TestStructuredJSONLayoutECSUsesNestedPathsAndMarkerArrays(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	build, _ := decoded["build"].(map[string]any)
@@ -344,7 +345,7 @@ func TestStructuredJSONLayoutLogstashUsesMarkerArray(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	tags, ok := decoded["tags"].([]any)
@@ -366,7 +367,7 @@ func TestStructuredJSONLayoutGELFFullMessageIncludesLogMessage(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	if decoded["full_message"] != "request failed\n\nfailure: broken" {
@@ -392,7 +393,7 @@ func TestStructuredJSONLayoutLoggingSystemPrinterKeepsCommonFrames(t *testing.T)
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	errorFields, _ := decoded["error"].(map[string]any)
@@ -421,7 +422,7 @@ func TestStructuredJSONLayoutHandlesCircularThrowable(t *testing.T) {
 				t.Fatalf("Format() error = %v", err)
 			}
 			var decoded map[string]any
-			if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+			if err := sonic.Unmarshal(output.Bytes(), &decoded); err != nil {
 				t.Fatalf("Unmarshal() error = %v", err)
 			}
 			errorFields, _ := decoded["error"].(map[string]any)

@@ -1,9 +1,6 @@
 package jsoncodec
 
-import (
-	"encoding/json"
-	"testing"
-)
+import "testing"
 
 func BenchmarkMarshal(b *testing.B) {
 	payload := map[string]any{
@@ -16,19 +13,11 @@ func BenchmarkMarshal(b *testing.B) {
 			"status":  "ready",
 		},
 	}
-	b.Run("goark-fallback", func(b *testing.B) {
+	b.Run("sonic", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			if _, err := Marshal(payload); err != nil {
 				b.Fatalf("Marshal() error = %v", err)
-			}
-		}
-	})
-	b.Run("stdlib", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			if _, err := json.Marshal(payload); err != nil {
-				b.Fatalf("json.Marshal() error = %v", err)
 			}
 		}
 	})

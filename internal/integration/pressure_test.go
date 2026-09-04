@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestStressAsyncLoggerConcurrentDrain(t *testing.T) {
@@ -383,7 +384,7 @@ func decodeStressJSONLine(t *testing.T, path string, line string) int {
 		Message string `json:"msg"`
 		ID      int    `json:"id"`
 	}
-	if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+	if err := sonic.Unmarshal([]byte(line), &decoded); err != nil {
 		t.Fatalf("invalid JSON log line in %s: %v\n%s", path, err, line)
 	}
 	if decoded.Message != "stress rolling" {
@@ -415,7 +416,7 @@ func assertStressGzipJSONFile(t *testing.T, path string) {
 		Message string `json:"msg"`
 		ID      int    `json:"id"`
 	}
-	if err := json.Unmarshal(scanner.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(scanner.Bytes(), &decoded); err != nil {
 		t.Fatalf("invalid gzip JSON line in %s: %v\n%s", path, err, scanner.Text())
 	}
 	if decoded.Message != "stress gzip" || decoded.ID <= 0 {

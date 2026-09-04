@@ -3,7 +3,6 @@ package integration
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 
 	"goark.dev/log/internal/logvalue"
 )
@@ -31,7 +32,7 @@ func TestJSONTemplateLayout_whenDefaultTemplateUsed_shouldRenderLog4jStyleFields
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v: %s", err, buf.String())
 	}
 	if decoded["level"] != "INFO" ||
@@ -131,7 +132,7 @@ func TestJSONTemplateLayout_whenCustomResolverRegistered_shouldUseRegistry(t *te
 	registry := NewPluginRegistry()
 	if err := registry.RegisterJSONTemplateResolver("constant", func(config JSONTemplateResolverBuildConfig) (JSONTemplateResolver, error) {
 		var value string
-		if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+		if err := sonic.Unmarshal(config.Options["value"], &value); err != nil {
 			return nil, err
 		}
 		return constantJSONResolver(value), nil
@@ -171,7 +172,7 @@ func TestJSONTemplateLayout_whenThrowableResolversUsed_shouldWriteDetails(t *tes
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, buf.String())
 	}
 	thrown, ok := decoded["thrown"].(map[string]any)
@@ -201,7 +202,7 @@ func TestJSONTemplateLayout_whenMDCFlattenEnabled_shouldFlattenGroups(t *testing
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+	if err := sonic.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, buf.String())
 	}
 	if decoded["mdc"]["request.id"] != "req-1" {
@@ -242,7 +243,7 @@ func TestJSONTemplateLayout_whenLayoutOptionsUsed_shouldApplyResolverDefaults(t 
 		t.Fatalf("JSON template output = %q, want NUL delimiter", string(output))
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
+	if err := sonic.Unmarshal(bytes.TrimSuffix(output, []byte{0}), &decoded); err != nil {
 		t.Fatalf("Unmarshal() error = %v, json=%s", err, string(output))
 	}
 	if decoded["level"] != float64(6) {
@@ -285,7 +286,7 @@ func TestJSONTemplateLayout_whenCompleteOptionUsed_shouldWriteValidArray(t *test
 	}
 	var decoded []map[string]any
 	content := readTextFile(t, path)
-	if err := json.Unmarshal([]byte(content), &decoded); err != nil {
+	if err := sonic.Unmarshal([]byte(content), &decoded); err != nil {
 		t.Fatalf("complete JSON template output is invalid: %v\n%s", err, content)
 	}
 	if len(decoded) != 2 || decoded[0]["msg"] != "first" || decoded[1]["msg"] != "second" {

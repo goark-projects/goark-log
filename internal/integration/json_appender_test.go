@@ -3,13 +3,14 @@ package integration
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestJSONAppender_whenNativeLoggerUsesFastPath_shouldWriteJSON(t *testing.T) {
@@ -33,7 +34,7 @@ func TestJSONAppender_whenNativeLoggerUsesFastPath_shouldWriteJSON(t *testing.T)
 		t.Fatalf("LogAttrs() error = %v", err)
 	}
 	var got map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &got); err != nil {
+	if err := sonic.Unmarshal(bytes.TrimSpace(out.Bytes()), &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v, output = %q", err, out.String())
 	}
 	if got["logger"] != "goark.fast" || got["msg"] != "event" || got["profile"] != "bench" || got["index"] != float64(7) {
@@ -63,7 +64,7 @@ func TestJSONAppender_whenNativeLoggerUsesFixedAttrFastPath_shouldWriteJSON(t *t
 		t.Fatalf("LogAttrs3() error = %v", err)
 	}
 	var got map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &got); err != nil {
+	if err := sonic.Unmarshal(bytes.TrimSpace(out.Bytes()), &got); err != nil {
 		t.Fatalf("Unmarshal() error = %v, output = %q", err, out.String())
 	}
 	if got["logger"] != "goark.fixed" || got["msg"] != "event" || got["profile"] != "bench" || got["index"] != float64(7) || got["elapsed"] != time.Second.String() {

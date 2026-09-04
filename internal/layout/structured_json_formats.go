@@ -2,7 +2,6 @@ package layout
 
 import (
 	"log/slog"
-	"os"
 	"sort"
 	"strings"
 
@@ -18,7 +17,7 @@ func (l *StructuredJSONLayout) appendECS(writer *structuredWriter, event Event) 
 		writer.endObject()
 	}
 	if writer.beginObject("process", "process") {
-		writer.addPath("process.pid", "pid", slog.IntValue(os.Getpid()))
+		writer.addPath("process.pid", "pid", slog.IntValue(processID))
 		if writer.beginObject("process.thread", "thread") {
 			writer.addPath("process.thread.name", "name", slog.StringValue(eventThreadName(event)))
 			writer.endObject()
@@ -64,7 +63,7 @@ func (l *StructuredJSONLayout) appendGELF(writer *structuredWriter, event Event)
 	writer.Add("timestamp", slog.Float64Value(float64(when.UnixMilli())/1000))
 	writer.Add("level", slog.IntValue(syslogSeverity(event.Level)))
 	writer.Add("_level_name", slog.StringValue(levelName(event.Level)))
-	writer.Add("_process_pid", slog.IntValue(os.Getpid()))
+	writer.Add("_process_pid", slog.IntValue(processID))
 	writer.Add("_process_thread_name", slog.StringValue(eventThreadName(event)))
 	host := l.gelf.Host
 	if strings.TrimSpace(host) == "" {

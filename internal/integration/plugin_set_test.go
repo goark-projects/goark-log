@@ -2,9 +2,10 @@ package integration
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/bytedance/sonic"
 )
 
 func TestPluginSet_whenRegistered_shouldExposeCoreExtensionPoints(t *testing.T) {
@@ -18,7 +19,7 @@ func TestPluginSet_whenRegistered_shouldExposeCoreExtensionPoints(t *testing.T) 
 		}),
 		WithPluginJSONTemplateResolver("setConstant", func(config JSONTemplateResolverBuildConfig) (JSONTemplateResolver, error) {
 			var value string
-			if err := json.Unmarshal(config.Options["value"], &value); err != nil {
+			if err := sonic.Unmarshal(config.Options["value"], &value); err != nil {
 				return nil, err
 			}
 			return constantJSONResolver(value), nil
