@@ -4,18 +4,27 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"goark.dev/log/internal/logevent"
 )
 
 func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktraceOptions) string {
 	if throwable == nil {
 		return ""
 	}
+	if options.Printer == StructuredStacktracePrinterLoggingSystem {
+		return logevent.ThrowableStackString(throwable)
+	}
 	chain := make([]*Throwable, 0, 4)
+	seen := make(map[*Throwable]struct{}, 4)
+	var circular *Throwable
 	for current := throwable; current != nil; current = current.Cause {
-		chain = append(chain, current)
-		if options.MaxThrowableDepth > 0 && len(chain) >= options.MaxThrowableDepth {
+		if _, exists := seen[current]; exists {
+			circular = current
 			break
 		}
+		seen[current] = struct{}{}
+		chain = append(chain, current)
 	}
 	if options.RootFirst {
 		for left, right := 0, len(chain)-1; left < right; left, right = left+1, right-1 {
@@ -39,28 +48,84 @@ func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktra
 			builder.WriteString(": ")
 		}
 		builder.WriteString(current.Message)
-		frames := current.Stack
-		if !options.IncludeCommonFrames && index > 0 {
-			frames = trimCommonFrames(frames, chain[index-1].Stack)
+		enclosing := enclosingThrowable(chain, index, options.RootFirst)
+		commonFrames := 0
+		if !options.IncludeCommonFrames && enclosing != nil {
+			commonFrames = commonFrameCount(current.Stack, enclosing.Stack)
 		}
-		for _, frame := range frames {
+		visibleFrames := len(current.Stack) - commonFrames
+		frameLimit := visibleFrames
+		if options.MaxThrowableDepth > 0 && frameLimit > options.MaxThrowableDepth {
+			frameLimit = options.MaxThrowableDepth
+		}
+		for _, frame := range current.Stack[:frameLimit] {
 			builder.WriteString("\n\tat ")
 			builder.WriteString(frame)
 		}
+		if filtered := visibleFrames - frameLimit; filtered > 0 {
+			builder.WriteString("\n\t... ")
+			builder.WriteString(strconv.Itoa(filtered))
+			builder.WriteString(" filtered")
+		}
+		if commonFrames > 0 {
+			builder.WriteString("\n\t... ")
+			builder.WriteString(strconv.Itoa(commonFrames))
+			builder.WriteString(" more")
+		}
+	}
+	if circular != nil {
+		builder.WriteString("\n[CIRCULAR REFERENCE: ")
+		appendThrowableDescription(&builder, circular)
+		builder.WriteByte(']')
 	}
 	result := builder.String()
 	if options.MaxLength > 0 && len(result) > options.MaxLength {
-		result = result[:options.MaxLength]
-		for !utf8.ValidString(result) {
-			result = result[:len(result)-1]
-		}
+		result = truncateStacktrace(result, options.MaxLength)
 	}
 	return result
 }
 
+func appendThrowableDescription(builder *strings.Builder, throwable *Throwable) {
+	if throwable.Type != "" {
+		builder.WriteString(throwable.Type)
+		builder.WriteString(": ")
+	}
+	builder.WriteString(throwable.Message)
+}
+
+func enclosingThrowable(chain []*Throwable, index int, rootFirst bool) *Throwable {
+	if rootFirst {
+		if index+1 < len(chain) {
+			return chain[index+1]
+		}
+		return nil
+	}
+	if index > 0 {
+		return chain[index-1]
+	}
+	return nil
+}
+
+func truncateStacktrace(value string, maximumLength int) string {
+	const ellipsis = "..."
+	if maximumLength <= len(ellipsis) {
+		return ""
+	}
+	value = value[:maximumLength-len(ellipsis)]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value + ellipsis
+}
+
 func appendStackHash(builder *strings.Builder, throwable *Throwable) {
 	hash := uint32(2166136261)
+	seen := make(map[*Throwable]struct{}, 4)
 	for current := throwable; current != nil; current = current.Cause {
+		if _, exists := seen[current]; exists {
+			break
+		}
+		seen[current] = struct{}{}
 		hash = fnv1aContinue(hash, current.Type)
 		hash = fnv1aContinue(hash, current.Message)
 		for _, frame := range current.Stack {
@@ -76,13 +141,13 @@ func appendStackHash(builder *strings.Builder, throwable *Throwable) {
 	builder.WriteString("> ")
 }
 
-func trimCommonFrames(frames, parent []string) []string {
+func commonFrameCount(frames, parent []string) int {
 	end, parentEnd := len(frames), len(parent)
 	for end > 0 && parentEnd > 0 && frames[end-1] == parent[parentEnd-1] {
 		end--
 		parentEnd--
 	}
-	return frames[:end]
+	return len(frames) - end
 }
 
 func fnv1aContinue(hash uint32, value string) uint32 {

@@ -3,51 +3,54 @@ package layout
 import (
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 
 	"goark.dev/log/internal/layoutsupport"
+	"goark.dev/log/internal/logcontext"
 )
 
 func (l *StructuredJSONLayout) appendECS(writer *structuredWriter, event Event) {
-	writer.Add("@timestamp", slog.TimeValue(layoutsupport.EventTime(event.Time)))
-	if parent, ok := writer.beginObject("log", "log"); ok {
+	writer.Add("@timestamp", slog.TimeValue(layoutsupport.EventTime(event.Time).UTC()))
+	if writer.beginObject("log", "log") {
 		writer.addPath("log.level", "level", slog.StringValue(levelName(event.Level)))
 		writer.addPath("log.logger", "logger", slog.StringValue(event.Logger))
-		writer.endObject(parent)
+		writer.endObject()
 	}
-	if parent, ok := writer.beginObject("process", "process"); ok {
+	if writer.beginObject("process", "process") {
 		writer.addPath("process.pid", "pid", slog.IntValue(os.Getpid()))
-		if threadParent, threadOK := writer.beginObject("process.thread", "thread"); threadOK {
+		if writer.beginObject("process.thread", "thread") {
 			writer.addPath("process.thread.name", "name", slog.StringValue(eventThreadName(event)))
-			writer.endObject(threadParent)
+			writer.endObject()
 		}
-		writer.endObject(parent)
+		writer.endObject()
 	}
 	serviceConfigured := strings.TrimSpace(l.ecs.ServiceName) != "" || strings.TrimSpace(l.ecs.ServiceVersion) != "" ||
 		strings.TrimSpace(l.ecs.ServiceEnvironment) != "" || strings.TrimSpace(l.ecs.ServiceNodeName) != ""
-	if parent, ok := writer.beginObjectIf(serviceConfigured, "service", "service"); ok {
+	if writer.beginObjectIf(serviceConfigured, "service", "service") {
 		writer.addNonEmptyPath("service.name", "name", l.ecs.ServiceName)
 		writer.addNonEmptyPath("service.version", "version", l.ecs.ServiceVersion)
 		writer.addNonEmptyPath("service.environment", "environment", l.ecs.ServiceEnvironment)
-		if nodeParent, nodeOK := writer.beginObjectIf(strings.TrimSpace(l.ecs.ServiceNodeName) != "", "service.node", "node"); nodeOK {
+		if writer.beginObjectIf(strings.TrimSpace(l.ecs.ServiceNodeName) != "", "service.node", "node") {
 			writer.addNonEmptyPath("service.node.name", "name", l.ecs.ServiceNodeName)
-			writer.endObject(nodeParent)
+			writer.endObject()
 		}
-		writer.endObject(parent)
+		writer.endObject()
 	}
 	writer.Add("message", slog.StringValue(event.Message))
-	if parent, ok := writer.beginObject("ecs", "ecs"); ok {
+	if writer.beginObject("ecs", "ecs") {
 		writer.addPath("ecs.version", "version", slog.StringValue("8.11"))
-		writer.endObject(parent)
+		writer.endObject()
 	}
 	if event.Throwable != nil {
-		if parent, ok := writer.beginObject("error", "error"); ok {
+		if writer.beginObject("error", "error") {
 			writer.addNonEmptyPath("error.type", "type", event.Throwable.Type)
 			writer.addNonEmptyPath("error.message", "message", event.Throwable.Message)
 			writer.addPath("error.stack_trace", "stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
-			writer.endObject(parent)
+			writer.endObject()
 		}
 	}
+	writer.addMarkerTags(event)
 }
 
 func (l *StructuredJSONLayout) appendGELF(writer *structuredWriter, event Event) {
@@ -73,7 +76,8 @@ func (l *StructuredJSONLayout) appendGELF(writer *structuredWriter, event Event)
 	writer.Add("_log_logger", slog.StringValue(event.Logger))
 	l.appendError(writer, event, "_error_type", "_error_message", "_error_stack_trace")
 	if event.Throwable != nil {
-		writer.Add("full_message", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
+		fullMessage := event.Message + "\n\n" + formatStructuredStacktrace(event.Throwable, l.stacktrace)
+		writer.Add("full_message", slog.StringValue(fullMessage))
 	}
 }
 
@@ -85,11 +89,40 @@ func (l *StructuredJSONLayout) appendLogstash(writer *structuredWriter, event Ev
 	writer.Add("thread_name", slog.StringValue(eventThreadName(event)))
 	writer.Add("level", slog.StringValue(levelName(event.Level)))
 	writer.Add("level_value", slog.IntValue(logstashLevelValue(event.Level)))
-	if marker := eventMarkerString(event); marker != "" {
-		writer.Add("tags", slog.StringValue(marker))
-	}
+	writer.addMarkerTags(event)
 	if event.Throwable != nil {
 		writer.Add("stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
+	}
+}
+
+func (w *structuredWriter) addMarkerTags(event Event) {
+	if event.Marker == nil {
+		return
+	}
+	if len(event.Marker.Parents) == 0 {
+		if event.Marker.Name != "" {
+			w.addStrings("tags", "tags", []string{event.Marker.Name})
+		}
+		return
+	}
+	names := make([]string, 0, 1+len(event.Marker.Parents))
+	seen := make(map[string]struct{}, 1+len(event.Marker.Parents))
+	appendMarkerNames(&names, seen, *event.Marker)
+	if len(names) > 0 {
+		sort.Strings(names)
+		w.addStrings("tags", "tags", names)
+	}
+}
+
+func appendMarkerNames(names *[]string, seen map[string]struct{}, marker logcontext.Marker) {
+	if marker.Name != "" {
+		if _, exists := seen[marker.Name]; !exists {
+			seen[marker.Name] = struct{}{}
+			*names = append(*names, marker.Name)
+		}
+	}
+	for _, parent := range marker.Parents {
+		appendMarkerNames(names, seen, parent)
 	}
 }
 

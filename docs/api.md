@@ -203,6 +203,16 @@ types.
 `IncludeStacktrace`, `StacktraceAsString`, `PropertiesAsList`,
 `IncludeNullDelimiter`, `DisableANSI`, `Header`, and `Footer`.
 
+`NewStructuredJSONLayout` builds dedicated ECS, GELF, or Logstash output from
+`StructuredJSONOptions`. ECS context and added member paths use dot-separated
+nested objects. GELF and Logstash context remains flat. Marker hierarchies are
+encoded as sorted `tags` arrays. `StructuredStacktraceOptions.Printer` accepts
+`StructuredStacktracePrinterStandard` or
+`StructuredStacktracePrinterLoggingSystem`; the standard printer supports root
+ordering, positive byte-length and per-throwable frame limits, common-frame
+elision, and hashes. Built-in protocol members win if rename, add, context, or
+customizer output targets the same JSON member name.
+
 ## Filter API
 
 All filters implement `Decide(ctx, event) FilterDecision`. Decisions are

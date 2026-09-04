@@ -115,6 +115,14 @@ const (
 	StructuredFormatLogstash = internallayout.StructuredFormatLogstash
 )
 
+// StructuredStacktracePrinter 标识结构化日志的异常栈打印策略。
+type StructuredStacktracePrinter = internallayout.StructuredStacktracePrinter
+
+const (
+	StructuredStacktracePrinterStandard      = internallayout.StructuredStacktracePrinterStandard
+	StructuredStacktracePrinterLoggingSystem = internallayout.StructuredStacktracePrinterLoggingSystem
+)
+
 // StructuredStacktraceOptions 描述异常链输出规则。
 type StructuredStacktraceOptions = internallayout.StructuredStacktraceOptions
 

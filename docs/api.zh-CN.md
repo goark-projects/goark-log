@@ -201,6 +201,15 @@ type Appender interface {
 `IncludeStacktrace`、`StacktraceAsString`、`PropertiesAsList`、
 `IncludeNullDelimiter`、`DisableANSI`、`Header` 和 `Footer`。
 
+`NewStructuredJSONLayout` 根据 `StructuredJSONOptions` 创建独立的 ECS、GELF
+或 Logstash 输出。ECS 上下文和新增成员使用点分路径生成嵌套对象；GELF 与
+Logstash 保持扁平字段。Marker 层级编码为排序后的 `tags` 数组。
+`StructuredStacktraceOptions.Printer` 接受
+`StructuredStacktracePrinterStandard` 或
+`StructuredStacktracePrinterLoggingSystem`；标准打印器支持根异常顺序、正数
+字节长度限制、每个异常的栈帧限制、公共帧省略和哈希。若 rename、add、上下文
+或 Customizer 与协议内建成员重名，内建成员优先。
+
 ## Filter API
 
 所有 filter 实现 `Decide(ctx, event) FilterDecision`。裁决包括

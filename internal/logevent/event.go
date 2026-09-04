@@ -84,7 +84,16 @@ func NewThrowableWithStack(err error) *Throwable {
 }
 
 func newThrowable(err error, withStack bool, skip int) *Throwable {
+	return newThrowableSnapshot(err, withStack, skip, make(map[error]struct{}, 4), 0)
+}
+
+const maxThrowableCauseDepth = 64
+
+func newThrowableSnapshot(err error, withStack bool, skip int, seen map[error]struct{}, depth int) *Throwable {
 	if err == nil {
+		return nil
+	}
+	if depth >= maxThrowableCauseDepth || alreadyVisitedError(err, seen) {
 		return nil
 	}
 	throwable := &Throwable{
@@ -94,10 +103,22 @@ func newThrowable(err error, withStack bool, skip int) *Throwable {
 	if withStack {
 		throwable.Stack = captureThrowableStack(skip + 1)
 	}
-	if cause := errors.Unwrap(err); cause != nil && cause != err {
-		throwable.Cause = NewThrowable(cause)
+	if cause := errors.Unwrap(err); cause != nil {
+		throwable.Cause = newThrowableSnapshot(cause, false, skip, seen, depth+1)
 	}
 	return throwable
+}
+
+func alreadyVisitedError(err error, seen map[error]struct{}) bool {
+	typeOfError := reflect.TypeOf(err)
+	if typeOfError == nil || !typeOfError.Comparable() {
+		return false
+	}
+	if _, exists := seen[err]; exists {
+		return true
+	}
+	seen[err] = struct{}{}
+	return false
 }
 
 func (t *Throwable) String() string {
@@ -113,27 +134,38 @@ func ThrowableStackString(throwable *Throwable) string {
 		return ""
 	}
 	var builder strings.Builder
-	appendThrowableStackString(&builder, throwable)
+	appendThrowableStackString(&builder, throwable, make(map[*Throwable]struct{}, 4))
 	return builder.String()
 }
 
-func appendThrowableStackString(builder *strings.Builder, throwable *Throwable) {
+func appendThrowableStackString(builder *strings.Builder, throwable *Throwable, seen map[*Throwable]struct{}) {
 	if throwable == nil {
 		return
 	}
-	if throwable.Type != "" {
-		builder.WriteString(throwable.Type)
-		builder.WriteString(": ")
+	if _, exists := seen[throwable]; exists {
+		builder.WriteString("[CIRCULAR REFERENCE: ")
+		appendThrowableDescription(builder, throwable)
+		builder.WriteByte(']')
+		return
 	}
-	builder.WriteString(throwable.Message)
+	seen[throwable] = struct{}{}
+	appendThrowableDescription(builder, throwable)
 	for _, frame := range throwable.Stack {
 		builder.WriteString("\n\tat ")
 		builder.WriteString(frame)
 	}
 	if throwable.Cause != nil {
 		builder.WriteString("\nCaused by: ")
-		appendThrowableStackString(builder, throwable.Cause)
+		appendThrowableStackString(builder, throwable.Cause, seen)
 	}
+}
+
+func appendThrowableDescription(builder *strings.Builder, throwable *Throwable) {
+	if throwable.Type != "" {
+		builder.WriteString(throwable.Type)
+		builder.WriteString(": ")
+	}
+	builder.WriteString(throwable.Message)
 }
 
 // ThrowableAttr 把 error 按标准异常属性键注入 slog 记录。
