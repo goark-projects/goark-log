@@ -15,8 +15,10 @@ import (
 )
 
 type archiveFile struct {
-	path string
-	name string
+	path    string
+	name    string
+	size    int64
+	modTime time.Time
 }
 
 func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
@@ -227,33 +229,47 @@ func (a *RollingFileAppender) deleteExpiredArchives(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if len(archives) <= a.maxBackups {
-		if a.maxAge <= 0 {
-			return nil
-		}
+	if len(archives) <= a.maxBackups && a.maxAge <= 0 && a.totalSizeCap <= 0 {
+		return nil
 	}
 	sort.Slice(archives, func(i, j int) bool {
 		return archives[i].name < archives[j].name
 	})
 	var joined error
+	removed := make(map[string]struct{})
 	deleteCount := 0
 	if len(archives) > a.maxBackups {
 		deleteCount = len(archives) - a.maxBackups
 	}
 	for _, archive := range archives[:deleteCount] {
 		joined = errors.Join(joined, os.Remove(archive.path))
+		removed[archive.path] = struct{}{}
 	}
 	if a.maxAge > 0 {
 		cutoff := now.Add(-a.maxAge)
 		for _, archive := range archives[deleteCount:] {
-			info, err := os.Stat(archive.path)
-			if err != nil {
-				joined = errors.Join(joined, err)
+			if archive.modTime.Before(cutoff) {
+				joined = errors.Join(joined, os.Remove(archive.path))
+				removed[archive.path] = struct{}{}
+			}
+		}
+	}
+	if a.totalSizeCap > 0 {
+		var total int64
+		for _, archive := range archives {
+			if _, deleted := removed[archive.path]; !deleted {
+				total += archive.size
+			}
+		}
+		for _, archive := range archives {
+			if total <= a.totalSizeCap {
+				break
+			}
+			if _, deleted := removed[archive.path]; deleted {
 				continue
 			}
-			if info.ModTime().Before(cutoff) {
-				joined = errors.Join(joined, os.Remove(archive.path))
-			}
+			joined = errors.Join(joined, os.Remove(archive.path))
+			total -= archive.size
 		}
 	}
 	return joined
@@ -269,7 +285,7 @@ func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
 		for _, match := range matches {
 			info, err := os.Stat(match)
 			if err == nil && !info.IsDir() {
-				archives = append(archives, archiveFile{path: match, name: filepath.ToSlash(match)})
+				archives = append(archives, archiveFile{path: match, name: filepath.ToSlash(match), size: info.Size(), modTime: info.ModTime()})
 			}
 		}
 		return archives, nil
@@ -278,6 +294,9 @@ func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
 	base := filepath.Base(a.path)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("goark-log: read log directory %q: %w", dir, err)
 	}
 	prefix := base + "."
@@ -286,9 +305,15 @@ func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
 		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
 			continue
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("goark-log: stat archive log file %q: %w", entry.Name(), err)
+		}
 		archives = append(archives, archiveFile{
-			path: filepath.Join(dir, entry.Name()),
-			name: entry.Name(),
+			path:    filepath.Join(dir, entry.Name()),
+			name:    entry.Name(),
+			size:    info.Size(),
+			modTime: info.ModTime(),
 		})
 	}
 	return archives, nil

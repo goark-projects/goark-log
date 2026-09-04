@@ -235,6 +235,8 @@ var (
 	WithRollingInterval              = goarklog.WithRollingInterval
 	WithRollingMaxBackups            = goarklog.WithRollingMaxBackups
 	WithRollingMaxSize               = goarklog.WithRollingMaxSize
+	WithRollingTotalSizeCap          = goarklog.WithRollingTotalSizeCap
+	WithRollingCleanHistoryOnStart   = goarklog.WithRollingCleanHistoryOnStart
 	WithRoutingAttrKey               = goarklog.WithRoutingAttrKey
 	WithRoutingDefault               = goarklog.WithRoutingDefault
 	WithRoutingKeyFunc               = goarklog.WithRoutingKeyFunc

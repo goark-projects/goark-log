@@ -135,6 +135,20 @@ func WithRollingMaxBackups(maxBackups int) RollingFileOption {
 	}
 }
 
+// WithRollingTotalSizeCap 设置归档文件总大小上限，0 表示不限制。
+func WithRollingTotalSizeCap(bytes int64) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.totalSizeCap = bytes
+	}
+}
+
+// WithRollingCleanHistoryOnStart 设置启动时是否立即执行历史归档清理。
+func WithRollingCleanHistoryOnStart(enabled bool) RollingFileOption {
+	return func(appender *RollingFileAppender) {
+		appender.cleanOnStart = enabled
+	}
+}
+
 // WithRollingMaxAge 设置档案最大保留时间，0 表示不按时间清理。
 func WithRollingMaxAge(age time.Duration) RollingFileOption {
 	return func(appender *RollingFileAppender) {

@@ -65,6 +65,8 @@ type RollingFileAppender struct {
 	rolloverOnStartup bool
 	maxBackups        int
 	maxAge            time.Duration
+	totalSizeCap      int64
+	cleanOnStart      bool
 	compress          bool
 	asyncActions      bool
 	actionQueueSize   int
@@ -113,6 +115,11 @@ func NewRollingFileAppender(path string, options ...RollingFileOption) (*Rolling
 	}
 	if err := appender.validate(); err != nil {
 		return nil, err
+	}
+	if appender.cleanOnStart {
+		if err := appender.deleteExpiredArchives(appender.now()); err != nil {
+			return nil, fmt.Errorf("goark-log: clean rolling history on start: %w", err)
+		}
 	}
 	if !appender.permissionsSet && appender.permissions == 0 {
 		appender.permissions = logfile.DefaultPermissions
@@ -304,6 +311,9 @@ func (a *RollingFileAppender) validate() error {
 	}
 	if a.maxAge < 0 {
 		return fmt.Errorf("goark-log: rolling max age must be >= 0")
+	}
+	if a.totalSizeCap < 0 {
+		return fmt.Errorf("goark-log: rolling total size cap must be >= 0")
 	}
 	if a.actionQueueSize < 0 {
 		return fmt.Errorf("goark-log: rolling action queue size must be >= 0")
