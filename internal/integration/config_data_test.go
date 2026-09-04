@@ -32,6 +32,27 @@ func TestLoadOptions_whenConfigDataNameHasUnsupportedExtension_shouldReject(t *t
 	}
 }
 
+func TestLoadOptions_whenBootResolverAndConfigDataProvided_shouldResolveProperties(t *testing.T) {
+	options, _, err := LoadOptions(context.Background(),
+		WithBootPropertyResolver(PropertyMap{"logging.level.root": "error"}),
+		WithConfigData("goark-log.yml", []byte(`
+appenders:
+  console:
+    type: console
+root:
+  level: ${logging.level.root}
+  appenderRefs: [console]
+`)),
+	)
+	if err != nil {
+		t.Fatalf("LoadOptions() error = %v", err)
+	}
+	defer closeAppendersForTest(t, options.Appenders)
+	if options.Root.Level.String() != "ERROR" {
+		t.Fatalf("root level = %s", options.Root.Level)
+	}
+}
+
 func closeAppendersForTest(t *testing.T, appenders []Appender) {
 	t.Helper()
 	for _, appender := range appenders {

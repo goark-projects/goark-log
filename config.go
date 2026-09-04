@@ -392,6 +392,11 @@ func newConfigLoadSettings(options ...ConfigLoadOption) (*configLoadSettings, er
 	if settings.lookups == nil {
 		settings.lookups = settings.registry.LookupResolver()
 	}
+	if settings.boot != nil {
+		settings.lookups = settings.lookups.Clone()
+		settings.lookups.Register("prop", settings.boot.GetProperty)
+		settings.lookups.Register("property", settings.boot.GetProperty)
+	}
 	return settings, nil
 }
 
