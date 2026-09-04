@@ -1,6 +1,7 @@
 package goarklog
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -155,6 +156,8 @@ type OptionsCustomizer func(context.Context, Options, *ConfigResult) (Options, e
 
 type configLoadSettings struct {
 	explicitPath string
+	dataName     string
+	data         []byte
 	envKey       string
 	workingDir   string
 	boot         PropertyResolver
@@ -168,6 +171,15 @@ type configLoadSettings struct {
 func WithConfigPath(path string) ConfigLoadOption {
 	return func(settings *configLoadSettings) {
 		settings.explicitPath = path
+	}
+}
+
+// WithConfigData 设置内存中的显式配置内容，name 的扩展名决定配置格式。
+func WithConfigData(name string, data []byte) ConfigLoadOption {
+	copied := append([]byte(nil), data...)
+	return func(settings *configLoadSettings) {
+		settings.dataName = strings.TrimSpace(name)
+		settings.data = copied
 	}
 }
 
@@ -237,6 +249,9 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 	if err != nil {
 		return Options{}, nil, err
 	}
+	if settings.data != nil {
+		return settings.loadData(ctx)
+	}
 	path, source, err := settings.resolvePath()
 	if err != nil {
 		return Options{}, nil, err
@@ -259,6 +274,47 @@ func LoadOptions(ctx context.Context, options ...ConfigLoadOption) (Options, *Co
 		return Options{}, nil, err
 	}
 	return settings.customize(ctx, Options(handlerOptions), result)
+}
+
+func (s *configLoadSettings) loadData(ctx context.Context) (Options, *ConfigResult, error) {
+	if s.dataName == "" {
+		return Options{}, nil, fmt.Errorf("goark-log: config data name is empty")
+	}
+	format, err := configfileFormat(s.dataName)
+	if err != nil {
+		return Options{}, nil, err
+	}
+	fileConfig, err := configfile.Decode(bytes.NewReader(s.data), format, s.lookups)
+	if err != nil {
+		return Options{}, nil, err
+	}
+	handlerOptions, err := fileConfig.Options(s.registry)
+	if err != nil {
+		return Options{}, nil, err
+	}
+	monitorInterval, err := fileConfig.MonitorIntervalDuration()
+	if err != nil {
+		return Options{}, nil, err
+	}
+	result := &ConfigResult{Source: ConfigSourceExplicit, Path: s.dataName, MonitorInterval: monitorInterval}
+	return s.customize(ctx, Options(handlerOptions), result)
+}
+
+func configfileFormat(name string) (string, error) {
+	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(name), ".")) {
+	case "yml", "yaml":
+		return "yaml", nil
+	case "json":
+		return "json", nil
+	case "xml":
+		return "xml", nil
+	case "toml":
+		return "toml", nil
+	case "properties":
+		return "properties", nil
+	default:
+		return "", fmt.Errorf("goark-log: unsupported config file extension for %q", name)
+	}
 }
 
 func (s *configLoadSettings) customize(ctx context.Context, options Options, result *ConfigResult) (Options, *ConfigResult, error) {

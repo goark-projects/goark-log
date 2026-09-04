@@ -191,6 +191,7 @@ var (
 	WithConfigEnvKey                 = goarklog.WithConfigEnvKey
 	WithConfigLookups                = goarklog.WithConfigLookups
 	WithConfigPath                   = goarklog.WithConfigPath
+	WithConfigData                   = goarklog.WithConfigData
 	WithConfigWorkingDir             = goarklog.WithConfigWorkingDir
 	WithConsoleLayout                = goarklog.WithConsoleLayout
 	WithConsoleName                  = goarklog.WithConsoleName
