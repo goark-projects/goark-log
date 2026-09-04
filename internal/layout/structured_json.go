@@ -4,13 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
-	"os"
 	"sort"
-	"strconv"
 	"strings"
-	"unicode/utf8"
 
-	"goark.dev/log/internal/layoutsupport"
 	"goark.dev/log/internal/logcontext"
 	"goark.dev/log/internal/logevent"
 	"goark.dev/log/internal/logvalue"
@@ -221,113 +217,6 @@ func validGELFField(key string) bool {
 	return true
 }
 
-func (l *StructuredJSONLayout) appendECS(writer *structuredWriter, event Event) {
-	writer.Add("@timestamp", slog.TimeValue(layoutsupport.EventTime(event.Time)))
-	if parent, ok := writer.beginObject("log", "log"); ok {
-		writer.addPath("log.level", "level", slog.StringValue(levelName(event.Level)))
-		writer.addPath("log.logger", "logger", slog.StringValue(event.Logger))
-		writer.endObject(parent)
-	}
-	if parent, ok := writer.beginObject("process", "process"); ok {
-		writer.addPath("process.pid", "pid", slog.IntValue(os.Getpid()))
-		if threadParent, threadOK := writer.beginObject("process.thread", "thread"); threadOK {
-			writer.addPath("process.thread.name", "name", slog.StringValue(eventThreadName(event)))
-			writer.endObject(threadParent)
-		}
-		writer.endObject(parent)
-	}
-	serviceConfigured := strings.TrimSpace(l.ecs.ServiceName) != "" || strings.TrimSpace(l.ecs.ServiceVersion) != "" ||
-		strings.TrimSpace(l.ecs.ServiceEnvironment) != "" || strings.TrimSpace(l.ecs.ServiceNodeName) != ""
-	if parent, ok := writer.beginObjectIf(serviceConfigured, "service", "service"); ok {
-		writer.addNonEmptyPath("service.name", "name", l.ecs.ServiceName)
-		writer.addNonEmptyPath("service.version", "version", l.ecs.ServiceVersion)
-		writer.addNonEmptyPath("service.environment", "environment", l.ecs.ServiceEnvironment)
-		if nodeParent, nodeOK := writer.beginObjectIf(strings.TrimSpace(l.ecs.ServiceNodeName) != "", "service.node", "node"); nodeOK {
-			writer.addNonEmptyPath("service.node.name", "name", l.ecs.ServiceNodeName)
-			writer.endObject(nodeParent)
-		}
-		writer.endObject(parent)
-	}
-	writer.Add("message", slog.StringValue(event.Message))
-	if parent, ok := writer.beginObject("ecs", "ecs"); ok {
-		writer.addPath("ecs.version", "version", slog.StringValue("8.11"))
-		writer.endObject(parent)
-	}
-	if event.Throwable != nil {
-		if parent, ok := writer.beginObject("error", "error"); ok {
-			writer.addNonEmptyPath("error.type", "type", event.Throwable.Type)
-			writer.addNonEmptyPath("error.message", "message", event.Throwable.Message)
-			writer.addPath("error.stack_trace", "stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
-			writer.endObject(parent)
-		}
-	}
-}
-
-func (l *StructuredJSONLayout) appendGELF(writer *structuredWriter, event Event) {
-	when := layoutsupport.EventTime(event.Time)
-	writer.Add("version", slog.StringValue("1.1"))
-	message := event.Message
-	if strings.TrimSpace(message) == "" {
-		message = "(blank)"
-	}
-	writer.Add("short_message", slog.StringValue(message))
-	writer.Add("timestamp", slog.Float64Value(float64(when.UnixMilli())/1000))
-	writer.Add("level", slog.IntValue(syslogSeverity(event.Level)))
-	writer.Add("_level_name", slog.StringValue(levelName(event.Level)))
-	writer.Add("_process_pid", slog.IntValue(os.Getpid()))
-	writer.Add("_process_thread_name", slog.StringValue(eventThreadName(event)))
-	host := l.gelf.Host
-	if strings.TrimSpace(host) == "" {
-		host = layoutsupport.HostName()
-	}
-	writer.addNonEmpty("host", host)
-	writer.addNonEmpty("_service_name", l.gelf.ServiceName)
-	writer.addNonEmpty("_service_version", l.gelf.ServiceVersion)
-	writer.Add("_log_logger", slog.StringValue(event.Logger))
-	l.appendError(writer, event, "_error_type", "_error_message", "_error_stack_trace")
-	if event.Throwable != nil {
-		writer.Add("full_message", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
-	}
-}
-
-func (l *StructuredJSONLayout) appendLogstash(writer *structuredWriter, event Event) {
-	writer.Add("@timestamp", slog.TimeValue(layoutsupport.EventTime(event.Time)))
-	writer.Add("@version", slog.StringValue("1"))
-	writer.Add("message", slog.StringValue(event.Message))
-	writer.Add("logger_name", slog.StringValue(event.Logger))
-	writer.Add("thread_name", slog.StringValue(eventThreadName(event)))
-	writer.Add("level", slog.StringValue(levelName(event.Level)))
-	writer.Add("level_value", slog.IntValue(logstashLevelValue(event.Level)))
-	if marker := eventMarkerString(event); marker != "" {
-		writer.Add("tags", slog.StringValue(marker))
-	}
-	if event.Throwable != nil {
-		writer.Add("stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
-	}
-}
-
-func (l *StructuredJSONLayout) appendError(writer *structuredWriter, event Event, typeKey, messageKey, stackKey string) {
-	if event.Throwable == nil {
-		return
-	}
-	writer.addNonEmpty(typeKey, event.Throwable.Type)
-	writer.addNonEmpty(messageKey, event.Throwable.Message)
-	writer.Add(stackKey, slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
-}
-
-func logstashLevelValue(level slog.Level) int {
-	switch {
-	case level >= slog.LevelError:
-		return 40000
-	case level >= slog.LevelWarn:
-		return 30000
-	case level >= slog.LevelInfo:
-		return 20000
-	default:
-		return 10000
-	}
-}
-
 type structuredWriter struct {
 	buf    *bytes.Buffer
 	layout *StructuredJSONLayout
@@ -412,78 +301,6 @@ func (l *StructuredJSONLayout) objectEnabled(path string) bool {
 		}
 	}
 	return false
-}
-
-func formatStructuredStacktrace(throwable *Throwable, options StructuredStacktraceOptions) string {
-	if throwable == nil {
-		return ""
-	}
-	chain := make([]*Throwable, 0, 4)
-	for current := throwable; current != nil; current = current.Cause {
-		chain = append(chain, current)
-		if options.MaxThrowableDepth > 0 && len(chain) >= options.MaxThrowableDepth {
-			break
-		}
-	}
-	if options.RootFirst {
-		for left, right := 0, len(chain)-1; left < right; left, right = left+1, right-1 {
-			chain[left], chain[right] = chain[right], chain[left]
-		}
-	}
-	var builder strings.Builder
-	for index, current := range chain {
-		if index > 0 {
-			if options.RootFirst {
-				builder.WriteString("\nWrapped by: ")
-			} else {
-				builder.WriteString("\nCaused by: ")
-			}
-		}
-		if current.Type != "" {
-			builder.WriteString(current.Type)
-			builder.WriteString(": ")
-		}
-		builder.WriteString(current.Message)
-		frames := current.Stack
-		if !options.IncludeCommonFrames && index > 0 {
-			frames = trimCommonFrames(frames, chain[index-1].Stack)
-		}
-		for _, frame := range frames {
-			builder.WriteString("\n\tat ")
-			builder.WriteString(frame)
-			if options.IncludeHashes {
-				builder.WriteString(" #")
-				builder.WriteString(strconv.FormatUint(uint64(fnv1a(frame)), 16))
-			}
-		}
-	}
-	result := builder.String()
-	if options.MaxLength > 0 && len(result) > options.MaxLength {
-		result = result[:options.MaxLength]
-		for !utf8.ValidString(result) {
-			result = result[:len(result)-1]
-		}
-	}
-	return result
-}
-
-func trimCommonFrames(frames, parent []string) []string {
-	end, parentEnd := len(frames), len(parent)
-	for end > 0 && parentEnd > 0 && frames[end-1] == parent[parentEnd-1] {
-		end--
-		parentEnd--
-	}
-	return frames[:end]
-}
-
-func fnv1a(value string) uint32 {
-	const prime = 16777619
-	hash := uint32(2166136261)
-	for index := 0; index < len(value); index++ {
-		hash ^= uint32(value[index])
-		hash *= prime
-	}
-	return hash
 }
 
 var _ Layout = (*StructuredJSONLayout)(nil)
