@@ -279,6 +279,11 @@ func NewPatternLayoutWithOptions(pattern string, options LayoutOptions) (*Patter
 	return internallayout.NewPatternLayoutWithOptions(pattern, options)
 }
 
+// NewCharsetLayout 使用指定字符集编码布局结果，UTF-8 不增加转换层。
+func NewCharsetLayout(layout Layout, charset string) (Layout, error) {
+	return internallayout.NewCharsetLayout(layout, charset)
+}
+
 // WithJSONTemplateResolverRegistry 设置用于解析自定义 resolver 的插件注册表。
 func WithJSONTemplateResolverRegistry(registry *PluginRegistry) JSONTemplateLayoutOption {
 	if registry == nil {
