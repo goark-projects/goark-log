@@ -11,7 +11,7 @@
 import goarklog "goark.dev/log"
 ```
 
-模块要求 Go 1.25 或更新版本，并实现标准 `log/slog` handler 契约。
+模块要求 Go 1.26 或更新版本，并实现标准 `log/slog` handler 契约。
 
 ## 构造入口
 

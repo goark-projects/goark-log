@@ -15,7 +15,7 @@ The module path is:
 go get goark.dev/log
 ```
 
-The module targets Go 1.25 or newer.
+The module targets Go 1.26 or newer.
 
 All JSON encoding, decoding, streaming, and raw-message handling uses
 Bytedance Sonic. The module does not fall back to `encoding/json` on newer Go

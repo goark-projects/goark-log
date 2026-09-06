@@ -1,6 +1,6 @@
 module goark.dev/log/benchmarks/compare
 
-go 1.25
+go 1.26.0
 
 require (
 	github.com/rs/zerolog v1.35.1

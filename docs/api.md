@@ -11,7 +11,7 @@ configuration file structs under `internal/configfile` are not public API.
 import goarklog "goark.dev/log"
 ```
 
-The module targets Go 1.25 or newer and implements the standard `log/slog`
+The module targets Go 1.26 or newer and implements the standard `log/slog`
 handler contract.
 
 ## Construction
