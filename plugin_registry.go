@@ -124,6 +124,9 @@ func WithPluginLookup(namespace string, lookup LookupFunc) PluginSetOption {
 }
 
 // WithPluginJSONTemplateResolver 声明一个 JSON Template resolver 注册项。
-func WithPluginJSONTemplateResolver(kind string, factory JSONTemplateResolverFactory) PluginSetOption {
+func WithPluginJSONTemplateResolver(
+	kind string,
+	factory JSONTemplateResolverFactory,
+) PluginSetOption {
 	return internalplugin.WithPluginJSONTemplateResolver(kind, factory)
 }

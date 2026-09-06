@@ -166,7 +166,11 @@ func (c *filterConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.KeyValuePairs, err = resolveKeyValuePairLookups(lookups, c.KeyValuePairs); err != nil {
 		return fmt.Errorf("keyValuePairs: %w", err)
 	}
-	if c.KeyValuePairsKebab, err = resolveKeyValuePairLookups(lookups, c.KeyValuePairsKebab); err != nil {
+	c.KeyValuePairsKebab, err = resolveKeyValuePairLookups(
+		lookups,
+		c.KeyValuePairsKebab,
+	)
+	if err != nil {
 		return fmt.Errorf("key-value-pairs: %w", err)
 	}
 	if c.DefaultThreshold, err = resolveStringLookup(lookups, c.DefaultThreshold); err != nil {
@@ -198,7 +202,11 @@ func (c *asyncLoggerConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.OverflowStrategy, err = resolveStringLookup(lookups, c.OverflowStrategy); err != nil {
 		return fmt.Errorf("overflowStrategy: %w", err)
 	}
-	if c.OverflowStrategyKebab, err = resolveStringLookup(lookups, c.OverflowStrategyKebab); err != nil {
+	c.OverflowStrategyKebab, err = resolveStringLookup(
+		lookups,
+		c.OverflowStrategyKebab,
+	)
+	if err != nil {
 		return fmt.Errorf("overflow-strategy: %w", err)
 	}
 	if c.WaitStrategy, err = resolveStringLookup(lookups, c.WaitStrategy); err != nil {
@@ -269,7 +277,10 @@ func resolveStringListLookups(lookups *LookupResolver, values []string) ([]strin
 	return out, nil
 }
 
-func resolveStringMapLookups(lookups *LookupResolver, values map[string]string) (map[string]string, error) {
+func resolveStringMapLookups(
+	lookups *LookupResolver,
+	values map[string]string,
+) (map[string]string, error) {
 	if len(values) == 0 {
 		return values, nil
 	}
@@ -288,7 +299,10 @@ func resolveStringMapLookups(lookups *LookupResolver, values map[string]string) 
 	return out, nil
 }
 
-func resolveKeyValuePairLookups(lookups *LookupResolver, values []keyValuePairConfig) ([]keyValuePairConfig, error) {
+func resolveKeyValuePairLookups(
+	lookups *LookupResolver,
+	values []keyValuePairConfig,
+) ([]keyValuePairConfig, error) {
 	if len(values) == 0 {
 		return values, nil
 	}

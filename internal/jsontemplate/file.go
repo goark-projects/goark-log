@@ -34,7 +34,10 @@ func localPath(value string) (string, error) {
 		return value, nil
 	}
 	if parsed.Scheme != "file" {
-		return "", fmt.Errorf("goark-log: JSON template URI scheme %q is not allowed in core", parsed.Scheme)
+		return "", fmt.Errorf(
+			"goark-log: JSON template URI scheme %q is not allowed in core",
+			parsed.Scheme,
+		)
 	}
 	path := parsed.Path
 	if parsed.Host != "" {

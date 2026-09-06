@@ -116,17 +116,24 @@ func NewStructuredJSONLayout(options StructuredJSONOptions) (*StructuredJSONLayo
 	default:
 		return nil, fmt.Errorf("goark-log: unsupported structured format %q", options.Format)
 	}
-	printer := StructuredStacktracePrinter(strings.ToLower(strings.TrimSpace(string(options.Stacktrace.Printer))))
+	printer := StructuredStacktracePrinter(
+		strings.ToLower(strings.TrimSpace(string(options.Stacktrace.Printer))),
+	)
 	switch printer {
 	case "", StructuredStacktracePrinterStandard, StructuredStacktracePrinterLoggingSystem:
 	default:
-		return nil, fmt.Errorf("goark-log: unsupported structured stacktrace printer %q", options.Stacktrace.Printer)
+		return nil, fmt.Errorf(
+			"goark-log: unsupported structured stacktrace printer %q",
+			options.Stacktrace.Printer,
+		)
 	}
 	if options.Stacktrace.MaxLength < 0 {
 		return nil, fmt.Errorf("goark-log: structured stacktrace maximum length must be positive")
 	}
 	if options.Stacktrace.MaxThrowableDepth < 0 {
-		return nil, fmt.Errorf("goark-log: structured stacktrace maximum throwable depth must be positive")
+		return nil, fmt.Errorf(
+			"goark-log: structured stacktrace maximum throwable depth must be positive",
+		)
 	}
 	options.Stacktrace.Printer = printer
 	layout := &StructuredJSONLayout{
@@ -280,7 +287,10 @@ func (l *StructuredJSONLayout) appendStructuredFields(writer *structuredWriter, 
 
 func isStructuredControlAttr(key string) bool {
 	switch key {
-	case logevent.ThrowableAttrKey, logcontext.MarkerAttrKey, logcontext.ThreadNameAttrKey, logcontext.StackAttrKey:
+	case logevent.ThrowableAttrKey,
+		logcontext.MarkerAttrKey,
+		logcontext.ThreadNameAttrKey,
+		logcontext.StackAttrKey:
 		return true
 	default:
 		return false

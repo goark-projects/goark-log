@@ -44,19 +44,34 @@ func (c *rollingConfig) resolveLookups(lookups *LookupResolver) error {
 }
 
 func (c *rollingPoliciesConfig) resolveLookups(lookups *LookupResolver) error {
-	policies := []*rollingSizePolicyConfig{&c.Size, &c.SizeKebab, &c.SizeBasedTriggeringPolicy, &c.SizeBasedTriggeringPolicyXML}
+	policies := []*rollingSizePolicyConfig{
+		&c.Size,
+		&c.SizeKebab,
+		&c.SizeBasedTriggeringPolicy,
+		&c.SizeBasedTriggeringPolicyXML,
+	}
 	for _, policy := range policies {
 		if err := policy.resolveLookups(lookups); err != nil {
 			return err
 		}
 	}
-	timePolicies := []*rollingTimePolicyConfig{&c.Time, &c.TimeKebab, &c.TimeBasedTriggeringPolicy, &c.TimeBasedTriggeringPolicyXML}
+	timePolicies := []*rollingTimePolicyConfig{
+		&c.Time,
+		&c.TimeKebab,
+		&c.TimeBasedTriggeringPolicy,
+		&c.TimeBasedTriggeringPolicyXML,
+	}
 	for _, policy := range timePolicies {
 		if err := policy.resolveLookups(lookups); err != nil {
 			return err
 		}
 	}
-	cronPolicies := []*rollingCronPolicyConfig{&c.Cron, &c.CronKebab, &c.CronTriggeringPolicy, &c.CronTriggeringPolicyXML}
+	cronPolicies := []*rollingCronPolicyConfig{
+		&c.Cron,
+		&c.CronKebab,
+		&c.CronTriggeringPolicy,
+		&c.CronTriggeringPolicyXML,
+	}
 	for _, policy := range cronPolicies {
 		if err := policy.resolveLookups(lookups); err != nil {
 			return err

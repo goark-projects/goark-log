@@ -47,7 +47,11 @@ func buildRollingPlugin(config AppenderBuildConfig) (internalrouter.Appender, er
 	if value := strings.ToLower(strings.TrimSpace(config.Rolling.FileIndex)); value != "" {
 		indexMode, ok := rollingFileIndexMode(value)
 		if !ok {
-			return nil, fmt.Errorf("goark-log: appender %q rolling fileIndex %q is unsupported", config.Name, config.Rolling.FileIndex)
+			return nil, fmt.Errorf(
+				"goark-log: appender %q rolling fileIndex %q is unsupported",
+				config.Name,
+				config.Rolling.FileIndex,
+			)
 		}
 		options = append(options, rollingfile.WithRollingFileIndexMode(indexMode))
 	}
@@ -94,7 +98,10 @@ func buildRollingPlugin(config AppenderBuildConfig) (internalrouter.Appender, er
 		options = append(options, rollingfile.WithRollingAsyncActions(true))
 	}
 	if config.Rolling.ActionQueueSize > 0 {
-		options = append(options, rollingfile.WithRollingActionQueueSize(config.Rolling.ActionQueueSize))
+		options = append(
+			options,
+			rollingfile.WithRollingActionQueueSize(config.Rolling.ActionQueueSize),
+		)
 	}
 	if len(config.Rolling.DeleteActions) > 0 {
 		actions, err := buildRollingDeleteActions(config.Name, config.Rolling.DeleteActions)
@@ -119,19 +126,29 @@ func rollingFileIndexMode(value string) (rollingfile.RollingFileIndexMode, bool)
 	}
 }
 
-func buildRollingDeleteActions(appenderName string, configs []RollingDeleteBuildConfig) ([]rollingfile.RollingDeleteAction, error) {
+func buildRollingDeleteActions(
+	appenderName string,
+	configs []RollingDeleteBuildConfig,
+) ([]rollingfile.RollingDeleteAction, error) {
 	actions := make([]rollingfile.RollingDeleteAction, 0, len(configs))
 	for index, actionConfig := range configs {
 		action, err := buildRollingDeleteAction(actionConfig)
 		if err != nil {
-			return nil, fmt.Errorf("goark-log: appender %q rolling delete action %d: %w", appenderName, index, err)
+			return nil, fmt.Errorf(
+				"goark-log: appender %q rolling delete action %d: %w",
+				appenderName,
+				index,
+				err,
+			)
 		}
 		actions = append(actions, action)
 	}
 	return actions, nil
 }
 
-func buildRollingDeleteAction(config RollingDeleteBuildConfig) (rollingfile.RollingDeleteAction, error) {
+func buildRollingDeleteAction(
+	config RollingDeleteBuildConfig,
+) (rollingfile.RollingDeleteAction, error) {
 	action := rollingfile.RollingDeleteAction{
 		BasePath: config.BasePath,
 		MaxDepth: config.MaxDepth,

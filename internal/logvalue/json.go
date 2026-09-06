@@ -24,7 +24,13 @@ func AppendJSONFieldValue(buf *bytes.Buffer, key string, value slog.Value, comma
 }
 
 // AppendJSONFieldTime 写入 JSON 时间字段。
-func AppendJSONFieldTime(buf *bytes.Buffer, key string, value time.Time, layout string, comma bool) {
+func AppendJSONFieldTime(
+	buf *bytes.Buffer,
+	key string,
+	value time.Time,
+	layout string,
+	comma bool,
+) {
 	AppendJSONKey(buf, key, comma)
 	buf.WriteByte('"')
 	buf.Write(value.AppendFormat(buf.AvailableBuffer(), layout))

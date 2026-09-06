@@ -12,7 +12,17 @@ import (
 )
 
 // DispatchAttrsFast 在无上下文合并、无过滤器、无 caller 时直写 JSON appender。
-func DispatchAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.Attr, groups []string, logger string, when time.Time, level slog.Level, message string, attrs []slog.Attr) (bool, error) {
+func DispatchAttrsFast(
+	ctx context.Context,
+	route Route,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	logger string,
+	when time.Time,
+	level slog.Level,
+	message string,
+	attrs []slog.Attr,
+) (bool, error) {
 	if !canDispatchAttrsFast(ctx, route, handlerAttrs, groups, attrs) {
 		return false, nil
 	}
@@ -45,7 +55,19 @@ func DispatchAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.Att
 }
 
 // DispatchFixedAttrsFast 针对三个固定属性事件直写 JSON appender，避免属性切片分配。
-func DispatchFixedAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.Attr, groups []string, logger string, when time.Time, level slog.Level, message string, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) (bool, error) {
+func DispatchFixedAttrsFast(
+	ctx context.Context,
+	route Route,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	logger string,
+	when time.Time,
+	level slog.Level,
+	message string,
+	attr0 slog.Attr,
+	attr1 slog.Attr,
+	attr2 slog.Attr,
+) (bool, error) {
 	if !canDispatchFixedAttrsFast(ctx, route, handlerAttrs, groups, attr0, attr1, attr2) {
 		return false, nil
 	}
@@ -78,7 +100,13 @@ func DispatchFixedAttrsFast(ctx context.Context, route Route, handlerAttrs []slo
 	return wrote || joined != nil, joined
 }
 
-func canDispatchAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.Attr, groups []string, attrs []slog.Attr) bool {
+func canDispatchAttrsFast(
+	ctx context.Context,
+	route Route,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	attrs []slog.Attr,
+) bool {
 	if route.IncludeLocation || len(route.Filters) != 0 || len(route.Appenders) == 0 {
 		return false
 	}
@@ -99,7 +127,15 @@ func canDispatchAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.
 	return true
 }
 
-func canDispatchFixedAttrsFast(ctx context.Context, route Route, handlerAttrs []slog.Attr, groups []string, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) bool {
+func canDispatchFixedAttrsFast(
+	ctx context.Context,
+	route Route,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	attr0 slog.Attr,
+	attr1 slog.Attr,
+	attr2 slog.Attr,
+) bool {
 	if route.IncludeLocation || len(route.Filters) != 0 || len(route.Appenders) == 0 {
 		return false
 	}

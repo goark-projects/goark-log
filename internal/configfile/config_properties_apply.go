@@ -20,15 +20,6 @@ func decodePropertiesConfig(reader io.Reader, lookups *LookupResolver) (*fileCon
 	return finalizeDecodedConfig(config, lookups)
 }
 
-func propertyAppenderRefs(value string) appenderRefs {
-	values := configprops.List(value)
-	refs := make(appenderRefs, 0, len(values))
-	for _, ref := range values {
-		refs = append(refs, appenderRefConfig{Ref: ref})
-	}
-	return refs
-}
-
 func applyAppenderRefProperty(refs *appenderRefs, key string, value string) error {
 	id, field, ok := configprops.SplitID(key)
 	if !ok {
@@ -192,7 +183,12 @@ func propertiesToFileConfig(values map[string]string) (fileConfig, error) {
 	return config, nil
 }
 
-func applyProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
+func applyProperty(
+	config *fileConfig,
+	aliases configprops.Aliases,
+	key string,
+	value string,
+) error {
 	switch {
 	case key == "status":
 		config.Status = value
@@ -204,16 +200,24 @@ func applyProperty(config *fileConfig, aliases configprops.Aliases, key string, 
 		config.Root.AppenderRefs = propertyAppenderRefs(value)
 	case key == "rootLogger.filters" || key == "root.filters":
 		config.Root.Filters = configprops.List(value)
-	case key == "rootLogger.includeLocation" || key == "rootLogger.include-location" || key == "root.includeLocation" || key == "root.include-location":
+	case isRootIncludeLocationKey(key):
 		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
 		}
 		config.Root.IncludeLocation = &parsed
 	case strings.HasPrefix(key, "rootLogger.appenderRef."):
-		return applyAppenderRefProperty(&config.Root.AppenderRefs, strings.TrimPrefix(key, "rootLogger.appenderRef."), value)
+		return applyAppenderRefProperty(
+			&config.Root.AppenderRefs,
+			strings.TrimPrefix(key, "rootLogger.appenderRef."),
+			value,
+		)
 	case strings.HasPrefix(key, "root.appenderRef."):
-		return applyAppenderRefProperty(&config.Root.AppenderRefs, strings.TrimPrefix(key, "root.appenderRef."), value)
+		return applyAppenderRefProperty(
+			&config.Root.AppenderRefs,
+			strings.TrimPrefix(key, "root.appenderRef."),
+			value,
+		)
 	case strings.HasPrefix(key, "property."):
 		name := strings.TrimPrefix(key, "property.")
 		if strings.TrimSpace(name) == "" {
@@ -233,9 +237,17 @@ func applyProperty(config *fileConfig, aliases configprops.Aliases, key string, 
 		}
 		config.CustomLevels[name] = value
 	case strings.HasPrefix(key, "asyncLogger."):
-		return applyAsyncLoggerProperty(&config.AsyncLogger, strings.TrimPrefix(key, "asyncLogger."), value)
+		return applyAsyncLoggerProperty(
+			&config.AsyncLogger,
+			strings.TrimPrefix(key, "asyncLogger."),
+			value,
+		)
 	case strings.HasPrefix(key, "async-logger."):
-		return applyAsyncLoggerProperty(&config.AsyncLoggerKebab, strings.TrimPrefix(key, "async-logger."), value)
+		return applyAsyncLoggerProperty(
+			&config.AsyncLoggerKebab,
+			strings.TrimPrefix(key, "async-logger."),
+			value,
+		)
 	case strings.HasPrefix(key, "async."):
 		return applyAsyncLoggerProperty(&config.Async, strings.TrimPrefix(key, "async."), value)
 	case strings.HasPrefix(key, "appender."):
@@ -246,6 +258,13 @@ func applyProperty(config *fileConfig, aliases configprops.Aliases, key string, 
 		return applyFilterProperty(config, strings.TrimPrefix(key, "filter."), value)
 	}
 	return nil
+}
+
+func isRootIncludeLocationKey(key string) bool {
+	return key == "rootLogger.includeLocation" ||
+		key == "rootLogger.include-location" ||
+		key == "root.includeLocation" ||
+		key == "root.include-location"
 }
 
 func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value string) error {
@@ -292,7 +311,12 @@ func applyAsyncLoggerProperty(config *asyncLoggerConfig, key string, value strin
 	return nil
 }
 
-func applyLoggerProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
+func applyLoggerProperty(
+	config *fileConfig,
+	aliases configprops.Aliases,
+	key string,
+	value string,
+) error {
 	id, field, ok := configprops.SplitID(key)
 	if !ok {
 		return nil
@@ -322,7 +346,8 @@ func applyLoggerProperty(config *fileConfig, aliases configprops.Aliases, key st
 		logger.IncludeLocation = &parsed
 	default:
 		if strings.HasPrefix(field, "appenderRef.") {
-			if err := applyAppenderRefProperty(&logger.AppenderRefs, strings.TrimPrefix(field, "appenderRef."), value); err != nil {
+			refName := strings.TrimPrefix(field, "appenderRef.")
+			if err := applyAppenderRefProperty(&logger.AppenderRefs, refName, value); err != nil {
 				return err
 			}
 		}

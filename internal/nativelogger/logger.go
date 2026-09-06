@@ -17,8 +17,30 @@ import (
 type Handler interface {
 	Enabled(ctx context.Context, logger string, level slog.Level) bool
 	IncludeCaller(logger string) bool
-	LogAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr) error
-	Log3Attrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error
+	LogAttrs(
+		ctx context.Context,
+		logger string,
+		handlerAttrs []slog.Attr,
+		groups []string,
+		when time.Time,
+		level slog.Level,
+		message string,
+		pc uintptr,
+		attrs []slog.Attr,
+	) error
+	Log3Attrs(
+		ctx context.Context,
+		logger string,
+		handlerAttrs []slog.Attr,
+		groups []string,
+		when time.Time,
+		level slog.Level,
+		message string,
+		pc uintptr,
+		attr0 slog.Attr,
+		attr1 slog.Attr,
+		attr2 slog.Attr,
+	) error
 	SlogHandler() slog.Handler
 }
 
@@ -151,12 +173,24 @@ func (l *Logger) WithGroup(name string) *Logger {
 }
 
 // LogAttrs 使用 slog.Attr 直写日志事件。
-func (l *Logger) LogAttrs(ctx context.Context, level slog.Level, message string, attrs ...slog.Attr) error {
+func (l *Logger) LogAttrs(
+	ctx context.Context,
+	level slog.Level,
+	message string,
+	attrs ...slog.Attr,
+) error {
 	return l.logAttrs(ctx, level, message, attrs, 2)
 }
 
 // LogAttrs3 使用三个固定属性写出事件，避免极热路径的 variadic slice 分配。
-func (l *Logger) LogAttrs3(ctx context.Context, level slog.Level, message string, attr0 slog.Attr, attr1 slog.Attr, attr2 slog.Attr) error {
+func (l *Logger) LogAttrs3(
+	ctx context.Context,
+	level slog.Level,
+	message string,
+	attr0 slog.Attr,
+	attr1 slog.Attr,
+	attr2 slog.Attr,
+) error {
 	if l == nil || l.handler == nil {
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
@@ -164,10 +198,28 @@ func (l *Logger) LogAttrs3(ctx context.Context, level slog.Level, message string
 	if l.includeCaller || l.handler.IncludeCaller(l.Name()) {
 		pc = CallerPC(2)
 	}
-	return l.handler.Log3Attrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attr0, attr1, attr2)
+	return l.handler.Log3Attrs(
+		ctx,
+		l.Name(),
+		l.attrs,
+		l.groups,
+		time.Now(),
+		level,
+		message,
+		pc,
+		attr0,
+		attr1,
+		attr2,
+	)
 }
 
-func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string, attrs []slog.Attr, callerSkip int) error {
+func (l *Logger) logAttrs(
+	ctx context.Context,
+	level slog.Level,
+	message string,
+	attrs []slog.Attr,
+	callerSkip int,
+) error {
 	if l == nil || l.handler == nil {
 		return fmt.Errorf("goark-log: native logger is nil")
 	}
@@ -175,7 +227,17 @@ func (l *Logger) logAttrs(ctx context.Context, level slog.Level, message string,
 	if l.includeCaller || l.handler.IncludeCaller(l.Name()) {
 		pc = CallerPC(callerSkip)
 	}
-	return l.handler.LogAttrs(ctx, l.Name(), l.attrs, l.groups, time.Now(), level, message, pc, attrs)
+	return l.handler.LogAttrs(
+		ctx,
+		l.Name(),
+		l.attrs,
+		l.groups,
+		time.Now(),
+		level,
+		message,
+		pc,
+		attrs,
+	)
 }
 
 // Debug 写出 DEBUG 级别日志。

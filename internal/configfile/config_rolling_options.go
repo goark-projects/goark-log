@@ -39,7 +39,12 @@ func (c rollingConfig) timeModulate() *bool {
 }
 
 func (c rollingConfig) maxAge() string {
-	return textutil.FirstNonBlank(c.Strategy.MaxAge, c.Strategy.MaxAgeKebab, c.MaxAge, c.MaxAgeKebab)
+	return textutil.FirstNonBlank(
+		c.Strategy.MaxAge,
+		c.Strategy.MaxAgeKebab,
+		c.MaxAge,
+		c.MaxAgeKebab,
+	)
 }
 
 func (c rollingConfig) fileIndex() string {
@@ -115,7 +120,11 @@ func (c rollingConfig) actionQueueSize() int {
 
 func (c rollingConfig) deleteActions(fileName string) []RollingDeleteBuildConfig {
 	defaultBase := c.defaultDeleteBasePath(fileName)
-	configs := make([]rollingDeleteActionConfig, 0, 1+len(c.Strategy.DeleteActions)+len(c.Strategy.DeleteActionsKebab))
+	configs := make(
+		[]rollingDeleteActionConfig,
+		0,
+		1+len(c.Strategy.DeleteActions)+len(c.Strategy.DeleteActionsKebab),
+	)
 	if !c.Strategy.Delete.empty() {
 		configs = append(configs, c.Strategy.Delete)
 	}
@@ -222,7 +231,11 @@ func (c rollingTimePolicyConfig) interval() string {
 	if strings.TrimSpace(c.Unit) == "" {
 		return textutil.FirstNonBlank(c.Interval, c.Every)
 	}
-	return strings.TrimSpace(textutil.FirstNonBlank(c.Interval, c.Every)) + strings.TrimSpace(c.Unit)
+	return strings.TrimSpace(
+		textutil.FirstNonBlank(c.Interval, c.Every),
+	) + strings.TrimSpace(
+		c.Unit,
+	)
 }
 
 func (c rollingCronPolicyConfig) empty() bool {
@@ -249,7 +262,12 @@ func (c rollingDeleteActionConfig) build(defaultBase string) RollingDeleteBuildC
 		BasePath: textutil.FirstNonBlank(c.BasePath, c.BasePathKebab, defaultBase),
 		Glob:     textutil.FirstNonBlank(c.Glob, c.IfFileName.Glob, c.IfFileNameKebab.Glob),
 		MaxAge:   textutil.FirstNonBlank(c.Age, c.IfLastModified.Age, c.IfLastModifiedKebab.Age),
-		MaxSize:  textutil.FirstNonBlank(c.MaxSize, c.MaxSizeKebab, c.IfAccumulatedFileSize.Exceeds, c.IfAccumulatedFileSizeKebab.Exceeds),
+		MaxSize: textutil.FirstNonBlank(
+			c.MaxSize,
+			c.MaxSizeKebab,
+			c.IfAccumulatedFileSize.Exceeds,
+			c.IfAccumulatedFileSizeKebab.Exceeds,
+		),
 	}
 	if c.MaxDepth != nil {
 		config.MaxDepth = *c.MaxDepth

@@ -97,18 +97,32 @@ func ParseCronSchedule(expression string) (*CronSchedule, error) {
 	}, nil
 }
 
-func parseCronField(value string, min int, max int, names map[string]int, allowQuestion bool) (cronField, error) {
+func parseCronField(
+	value string,
+	min int,
+	max int,
+	names map[string]int,
+	allowQuestion bool,
+) (cronField, error) {
 	field := cronField{allowed: make([]bool, max+1)}
 	parts := strings.Split(strings.TrimSpace(value), ",")
 	for _, part := range parts {
-		if err := applyCronFieldPart(field.allowed, strings.TrimSpace(part), min, max, names, allowQuestion); err != nil {
+		part = strings.TrimSpace(part)
+		if err := applyCronFieldPart(field.allowed, part, min, max, names, allowQuestion); err != nil {
 			return cronField{}, err
 		}
 	}
 	return field, nil
 }
 
-func applyCronFieldPart(allowed []bool, part string, min int, max int, names map[string]int, allowQuestion bool) error {
+func applyCronFieldPart(
+	allowed []bool,
+	part string,
+	min int,
+	max int,
+	names map[string]int,
+	allowQuestion bool,
+) error {
 	if part == "" {
 		return fmt.Errorf("empty field")
 	}
@@ -132,7 +146,14 @@ func applyCronFieldPart(allowed []bool, part string, min int, max int, names map
 	return nil
 }
 
-func cronPartRange(part string, min int, max int, names map[string]int, allowQuestion bool, stepped bool) (int, int, error) {
+func cronPartRange(
+	part string,
+	min int,
+	max int,
+	names map[string]int,
+	allowQuestion bool,
+	stepped bool,
+) (int, int, error) {
 	if part == "*" || allowQuestion && part == "?" {
 		return min, max, nil
 	}

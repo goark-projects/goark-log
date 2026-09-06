@@ -83,7 +83,11 @@ func (o filterOutcome) decide(matched bool) FilterDecision {
 	return o.onMismatch
 }
 
-func newSettings(onMatch FilterDecision, onMismatch FilterDecision, options ...FilterOption) *filterSettings {
+func newSettings(
+	onMatch FilterDecision,
+	onMismatch FilterDecision,
+	options ...FilterOption,
+) *filterSettings {
 	settings := &filterSettings{
 		outcome: filterOutcome{
 			onMatch:    onMatch,

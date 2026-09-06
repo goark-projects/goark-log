@@ -59,7 +59,11 @@ func (a *RollingFileAppender) openDirect(now time.Time) (int64, error) {
 			_ = file.Close()
 			a.file = nil
 			a.writer = nil
-			return 0, fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+			return 0, fmt.Errorf(
+				"goark-log: write rolling file appender %q header: %w",
+				a.Name(),
+				err,
+			)
 		}
 		a.size += int64(n)
 	}
@@ -91,7 +95,11 @@ func (a *RollingFileAppender) openActiveLocked() (int64, error) {
 			_ = file.Close()
 			a.file = nil
 			a.writer = nil
-			return 0, fmt.Errorf("goark-log: write rolling file appender %q header: %w", a.Name(), err)
+			return 0, fmt.Errorf(
+				"goark-log: write rolling file appender %q header: %w",
+				a.Name(),
+				err,
+			)
 		}
 		a.size += int64(n)
 	}

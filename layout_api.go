@@ -166,13 +166,21 @@ func WithJSONTemplateLayoutOptions(layoutOptions LayoutOptions) JSONTemplateLayo
 }
 
 // NewJSONTemplateLayout 从 JSON 事件模板编译布局。
-func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
+func NewJSONTemplateLayout(
+	template string,
+	options ...JSONTemplateLayoutOption,
+) (*JSONTemplateLayout, error) {
 	return internallayout.NewJSONTemplateLayout(template, jsonTemplateLayoutOptions(options...)...)
 }
 
 // NewJSONTemplateLayoutFromFile 从本地文件编译 JSON 事件模板。
-func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
-	return internallayout.NewJSONTemplateLayoutFromFile(path, jsonTemplateLayoutOptions(options...)...)
+func NewJSONTemplateLayoutFromFile(
+	path string,
+	options ...JSONTemplateLayoutOption,
+) (*JSONTemplateLayout, error) {
+	return internallayout.NewJSONTemplateLayoutFromFile(
+		path,
+		jsonTemplateLayoutOptions(options...)...)
 }
 
 func jsonTemplateLayoutOptions(options ...JSONTemplateLayoutOption) []JSONTemplateLayoutOption {

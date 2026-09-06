@@ -75,14 +75,17 @@ func DeleteArchivesByAction(now time.Time, action DeleteAction) error {
 		return fmt.Errorf("goark-log: stat rolling delete basePath %q: %w", action.BasePath, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("goark-log: rolling delete basePath %q is not a directory", action.BasePath)
+		return fmt.Errorf(
+			"goark-log: rolling delete basePath %q is not a directory",
+			action.BasePath,
+		)
 	}
 	cutoff := time.Time{}
 	if action.MaxAge > 0 {
 		cutoff = now.Add(-action.MaxAge)
 	}
 	candidates := make([]deleteCandidate, 0, 16)
-	if err := filepath.WalkDir(action.BasePath, func(path string, entry fs.DirEntry, walkErr error) error {
+	walk := func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -117,13 +120,19 @@ func DeleteArchivesByAction(now time.Time, action DeleteAction) error {
 			size:    info.Size(),
 		})
 		return nil
-	}); err != nil {
+	}
+	if err := filepath.WalkDir(action.BasePath, walk); err != nil {
 		return err
 	}
 	return deleteArchiveCandidates(candidates, cutoff, action.MaxCount, action.MaxSize)
 }
 
-func deleteArchiveCandidates(candidates []deleteCandidate, cutoff time.Time, maxCount int, maxSize int64) error {
+func deleteArchiveCandidates(
+	candidates []deleteCandidate,
+	cutoff time.Time,
+	maxCount int,
+	maxSize int64,
+) error {
 	if len(candidates) == 0 {
 		return nil
 	}

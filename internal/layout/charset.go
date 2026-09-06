@@ -62,7 +62,10 @@ func (l *charsetLayout) RequiresSynchronizedFormatting() bool {
 	return RequiresSynchronizedFormatting(l.delegate)
 }
 
-func (l *charsetLayout) transform(destination *bytes.Buffer, render func(*bytes.Buffer) error) error {
+func (l *charsetLayout) transform(
+	destination *bytes.Buffer,
+	render func(*bytes.Buffer) error,
+) error {
 	source := bufferPool.Get().(*bytes.Buffer)
 	source.Reset()
 	defer releaseBuffer(source)

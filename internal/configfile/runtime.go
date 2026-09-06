@@ -163,7 +163,10 @@ func validateAsyncWaitOptions(options AsyncWaitOptions) error {
 	return internalasync.ValidateWaitOptions(options)
 }
 
-func NewFilteredAppender(delegate Appender, filters ...Filter) (*internalrouter.FilteredAppender, error) {
+func NewFilteredAppender(
+	delegate Appender,
+	filters ...Filter,
+) (*internalrouter.FilteredAppender, error) {
 	return internalrouter.NewFilteredAppender(delegate, filters...)
 }
 

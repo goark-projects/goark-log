@@ -68,14 +68,20 @@ func TestBatchEventProcessor_whenHalted_shouldDrainQueuedEvents(t *testing.T) {
 		seqs    []int64
 		endings []bool
 	)
-	processor, err := NewBatchEventProcessor(ring, EventHandlerFunc[int](func(_ context.Context, event int, sequence int64, endOfBatch bool) error {
-		mu.Lock()
-		defer mu.Unlock()
-		values = append(values, event)
-		seqs = append(seqs, sequence)
-		endings = append(endings, endOfBatch)
-		return nil
-	}), WithBatchSize[int](3))
+	processor, err := NewBatchEventProcessor(
+		ring,
+		EventHandlerFunc[int](
+			func(_ context.Context, event int, sequence int64, endOfBatch bool) error {
+				mu.Lock()
+				defer mu.Unlock()
+				values = append(values, event)
+				seqs = append(seqs, sequence)
+				endings = append(endings, endOfBatch)
+				return nil
+			},
+		),
+		WithBatchSize[int](3),
+	)
 	if err != nil {
 		t.Fatalf("NewBatchEventProcessor() error = %v", err)
 	}
@@ -122,15 +128,20 @@ func TestBatchEventProcessor_whenHandlerFails_shouldCallExceptionHandler(t *test
 	}
 	wantErr := errors.New("boom")
 	called := make(chan int64, 1)
-	processor, err := NewBatchEventProcessor(ring,
+	processor, err := NewBatchEventProcessor(
+		ring,
 		EventHandlerFunc[int](func(context.Context, int, int64, bool) error {
 			return wantErr
 		}),
-		WithExceptionHandler[int](ExceptionHandlerFunc[int](func(_ context.Context, err error, sequence int64, event int) {
-			if errors.Is(err, wantErr) && event == 7 {
-				called <- sequence
-			}
-		})),
+		WithExceptionHandler[int](
+			ExceptionHandlerFunc[int](
+				func(_ context.Context, err error, sequence int64, event int) {
+					if errors.Is(err, wantErr) && event == 7 {
+						called <- sequence
+					}
+				},
+			),
+		),
 	)
 	if err != nil {
 		t.Fatalf("NewBatchEventProcessor() error = %v", err)

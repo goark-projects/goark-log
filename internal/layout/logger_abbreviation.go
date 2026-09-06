@@ -165,7 +165,11 @@ func appendDroppedLoggerName(buf *bytes.Buffer, name string, count int) {
 	buf.WriteString(name[start:])
 }
 
-func appendPatternLoggerName(buf *bytes.Buffer, name string, fragments []loggerAbbreviationFragment) {
+func appendPatternLoggerName(
+	buf *bytes.Buffer,
+	name string,
+	fragments []loggerAbbreviationFragment,
+) {
 	if len(fragments) == 0 {
 		buf.WriteString(name)
 		return

@@ -142,7 +142,10 @@ func NewFile(path string, options ...Option) (*Appender, error) {
 		return nil, fmt.Errorf("goark-log: JSON appender name is empty")
 	}
 	if appender.externalWriter {
-		return nil, fmt.Errorf("goark-log: JSON file appender %q cannot use an explicit writer", appender.Name())
+		return nil, fmt.Errorf(
+			"goark-log: JSON file appender %q cannot use an explicit writer",
+			appender.Name(),
+		)
 	}
 	if appender.bufferSize < 0 {
 		return nil, fmt.Errorf("goark-log: JSON file buffer size must be >= 0")
@@ -204,11 +207,25 @@ func (a *Appender) AppendFixedAttrs(ctx context.Context, event FixedAttrEvent) e
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer releaseBuffer(buf)
-	internallayout.AppendJSONFixedEvent(buf, event.Time, event.Level, event.Logger, event.Message, event.Attrs, event.Count)
+	internallayout.AppendJSONFixedEvent(
+		buf,
+		event.Time,
+		event.Level,
+		event.Logger,
+		event.Message,
+		event.Attrs,
+		event.Count,
+	)
 	return a.writeBytes(buf.Bytes())
 }
 
-func (a *Appender) write(when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) error {
+func (a *Appender) write(
+	when time.Time,
+	level slog.Level,
+	logger string,
+	message string,
+	attrs []slog.Attr,
+) error {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer releaseBuffer(buf)

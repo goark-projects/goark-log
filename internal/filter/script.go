@@ -58,7 +58,10 @@ func WithScriptFilterOnError(decision FilterDecision) ScriptFilterOption {
 }
 
 // NewScriptFilter 创建脚本过滤器。
-func NewScriptFilter(evaluator ScriptEvaluator, options ...ScriptFilterOption) (*ScriptFilter, error) {
+func NewScriptFilter(
+	evaluator ScriptEvaluator,
+	options ...ScriptFilterOption,
+) (*ScriptFilter, error) {
 	if evaluator == nil {
 		return nil, fmt.Errorf("goark-log: script evaluator is nil")
 	}
@@ -74,7 +77,11 @@ func NewScriptFilter(evaluator ScriptEvaluator, options ...ScriptFilterOption) (
 			option(&settings)
 		}
 	}
-	return &ScriptFilter{evaluator: evaluator, onError: settings.onError, outcome: settings.outcome}, nil
+	return &ScriptFilter{
+		evaluator: evaluator,
+		onError:   settings.onError,
+		outcome:   settings.outcome,
+	}, nil
 }
 
 // Decide 执行脚本判断，脚本错误默认按拒绝处理。

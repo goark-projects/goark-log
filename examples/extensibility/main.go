@@ -65,7 +65,9 @@ func tenantLookup(key string) (string, bool) {
 	return "", false
 }
 
-func buildConstantResolver(config log.JSONTemplateResolverBuildConfig) (log.JSONTemplateResolver, error) {
+func buildConstantResolver(
+	config log.JSONTemplateResolverBuildConfig,
+) (log.JSONTemplateResolver, error) {
 	var value string
 	if err := sonic.Unmarshal(config.Options["value"], &value); err != nil {
 		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)

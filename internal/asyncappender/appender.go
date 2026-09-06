@@ -69,7 +69,10 @@ func New(appenders []Sink, options ...Option) (*Appender, error) {
 	if err != nil {
 		return nil, err
 	}
-	normalizedQueueSize, err := asyncruntime.NormalizeQueueSize(appender.queueSize, asyncruntime.DefaultAsyncQueueSize)
+	normalizedQueueSize, err := asyncruntime.NormalizeQueueSize(
+		appender.queueSize,
+		asyncruntime.DefaultAsyncQueueSize,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +87,10 @@ func New(appenders []Sink, options ...Option) (*Appender, error) {
 	appender.strategy = strategy
 	appender.waitStrategy = waitStrategy
 	appender.appenders = append([]Sink(nil), appenders...)
-	appender.queue, err = disruptor.NewRingBuffer[entry](appender.queueSize, asyncruntime.NewWaitStrategyWithOptions(appender.waitStrategy, appender.waitOptions))
+	appender.queue, err = disruptor.NewRingBuffer[entry](
+		appender.queueSize,
+		asyncruntime.NewWaitStrategyWithOptions(appender.waitStrategy, appender.waitOptions),
+	)
 	if err != nil {
 		return nil, err
 	}

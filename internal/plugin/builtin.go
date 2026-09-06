@@ -29,20 +29,59 @@ func registerBuiltInFilters(registry *Registry) {
 	registerFilterAliases(registry, buildLevelFilterPlugin, "level", "levelFilter")
 	registerFilterAliases(registry, buildLevelRangeFilterPlugin, "levelRange", "levelRangeFilter")
 	registerFilterAliases(registry, buildRegexFilterPlugin, "regex", "regexFilter")
-	registerFilterAliases(registry, buildAttrFilterPlugin, "attr", "attribute", "attrFilter", "attributeFilter")
-	registerFilterAliases(registry, buildDenyFilterPlugin, "deny", "denyAll", "denyFilter", "denyAllFilter")
+	registerFilterAliases(
+		registry,
+		buildAttrFilterPlugin,
+		"attr",
+		"attribute",
+		"attrFilter",
+		"attributeFilter",
+	)
+	registerFilterAliases(
+		registry,
+		buildDenyFilterPlugin,
+		"deny",
+		"denyAll",
+		"denyFilter",
+		"denyAllFilter",
+	)
 	registerFilterAliases(registry, buildCompositeFilterPlugin, "composite", "compositeFilter")
 	registerFilterAliases(registry, buildMarkerFilterPlugin, "marker", "markerFilter")
 	registerFilterAliases(registry, buildNoMarkerFilterPlugin, "noMarker", "noMarkerFilter")
 	registerFilterAliases(registry, buildMapFilterPlugin, "map", "mapFilter")
-	registerFilterAliases(registry, buildThreadContextMapFilterPlugin, "threadContextMap", "threadContextMapFilter")
-	registerFilterAliases(registry, buildThreadContextStackFilterPlugin, "threadContextStack", "threadContextStackFilter")
-	registerFilterAliases(registry, buildStructuredDataFilterPlugin, "structuredData", "structuredDataFilter")
+	registerFilterAliases(
+		registry,
+		buildThreadContextMapFilterPlugin,
+		"threadContextMap",
+		"threadContextMapFilter",
+	)
+	registerFilterAliases(
+		registry,
+		buildThreadContextStackFilterPlugin,
+		"threadContextStack",
+		"threadContextStackFilter",
+	)
+	registerFilterAliases(
+		registry,
+		buildStructuredDataFilterPlugin,
+		"structuredData",
+		"structuredDataFilter",
+	)
 	registerFilterAliases(registry, buildThrowableFilterPlugin, "throwable", "throwableFilter")
-	registerFilterAliases(registry, buildStringMatchFilterPlugin, "stringMatch", "stringMatchFilter")
+	registerFilterAliases(
+		registry,
+		buildStringMatchFilterPlugin,
+		"stringMatch",
+		"stringMatchFilter",
+	)
 	registerFilterAliases(registry, buildTimeFilterPlugin, "time", "timeFilter")
 	registerFilterAliases(registry, buildBurstFilterPlugin, "burst", "burstFilter")
-	registerFilterAliases(registry, buildDynamicThresholdFilterPlugin, "dynamicThreshold", "dynamicThresholdFilter")
+	registerFilterAliases(
+		registry,
+		buildDynamicThresholdFilterPlugin,
+		"dynamicThreshold",
+		"dynamicThresholdFilter",
+	)
 }
 
 func registerFilterAliases(registry *Registry, factory FilterFactory, aliases ...string) {

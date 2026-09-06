@@ -35,7 +35,13 @@ func FormatPattern(pattern string, now time.Time, index int) (string, error) {
 	return builder.String(), nil
 }
 
-func appendPatternToken(builder *strings.Builder, pattern string, offset int, now time.Time, index int) (int, error) {
+func appendPatternToken(
+	builder *strings.Builder,
+	pattern string,
+	offset int,
+	now time.Time,
+	index int,
+) (int, error) {
 	cursor := offset + 1
 	zeroPad := false
 	width := 0
@@ -48,7 +54,10 @@ func appendPatternToken(builder *strings.Builder, pattern string, offset int, no
 		cursor++
 	}
 	if cursor >= len(pattern) {
-		return 0, fmt.Errorf("goark-log: rolling filePattern token is incomplete near %q", pattern[offset:])
+		return 0, fmt.Errorf(
+			"goark-log: rolling filePattern token is incomplete near %q",
+			pattern[offset:],
+		)
 	}
 	switch pattern[cursor] {
 	case 'i':
@@ -64,7 +73,10 @@ func appendPatternToken(builder *strings.Builder, pattern string, offset int, no
 		if cursor < len(pattern) && pattern[cursor] == '{' {
 			end := strings.IndexByte(pattern[cursor+1:], '}')
 			if end < 0 {
-				return 0, fmt.Errorf("goark-log: rolling filePattern date option is not closed near %q", pattern[cursor:])
+				return 0, fmt.Errorf(
+					"goark-log: rolling filePattern date option is not closed near %q",
+					pattern[cursor:],
+				)
 			}
 			option = pattern[cursor+1 : cursor+1+end]
 			cursor += end + 2
@@ -87,7 +99,10 @@ func appendPatternToken(builder *strings.Builder, pattern string, offset int, no
 		}
 		return cursor, nil
 	default:
-		return 0, fmt.Errorf("goark-log: unsupported rolling filePattern token near %q", pattern[offset:])
+		return 0, fmt.Errorf(
+			"goark-log: unsupported rolling filePattern token near %q",
+			pattern[offset:],
+		)
 	}
 }
 
@@ -211,7 +226,10 @@ func PatternIndexRegexp(pattern string, compress bool) (*regexp.Regexp, bool, er
 	builder.WriteByte('$')
 	compiled, err := regexp.Compile(builder.String())
 	if err != nil {
-		return nil, false, fmt.Errorf("goark-log: compile rolling filePattern index matcher: %w", err)
+		return nil, false, fmt.Errorf(
+			"goark-log: compile rolling filePattern index matcher: %w",
+			err,
+		)
 	}
 	return compiled, hasIndex, nil
 }

@@ -22,7 +22,10 @@ func main() {
 	logPath := filepath.Join(dir, "reload.log")
 	writeConfig(configPath, logPath, "info")
 
-	logger, handler, _, err := log.NewConfigured(context.Background(), log.WithConfigPath(configPath))
+	logger, handler, _, err := log.NewConfigured(
+		context.Background(),
+		log.WithConfigPath(configPath),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -40,7 +43,10 @@ func main() {
 		panic(err)
 	}
 	logger.Debug("visible after reload", slog.String("path", logPath))
-	slog.Info("reload demo completed", slog.String("template", exampleutil.ConfigPath("production-service.yml")))
+	slog.Info(
+		"reload demo completed",
+		slog.String("template", exampleutil.ConfigPath("production-service.yml")),
+	)
 }
 
 func writeConfig(configPath string, logPath string, level string) {

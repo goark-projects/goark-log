@@ -13,14 +13,16 @@ func TestLoadOptions_whenCustomizerConfigured_shouldApplyAfterDefaultLoading(t *
 	options, result, err := log.LoadOptions(
 		context.Background(),
 		log.WithDefaultConfigPaths(),
-		log.WithOptionsCustomizer(func(_ context.Context, current log.Options, source *log.ConfigResult) (log.Options, error) {
-			called = true
-			if source.Source != log.ConfigSourceDefault {
-				t.Fatalf("source = %q, want default", source.Source)
-			}
-			current.Root.Level = slog.LevelDebug
-			return current, nil
-		}),
+		log.WithOptionsCustomizer(
+			func(_ context.Context, current log.Options, source *log.ConfigResult) (log.Options, error) {
+				called = true
+				if source.Source != log.ConfigSourceDefault {
+					t.Fatalf("source = %q, want default", source.Source)
+				}
+				current.Root.Level = slog.LevelDebug
+				return current, nil
+			},
+		),
 	)
 	if err != nil {
 		t.Fatalf("LoadOptions() error = %v", err)

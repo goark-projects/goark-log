@@ -26,7 +26,11 @@ func compileStructuredPaths(attrs []slog.Attr, prefix string) ([]*structuredPath
 		}
 		parts := strings.Split(path, ".")
 		if len(parts) > maxStructuredPathDepth {
-			return nil, fmt.Errorf("goark-log: structured JSON path %q exceeds maximum depth %d", path, maxStructuredPathDepth)
+			return nil, fmt.Errorf(
+				"goark-log: structured JSON path %q exceeds maximum depth %d",
+				path,
+				maxStructuredPathDepth,
+			)
 		}
 		if err := root.insert(parts, path, attr.Value); err != nil {
 			return nil, err
@@ -63,7 +67,8 @@ func (n *structuredPathNode) insert(parts []string, path string, value slog.Valu
 			current.index[part] = child
 			current.children = append(current.children, child)
 		}
-		if (child.hasValue && index != len(parts)-1) || (len(child.children) > 0 && index == len(parts)-1) {
+		if (child.hasValue && index != len(parts)-1) ||
+			(len(child.children) > 0 && index == len(parts)-1) {
 			return fmt.Errorf("goark-log: duplicate structured JSON path under %q", child.path)
 		}
 		current = child

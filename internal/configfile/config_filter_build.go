@@ -51,7 +51,12 @@ func (c *fileConfig) buildFilters(registry *PluginRegistry) (map[string]Filter, 
 	return filters, nil
 }
 
-func (c *fileConfig) buildFilter(name string, registry *PluginRegistry, filters map[string]Filter, visiting map[string]bool) (Filter, error) {
+func (c *fileConfig) buildFilter(
+	name string,
+	registry *PluginRegistry,
+	filters map[string]Filter,
+	visiting map[string]bool,
+) (Filter, error) {
 	if filter, ok := filters[name]; ok {
 		return filter, nil
 	}
@@ -76,7 +81,12 @@ func (c *fileConfig) buildFilter(name string, registry *PluginRegistry, filters 
 	return filter, nil
 }
 
-func (c *fileConfig) resolveNestedFilters(refs []string, registry *PluginRegistry, filters map[string]Filter, visiting map[string]bool) ([]Filter, error) {
+func (c *fileConfig) resolveNestedFilters(
+	refs []string,
+	registry *PluginRegistry,
+	filters map[string]Filter,
+	visiting map[string]bool,
+) ([]Filter, error) {
 	if len(refs) == 0 {
 		return nil, nil
 	}
@@ -95,7 +105,12 @@ func (c *fileConfig) resolveNestedFilters(refs []string, registry *PluginRegistr
 	return nested, nil
 }
 
-func buildFilter(name string, spec filterConfig, nested []Filter, registry *PluginRegistry) (Filter, error) {
+func buildFilter(
+	name string,
+	spec filterConfig,
+	nested []Filter,
+	registry *PluginRegistry,
+) (Filter, error) {
 	if textutil.NormalizeKind(spec.Type) == "" {
 		return nil, fmt.Errorf("goark-log: filter %q type is empty", name)
 	}
@@ -149,7 +164,12 @@ func (c filterConfig) thresholds() map[string]string {
 
 func (c filterConfig) keyValuePairs() map[string]string {
 	pairs := make(map[string]string)
-	for _, groups := range [][]keyValuePairConfig{c.KeyValuePair, c.KeyValuePairs, c.KeyValuePairsKebab} {
+	allGroups := [][]keyValuePairConfig{
+		c.KeyValuePair,
+		c.KeyValuePairs,
+		c.KeyValuePairsKebab,
+	}
+	for _, groups := range allGroups {
 		for _, pair := range groups {
 			key := strings.TrimSpace(pair.Key)
 			if key == "" {
@@ -224,7 +244,12 @@ func isDynamicThresholdFilterKind(value string) bool {
 	}
 }
 
-func wrapAppenderFilters(name string, appender Appender, refs []string, filters map[string]Filter) (Appender, error) {
+func wrapAppenderFilters(
+	name string,
+	appender Appender,
+	refs []string,
+	filters map[string]Filter,
+) (Appender, error) {
 	resolved, err := resolveFilters(filters, refs)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)

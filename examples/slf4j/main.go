@@ -33,5 +33,10 @@ func main() {
 		Logf("user {} finished request in {}", "alice", 8*time.Millisecond)
 
 	slogLogger := logger.Slog().WithGroup("request")
-	slogLogger.InfoContext(ctx, "standard slog interop", slog.String("method", "GET"), slog.Int("status", 200))
+	slogLogger.InfoContext(
+		ctx,
+		"standard slog interop",
+		slog.String("method", "GET"),
+		slog.Int("status", 200),
+	)
 }

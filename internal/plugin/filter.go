@@ -26,7 +26,11 @@ func (c FilterBuildConfig) filterOptions() ([]logfilter.FilterOption, error) {
 	}, nil
 }
 
-func (c FilterBuildConfig) mapFilterOptions() ([]logfilter.MapFilterOption, map[string]string, error) {
+func (c FilterBuildConfig) mapFilterOptions() (
+	[]logfilter.MapFilterOption,
+	map[string]string,
+	error,
+) {
 	values := make(map[string]string, len(c.Values)+1)
 	for key, value := range c.Values {
 		values[key] = value
@@ -94,7 +98,10 @@ func buildLevelFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) 
 
 func buildLevelRangeFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
 	if config.MinLevel == "" || config.MaxLevel == "" {
-		return nil, fmt.Errorf("goark-log: filter %q level range requires minLevel and maxLevel", config.Name)
+		return nil, fmt.Errorf(
+			"goark-log: filter %q level range requires minLevel and maxLevel",
+			config.Name,
+		)
 	}
 	min, err := configlevel.ParseDefault(config.MinLevel)
 	if err != nil {
@@ -156,7 +163,9 @@ func buildMarkerFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error)
 	if err != nil {
 		return nil, err
 	}
-	return logfilter.NewMarkerFilter(textutil.FirstNonBlank(config.Marker, config.Value), options...)
+	return logfilter.NewMarkerFilter(
+		textutil.FirstNonBlank(config.Marker, config.Value),
+		options...)
 }
 
 func buildNoMarkerFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
@@ -188,7 +197,9 @@ func buildThreadContextStackFilterPlugin(config FilterBuildConfig) (logfilter.Fi
 	if err != nil {
 		return nil, err
 	}
-	return logfilter.NewThreadContextStackFilter(textutil.FirstNonBlank(config.Value, config.Text, config.Pattern), options...)
+	return logfilter.NewThreadContextStackFilter(
+		textutil.FirstNonBlank(config.Value, config.Text, config.Pattern),
+		options...)
 }
 
 func buildStructuredDataFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
@@ -204,7 +215,9 @@ func buildThrowableFilterPlugin(config FilterBuildConfig) (logfilter.Filter, err
 	if err != nil {
 		return nil, err
 	}
-	return logfilter.NewThrowableFilter(textutil.FirstNonBlank(config.Pattern, config.Text, config.Value), options...)
+	return logfilter.NewThrowableFilter(
+		textutil.FirstNonBlank(config.Pattern, config.Text, config.Value),
+		options...)
 }
 
 func buildStringMatchFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
@@ -212,7 +225,9 @@ func buildStringMatchFilterPlugin(config FilterBuildConfig) (logfilter.Filter, e
 	if err != nil {
 		return nil, err
 	}
-	return logfilter.NewStringMatchFilter(textutil.FirstNonBlank(config.Text, config.Value, config.Pattern), options...)
+	return logfilter.NewStringMatchFilter(
+		textutil.FirstNonBlank(config.Text, config.Value, config.Pattern),
+		options...)
 }
 
 func buildTimeFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
@@ -227,7 +242,11 @@ func buildTimeFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
 	}
 	location, err := time.LoadLocation(strings.TrimSpace(config.Timezone))
 	if err != nil {
-		return nil, fmt.Errorf("goark-log: filter %q timezone %q is invalid", config.Name, config.Timezone)
+		return nil, fmt.Errorf(
+			"goark-log: filter %q timezone %q is invalid",
+			config.Name,
+			config.Timezone,
+		)
 	}
 	return logfilter.NewTimeFilterInLocation(start, end, location, options...)
 }
@@ -260,7 +279,9 @@ func buildBurstFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) 
 }
 
 func buildDynamicThresholdFilterPlugin(config FilterBuildConfig) (logfilter.Filter, error) {
-	defaultLevel, err := configlevel.ParseDefault(textutil.FirstNonBlank(config.DefaultThreshold, config.Level, "error"))
+	defaultLevel, err := configlevel.ParseDefault(
+		textutil.FirstNonBlank(config.DefaultThreshold, config.Level, "error"),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +300,10 @@ func buildDynamicThresholdFilterPlugin(config FilterBuildConfig) (logfilter.Filt
 	return logfilter.NewDynamicThresholdFilter(config.Key, defaultLevel, thresholds, options...)
 }
 
-func parseFilterDecisionOrDefault(value string, fallback logfilter.FilterDecision) (logfilter.FilterDecision, error) {
+func parseFilterDecisionOrDefault(
+	value string,
+	fallback logfilter.FilterDecision,
+) (logfilter.FilterDecision, error) {
 	if strings.TrimSpace(value) == "" {
 		return fallback, nil
 	}

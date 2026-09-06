@@ -63,7 +63,11 @@ type appenderRefConfig struct {
 	FilterRefsKebab      []string `yaml:"filter-refs"`
 }
 
-func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (*fileConfig, error) {
+func loadConfigFile(
+	ctx context.Context,
+	path string,
+	lookups *LookupResolver,
+) (*fileConfig, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("goark-log: context is nil")
 	}
@@ -146,10 +150,14 @@ func (c *fileConfig) effective() (*fileConfig, error) {
 		return c, nil
 	}
 	if topLevelUsed {
-		return nil, fmt.Errorf("goark-log: config must use either top-level fields, configuration, or goark.log")
+		return nil, fmt.Errorf(
+			"goark-log: config must use either top-level fields, configuration, or goark.log",
+		)
 	}
 	if wrappers > 1 {
-		return nil, fmt.Errorf("goark-log: config must use only one wrapper: configuration or goark.log")
+		return nil, fmt.Errorf(
+			"goark-log: config must use only one wrapper: configuration or goark.log",
+		)
 	}
 	if c.Configuration != nil {
 		return c.Configuration, nil

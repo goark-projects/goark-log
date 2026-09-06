@@ -24,7 +24,12 @@ const (
 
 // WaitStrategy 控制生产者或消费者在条件未满足时如何等待。
 type WaitStrategy interface {
-	Wait(ctx context.Context, signal <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error
+	Wait(
+		ctx context.Context,
+		signal <-chan struct{},
+		interrupt <-chan struct{},
+		ready func() bool,
+	) error
 	Signal(signal chan<- struct{})
 }
 
@@ -80,7 +85,12 @@ type blockingWaitStrategy struct {
 	timeout time.Duration
 }
 
-func (s blockingWaitStrategy) Wait(ctx context.Context, signal <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error {
+func (s blockingWaitStrategy) Wait(
+	ctx context.Context,
+	signal <-chan struct{},
+	interrupt <-chan struct{},
+	ready func() bool,
+) error {
 	if s.timeout > 0 {
 		return s.waitWithTimeout(ctx, signal, interrupt, ready)
 	}
@@ -96,7 +106,12 @@ func (s blockingWaitStrategy) Wait(ctx context.Context, signal <-chan struct{}, 
 	return nil
 }
 
-func (s blockingWaitStrategy) waitWithTimeout(ctx context.Context, signal <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error {
+func (s blockingWaitStrategy) waitWithTimeout(
+	ctx context.Context,
+	signal <-chan struct{},
+	interrupt <-chan struct{},
+	ready func() bool,
+) error {
 	timer := time.NewTimer(s.timeout)
 	if !timer.Stop() {
 		<-timer.C
@@ -131,7 +146,12 @@ type sleepingWaitStrategy struct {
 	sleepTime time.Duration
 }
 
-func (s sleepingWaitStrategy) Wait(ctx context.Context, signal <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error {
+func (s sleepingWaitStrategy) Wait(
+	ctx context.Context,
+	signal <-chan struct{},
+	interrupt <-chan struct{},
+	ready func() bool,
+) error {
 	spins := s.retries
 	for !ready() {
 		if err := checkInterrupted(ctx, interrupt); err != nil {
@@ -157,7 +177,12 @@ func (sleepingWaitStrategy) Signal(signal chan<- struct{}) {
 
 type yieldingWaitStrategy struct{}
 
-func (yieldingWaitStrategy) Wait(ctx context.Context, signal <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error {
+func (yieldingWaitStrategy) Wait(
+	ctx context.Context,
+	signal <-chan struct{},
+	interrupt <-chan struct{},
+	ready func() bool,
+) error {
 	for !ready() {
 		if err := checkInterrupted(ctx, interrupt); err != nil {
 			return err
@@ -173,7 +198,12 @@ func (yieldingWaitStrategy) Signal(signal chan<- struct{}) {
 
 type busySpinWaitStrategy struct{}
 
-func (busySpinWaitStrategy) Wait(ctx context.Context, _ <-chan struct{}, interrupt <-chan struct{}, ready func() bool) error {
+func (busySpinWaitStrategy) Wait(
+	ctx context.Context,
+	_ <-chan struct{},
+	interrupt <-chan struct{},
+	ready func() bool,
+) error {
 	for !ready() {
 		if err := checkInterrupted(ctx, interrupt); err != nil {
 			return err

@@ -143,7 +143,9 @@ func (r *Resolver) propertyLookup(key string) (string, bool) {
 	return "", false
 }
 
-func splitPropertyShorthandExpr(expr string) (key string, fallback string, hasFallback bool, ok bool, err error) {
+func splitPropertyShorthandExpr(
+	expr string,
+) (key string, fallback string, hasFallback bool, ok bool, err error) {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {
 		return "", "", false, true, fmt.Errorf("goark-log: lookup expression is empty")
@@ -163,7 +165,9 @@ func splitPropertyShorthandExpr(expr string) (key string, fallback string, hasFa
 	return key, fallback, hasFallback, true, nil
 }
 
-func splitLookupExpr(expr string) (namespace string, key string, fallback string, hasFallback bool, err error) {
+func splitLookupExpr(
+	expr string,
+) (namespace string, key string, fallback string, hasFallback bool, err error) {
 	if strings.TrimSpace(expr) == "" {
 		err = fmt.Errorf("goark-log: lookup expression is empty")
 		return

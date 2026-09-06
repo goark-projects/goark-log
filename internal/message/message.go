@@ -94,12 +94,14 @@ func (m ParameterizedMessage) String() string {
 	var builder strings.Builder
 	argIndex := 0
 	for index := 0; index < len(m.pattern); index++ {
-		if index+2 <= len(m.pattern) && m.pattern[index] == '\\' && strings.HasPrefix(m.pattern[index+1:], "{}") {
+		if index+2 <= len(m.pattern) && m.pattern[index] == '\\' &&
+			strings.HasPrefix(m.pattern[index+1:], "{}") {
 			builder.WriteString("{}")
 			index += 2
 			continue
 		}
-		if index+1 < len(m.pattern) && m.pattern[index] == '{' && m.pattern[index+1] == '}' && argIndex < len(m.args) {
+		if index+1 < len(m.pattern) && m.pattern[index] == '{' && m.pattern[index+1] == '}' &&
+			argIndex < len(m.args) {
 			builder.WriteString(fmt.Sprint(m.args[argIndex]))
 			argIndex++
 			index++
@@ -149,7 +151,12 @@ type StructuredDataMessage struct {
 }
 
 // NewStructuredDataMessage 创建结构化数据消息。
-func NewStructuredDataMessage(id string, msgType string, message string, attrs ...slog.Attr) StructuredDataMessage {
+func NewStructuredDataMessage(
+	id string,
+	msgType string,
+	message string,
+	attrs ...slog.Attr,
+) StructuredDataMessage {
 	return StructuredDataMessage{
 		id:      strings.TrimSpace(id),
 		msgType: strings.TrimSpace(msgType),

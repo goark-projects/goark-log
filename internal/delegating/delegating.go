@@ -46,7 +46,11 @@ func WithFailoverCloseChildren(enabled bool) FailoverOption {
 }
 
 // NewFailoverAppender 创建失败转移 appender。
-func NewFailoverAppender(primary Appender, failovers []Appender, options ...FailoverOption) (*FailoverAppender, error) {
+func NewFailoverAppender(
+	primary Appender,
+	failovers []Appender,
+	options ...FailoverOption,
+) (*FailoverAppender, error) {
 	appender := &FailoverAppender{
 		name:          "failover",
 		primary:       primary,
@@ -161,7 +165,10 @@ func WithRoutingCloseChildren(enabled bool) RoutingOption {
 }
 
 // NewRoutingAppender 创建路由 appender。
-func NewRoutingAppender(routes map[string]Appender, options ...RoutingOption) (*RoutingAppender, error) {
+func NewRoutingAppender(
+	routes map[string]Appender,
+	options ...RoutingOption,
+) (*RoutingAppender, error) {
 	appender := &RoutingAppender{
 		name:    "routing",
 		attrKey: "route",
@@ -271,7 +278,11 @@ func WithRewriteCloseDelegate(enabled bool) RewriteOption {
 }
 
 // NewRewriteAppender 创建事件重写 appender。
-func NewRewriteAppender(delegate Appender, policy RewritePolicy, options ...RewriteOption) (*RewriteAppender, error) {
+func NewRewriteAppender(
+	delegate Appender,
+	policy RewritePolicy,
+	options ...RewriteOption,
+) (*RewriteAppender, error) {
 	appender := &RewriteAppender{
 		name:          "rewrite",
 		delegate:      delegate,

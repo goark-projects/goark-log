@@ -15,7 +15,13 @@ import (
 	"goark.dev/log/internal/timepattern"
 )
 
-func appendPatternToken(buf *bytes.Buffer, token patternToken, event Event, caller *callsite.Cache, options LayoutOptions) {
+func appendPatternToken(
+	buf *bytes.Buffer,
+	token patternToken,
+	event Event,
+	caller *callsite.Cache,
+	options LayoutOptions,
+) {
 	if token.kind == tokenLiteral {
 		buf.WriteString(token.literal)
 		return
@@ -77,7 +83,12 @@ func appendPatternTime(buf *bytes.Buffer, token patternToken, event Event) {
 	}
 }
 
-func patternTokenString(token patternToken, event Event, caller *callsite.Cache, options LayoutOptions) string {
+func patternTokenString(
+	token patternToken,
+	event Event,
+	caller *callsite.Cache,
+	options LayoutOptions,
+) string {
 	switch token.kind {
 	case tokenTime:
 		when := event.Time
@@ -152,7 +163,10 @@ func patternTokenString(token patternToken, event Event, caller *callsite.Cache,
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)
 		}
-		return logvalue.ApplyANSIStyle(formatChildPattern(token.child, event), logvalue.HighlightStyle(event.Level, configlevel.Fatal))
+		return logvalue.ApplyANSIStyle(
+			formatChildPattern(token.child, event),
+			logvalue.HighlightStyle(event.Level, configlevel.Fatal),
+		)
 	case tokenStyle:
 		if options.DisableANSI {
 			return formatChildPattern(token.child, event)

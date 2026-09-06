@@ -124,7 +124,10 @@ func (r *Registry) RegisterLookup(namespace string, lookup LookupFunc) error {
 }
 
 // RegisterJSONTemplateResolver 注册 JSON Template resolver 插件。
-func (r *Registry) RegisterJSONTemplateResolver(kind string, factory internallayout.JSONTemplateResolverFactory) error {
+func (r *Registry) RegisterJSONTemplateResolver(
+	kind string,
+	factory internallayout.JSONTemplateResolverFactory,
+) error {
 	if r == nil {
 		return fmt.Errorf("goark-log: plugin registry is nil")
 	}
@@ -193,7 +196,9 @@ func (r *Registry) FilterFactory(kind string) (FilterFactory, bool) {
 }
 
 // JSONTemplateResolverFactory 返回指定类型的 JSON Template resolver 工厂。
-func (r *Registry) JSONTemplateResolverFactory(kind string) (internallayout.JSONTemplateResolverFactory, bool) {
+func (r *Registry) JSONTemplateResolverFactory(
+	kind string,
+) (internallayout.JSONTemplateResolverFactory, bool) {
 	if r == nil {
 		return nil, false
 	}

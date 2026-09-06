@@ -16,10 +16,20 @@ type EventHandler[T any] interface {
 }
 
 // EventHandlerFunc 把函数适配为 EventHandler。
-type EventHandlerFunc[T any] func(ctx context.Context, event T, sequence int64, endOfBatch bool) error
+type EventHandlerFunc[T any] func(
+	ctx context.Context,
+	event T,
+	sequence int64,
+	endOfBatch bool,
+) error
 
 // OnEvent 执行事件处理函数。
-func (f EventHandlerFunc[T]) OnEvent(ctx context.Context, event T, sequence int64, endOfBatch bool) error {
+func (f EventHandlerFunc[T]) OnEvent(
+	ctx context.Context,
+	event T,
+	sequence int64,
+	endOfBatch bool,
+) error {
 	if f == nil {
 		return nil
 	}
@@ -35,7 +45,12 @@ type ExceptionHandler[T any] interface {
 type ExceptionHandlerFunc[T any] func(ctx context.Context, err error, sequence int64, event T)
 
 // HandleEventException 执行异常处理函数。
-func (f ExceptionHandlerFunc[T]) HandleEventException(ctx context.Context, err error, sequence int64, event T) {
+func (f ExceptionHandlerFunc[T]) HandleEventException(
+	ctx context.Context,
+	err error,
+	sequence int64,
+	event T,
+) {
 	if f != nil {
 		f(ctx, err, sequence, event)
 	}
@@ -72,7 +87,11 @@ type BatchEventProcessor[T any] struct {
 }
 
 // NewBatchEventProcessor 创建批量事件处理器。
-func NewBatchEventProcessor[T any](ring *RingBuffer[T], handler EventHandler[T], options ...BatchEventProcessorOption[T]) (*BatchEventProcessor[T], error) {
+func NewBatchEventProcessor[T any](
+	ring *RingBuffer[T],
+	handler EventHandler[T],
+	options ...BatchEventProcessorOption[T],
+) (*BatchEventProcessor[T], error) {
 	if ring == nil {
 		return nil, fmt.Errorf("goark-log: disruptor processor ring buffer is nil")
 	}

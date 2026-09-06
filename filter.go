@@ -146,7 +146,10 @@ func WithScriptFilterOnError(decision FilterDecision) ScriptFilterOption {
 }
 
 // NewScriptFilter 创建脚本过滤器。
-func NewScriptFilter(evaluator ScriptEvaluator, options ...ScriptFilterOption) (*ScriptFilter, error) {
+func NewScriptFilter(
+	evaluator ScriptEvaluator,
+	options ...ScriptFilterOption,
+) (*ScriptFilter, error) {
 	return logfilter.NewScriptFilter(evaluator, options...)
 }
 
@@ -156,17 +159,32 @@ func NewTimeFilter(start string, end string, options ...FilterOption) (*TimeFilt
 }
 
 // NewTimeFilterInLocation 创建固定时区的时间区间过滤器。
-func NewTimeFilterInLocation(start string, end string, location *time.Location, options ...FilterOption) (*TimeFilter, error) {
+func NewTimeFilterInLocation(
+	start string,
+	end string,
+	location *time.Location,
+	options ...FilterOption,
+) (*TimeFilter, error) {
 	return logfilter.NewTimeFilterInLocation(start, end, location, options...)
 }
 
 // NewBurstFilter 创建突发限流过滤器。
-func NewBurstFilter(level slog.Level, ratePerSecond float64, maxBurst int, options ...FilterOption) (*BurstFilter, error) {
+func NewBurstFilter(
+	level slog.Level,
+	ratePerSecond float64,
+	maxBurst int,
+	options ...FilterOption,
+) (*BurstFilter, error) {
 	return logfilter.NewBurstFilter(level, ratePerSecond, maxBurst, options...)
 }
 
 // NewDynamicThresholdFilter 创建动态级别阈值过滤器。
-func NewDynamicThresholdFilter(key string, defaultThreshold slog.Level, thresholds map[string]slog.Level, options ...FilterOption) (*DynamicThresholdFilter, error) {
+func NewDynamicThresholdFilter(
+	key string,
+	defaultThreshold slog.Level,
+	thresholds map[string]slog.Level,
+	options ...FilterOption,
+) (*DynamicThresholdFilter, error) {
 	return logfilter.NewDynamicThresholdFilter(key, defaultThreshold, thresholds, options...)
 }
 
@@ -201,7 +219,11 @@ func NewLevelFilter(level slog.Level, options ...FilterOption) *LevelFilter {
 }
 
 // NewLevelRangeFilter 创建级别区间过滤器。
-func NewLevelRangeFilter(min slog.Level, max slog.Level, options ...FilterOption) (*LevelRangeFilter, error) {
+func NewLevelRangeFilter(
+	min slog.Level,
+	max slog.Level,
+	options ...FilterOption,
+) (*LevelRangeFilter, error) {
 	return logfilter.NewLevelRangeFilter(min, max, options...)
 }
 
@@ -216,7 +238,10 @@ func NewNoMarkerFilter(options ...FilterOption) *NoMarkerFilter {
 }
 
 // NewThreadContextStackFilter 创建 context stack 过滤器。
-func NewThreadContextStackFilter(value string, options ...FilterOption) (*ThreadContextStackFilter, error) {
+func NewThreadContextStackFilter(
+	value string,
+	options ...FilterOption,
+) (*ThreadContextStackFilter, error) {
 	return logfilter.NewThreadContextStackFilter(value, options...)
 }
 
@@ -226,7 +251,10 @@ func NewThrowableFilter(pattern string, options ...FilterOption) (*ThrowableFilt
 }
 
 // NewStructuredDataFilter 创建结构化属性过滤器。
-func NewStructuredDataFilter(values map[string]string, options ...MapFilterOption) (*StructuredDataFilter, error) {
+func NewStructuredDataFilter(
+	values map[string]string,
+	options ...MapFilterOption,
+) (*StructuredDataFilter, error) {
 	return logfilter.NewStructuredDataFilter(values, options...)
 }
 
@@ -256,7 +284,10 @@ func NewMapFilter(values map[string]string, options ...MapFilterOption) (*MapFil
 }
 
 // NewThreadContextMapFilter 创建 MDC 键值过滤器。
-func NewThreadContextMapFilter(values map[string]string, options ...MapFilterOption) (*ThreadContextMapFilter, error) {
+func NewThreadContextMapFilter(
+	values map[string]string,
+	options ...MapFilterOption,
+) (*ThreadContextMapFilter, error) {
 	return logfilter.NewThreadContextMapFilter(values, options...)
 }
 

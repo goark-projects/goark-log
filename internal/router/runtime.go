@@ -57,7 +57,8 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 	}
 	config.includeLocation = config.root.IncludeLocation
 	for _, rule := range options.Loggers {
-		if err := appendLoggerRuntime(config, appenderByName, rootFilters, options.Root, rule); err != nil {
+		err := appendLoggerRuntime(config, appenderByName, rootFilters, options.Root, rule)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -65,12 +66,22 @@ func buildRuntimeConfig(options Options) (*runtimeConfig, error) {
 		return loggerSpecificity(config.loggers[i].name) > loggerSpecificity(config.loggers[j].name)
 	})
 	for index := range config.loggers {
-		config.loggers[index].route.Level = effectiveLoggerLevel(config.root.Level, config.loggers[index].name, config.loggers)
+		config.loggers[index].route.Level = effectiveLoggerLevel(
+			config.root.Level,
+			config.loggers[index].name,
+			config.loggers,
+		)
 	}
 	return config, nil
 }
 
-func appendLoggerRuntime(config *runtimeConfig, appenderByName map[string]Appender, rootFilters []Filter, root RootLogger, rule LoggerRule) error {
+func appendLoggerRuntime(
+	config *runtimeConfig,
+	appenderByName map[string]Appender,
+	rootFilters []Filter,
+	root RootLogger,
+	rule LoggerRule,
+) error {
 	name := strings.TrimSpace(rule.Name)
 	if name == "" {
 		return fmt.Errorf("goark-log: logger name is empty")
@@ -79,7 +90,10 @@ func appendLoggerRuntime(config *runtimeConfig, appenderByName map[string]Append
 	if rule.AdditivitySet {
 		additivity = rule.Additivity
 	}
-	appenders, err := resolveAppenderControls(appenderByName, mergeAppenderRefs(rule.AppenderRefs, rule.AppenderRefControls))
+	appenders, err := resolveAppenderControls(
+		appenderByName,
+		mergeAppenderRefs(rule.AppenderRefs, rule.AppenderRefControls),
+	)
 	if err != nil {
 		return fmt.Errorf("goark-log: logger %q: %w", name, err)
 	}

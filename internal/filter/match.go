@@ -90,7 +90,11 @@ func NewMapFilter(values map[string]string, options ...MapFilterOption) (*MapFil
 	if len(normalized) == 0 {
 		return nil, fmt.Errorf("goark-log: map filter requires at least one value")
 	}
-	return &MapFilter{values: normalized, operator: settings.operator, outcome: settings.base.outcome}, nil
+	return &MapFilter{
+		values:   normalized,
+		operator: settings.operator,
+		outcome:  settings.base.outcome,
+	}, nil
 }
 
 func (f *MapFilter) Decide(_ context.Context, event Event) FilterDecision {
@@ -126,7 +130,10 @@ type ThreadContextMapFilter struct {
 }
 
 // NewThreadContextMapFilter 创建 MDC 键值过滤器。
-func NewThreadContextMapFilter(values map[string]string, options ...MapFilterOption) (*ThreadContextMapFilter, error) {
+func NewThreadContextMapFilter(
+	values map[string]string,
+	options ...MapFilterOption,
+) (*ThreadContextMapFilter, error) {
 	filter, err := NewMapFilter(values, options...)
 	if err != nil {
 		return nil, err

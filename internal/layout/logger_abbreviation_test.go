@@ -15,16 +15,61 @@ func TestLoggerAbbreviator_shouldFollowLog4j2PrecisionRules(t *testing.T) {
 		{name: "full", logger: "org.apache.commons.Foo", want: "org.apache.commons.Foo"},
 		{name: "retain one", logger: "org.apache.commons.Foo", precision: "1", want: "Foo"},
 		{name: "retain two", logger: "org.apache.commons.Foo", precision: "2", want: "commons.Foo"},
-		{name: "retain more than available", logger: "org.apache.commons.Foo", precision: "10", want: "org.apache.commons.Foo"},
-		{name: "retain ignores trailing empty component", logger: "org.apache.commons.Foo.", precision: "1", want: "Foo."},
-		{name: "drop one", logger: "org.apache.commons.Foo", precision: "-1", want: "apache.commons.Foo"},
+		{
+			name:      "retain more than available",
+			logger:    "org.apache.commons.Foo",
+			precision: "10",
+			want:      "org.apache.commons.Foo",
+		},
+		{
+			name:      "retain ignores trailing empty component",
+			logger:    "org.apache.commons.Foo.",
+			precision: "1",
+			want:      "Foo.",
+		},
+		{
+			name:      "drop one",
+			logger:    "org.apache.commons.Foo",
+			precision: "-1",
+			want:      "apache.commons.Foo",
+		},
 		{name: "drop two", logger: "org.apache.commons.Foo", precision: "-2", want: "commons.Foo"},
-		{name: "drop more than available", logger: "org.apache.commons.Foo", precision: "-10", want: "org.apache.commons.Foo"},
-		{name: "abbreviate packages", logger: "org.apache.commons.Foo", precision: "1.", want: "o.a.c.Foo"},
-		{name: "abbreviate with marker", logger: "org.apache.commons.test.Foo", precision: "1~.2~", want: "o~.ap~.co~.te~.Foo"},
-		{name: "pattern keeps remaining components", logger: "org.apache.commons.test.Foo", precision: "1.1.1.*", want: "o.a.c.test.Foo"},
-		{name: "dynamic keeps two rightmost components", logger: "org.apache.commons.test.Foo", precision: "1.2*", want: "o.a.c.test.Foo"},
-		{name: "dynamic keeps one rightmost component", logger: "org.apache.commons.test.Foo", precision: "1.1*", want: "o.a.c.t.Foo"},
+		{
+			name:      "drop more than available",
+			logger:    "org.apache.commons.Foo",
+			precision: "-10",
+			want:      "org.apache.commons.Foo",
+		},
+		{
+			name:      "abbreviate packages",
+			logger:    "org.apache.commons.Foo",
+			precision: "1.",
+			want:      "o.a.c.Foo",
+		},
+		{
+			name:      "abbreviate with marker",
+			logger:    "org.apache.commons.test.Foo",
+			precision: "1~.2~",
+			want:      "o~.ap~.co~.te~.Foo",
+		},
+		{
+			name:      "pattern keeps remaining components",
+			logger:    "org.apache.commons.test.Foo",
+			precision: "1.1.1.*",
+			want:      "o.a.c.test.Foo",
+		},
+		{
+			name:      "dynamic keeps two rightmost components",
+			logger:    "org.apache.commons.test.Foo",
+			precision: "1.2*",
+			want:      "o.a.c.test.Foo",
+		},
+		{
+			name:      "dynamic keeps one rightmost component",
+			logger:    "org.apache.commons.test.Foo",
+			precision: "1.1*",
+			want:      "o.a.c.t.Foo",
+		},
 		{name: "unicode package", logger: "中国.软件.服务", precision: "1.", want: "中.软.服务"},
 	}
 	for _, tt := range tests {
@@ -37,7 +82,9 @@ func TestLoggerAbbreviator_shouldFollowLog4j2PrecisionRules(t *testing.T) {
 }
 
 func TestPatternLayout_whenLoggerPrecisionUsed_shouldApplyLog4j2Rules(t *testing.T) {
-	layout, err := NewPatternLayout("%logger|%logger{2}|%logger{-1}|%logger{1.}|%.8logger|%.-8logger")
+	layout, err := NewPatternLayout(
+		"%logger|%logger{2}|%logger{-1}|%logger{1.}|%.8logger|%.-8logger",
+	)
 	if err != nil {
 		t.Fatalf("NewPatternLayout() error = %v", err)
 	}

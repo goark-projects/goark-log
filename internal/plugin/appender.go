@@ -31,7 +31,11 @@ func buildConsolePlugin(config AppenderBuildConfig) (internalrouter.Appender, er
 			fileappender.WithConsoleWriter(os.Stderr),
 		), nil
 	default:
-		return nil, fmt.Errorf("goark-log: appender %q console target %q is invalid", config.Name, config.Target)
+		return nil, fmt.Errorf(
+			"goark-log: appender %q console target %q is invalid",
+			config.Name,
+			config.Target,
+		)
 	}
 }
 
@@ -88,13 +92,26 @@ func buildJSONPlugin(config AppenderBuildConfig) (internalrouter.Appender, error
 	}
 	switch strings.ToLower(strings.TrimSpace(config.Target)) {
 	case "", "stdout":
-		return jsonappender.New(jsonappender.WithName(config.Name), jsonappender.WithWriter(os.Stdout)), nil
+		return jsonappender.New(
+			jsonappender.WithName(config.Name),
+			jsonappender.WithWriter(os.Stdout),
+		), nil
 	case "stderr":
-		return jsonappender.New(jsonappender.WithName(config.Name), jsonappender.WithWriter(os.Stderr)), nil
+		return jsonappender.New(
+			jsonappender.WithName(config.Name),
+			jsonappender.WithWriter(os.Stderr),
+		), nil
 	case "file":
-		return nil, fmt.Errorf("goark-log: appender %q JSON target file requires fileName", config.Name)
+		return nil, fmt.Errorf(
+			"goark-log: appender %q JSON target file requires fileName",
+			config.Name,
+		)
 	default:
-		return nil, fmt.Errorf("goark-log: appender %q JSON target %q is invalid", config.Name, config.Target)
+		return nil, fmt.Errorf(
+			"goark-log: appender %q JSON target %q is invalid",
+			config.Name,
+			config.Target,
+		)
 	}
 }
 
@@ -130,9 +147,14 @@ func buildAsyncPlugin(config AppenderBuildConfig) (internalrouter.Appender, erro
 
 func buildFailoverPlugin(config AppenderBuildConfig) (internalrouter.Appender, error) {
 	if len(config.Delegates) < 2 {
-		return nil, fmt.Errorf("goark-log: failover appender %q requires primary and failovers", config.Name)
+		return nil, fmt.Errorf(
+			"goark-log: failover appender %q requires primary and failovers",
+			config.Name,
+		)
 	}
-	return delegating.NewFailoverAppender(config.Delegates[0], delegatingAppenders(config.Delegates[1:]),
+	return delegating.NewFailoverAppender(
+		config.Delegates[0],
+		delegatingAppenders(config.Delegates[1:]),
 		delegating.WithFailoverName(config.Name),
 		delegating.WithFailoverCloseChildren(false),
 	)
@@ -154,9 +176,14 @@ func buildRoutingPlugin(config AppenderBuildConfig) (internalrouter.Appender, er
 
 func buildRewritePlugin(config AppenderBuildConfig) (internalrouter.Appender, error) {
 	if len(config.Delegates) != 1 {
-		return nil, fmt.Errorf("goark-log: rewrite appender %q requires exactly one appenderRef", config.Name)
+		return nil, fmt.Errorf(
+			"goark-log: rewrite appender %q requires exactly one appenderRef",
+			config.Name,
+		)
 	}
-	return delegating.NewRewriteAppender(config.Delegates[0], newAttributeRewritePolicy(config.Rewrite),
+	return delegating.NewRewriteAppender(
+		config.Delegates[0],
+		newAttributeRewritePolicy(config.Rewrite),
 		delegating.WithRewriteName(config.Name),
 		delegating.WithRewriteCloseDelegate(false),
 	)
@@ -184,7 +211,9 @@ func delegatingAppenders(appenders []internalrouter.Appender) []delegating.Appen
 	return converted
 }
 
-func delegatingAppenderMap(routes map[string]internalrouter.Appender) map[string]delegating.Appender {
+func delegatingAppenderMap(
+	routes map[string]internalrouter.Appender,
+) map[string]delegating.Appender {
 	if len(routes) == 0 {
 		return nil
 	}

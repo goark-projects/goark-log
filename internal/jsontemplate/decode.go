@@ -42,7 +42,10 @@ func DecodeRawFields(template string) ([]RawField, error) {
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, RawField{Key: pair.Key, Raw: sonic.NoCopyRawMessage(append([]byte(nil), raw...))})
+		fields = append(
+			fields,
+			RawField{Key: pair.Key, Raw: sonic.NoCopyRawMessage(append([]byte(nil), raw...))},
+		)
 	}
 	return fields, nil
 }

@@ -99,9 +99,15 @@ func WithPluginLookup(namespace string, lookup LookupFunc) PluginSetOption {
 }
 
 // WithPluginJSONTemplateResolver 声明一个 JSON Template resolver 注册项。
-func WithPluginJSONTemplateResolver(kind string, factory internallayout.JSONTemplateResolverFactory) PluginSetOption {
+func WithPluginJSONTemplateResolver(
+	kind string,
+	factory internallayout.JSONTemplateResolverFactory,
+) PluginSetOption {
 	return func(set *PluginSet) {
-		set.resolvers = append(set.resolvers, jsonTemplateResolverPlugin{kind: kind, factory: factory})
+		set.resolvers = append(
+			set.resolvers,
+			jsonTemplateResolverPlugin{kind: kind, factory: factory},
+		)
 	}
 }
 
@@ -132,7 +138,11 @@ func (s PluginSet) RegisterLogPlugins(registry *Registry) error {
 	}
 	for _, plugin := range s.resolvers {
 		if err := registry.RegisterJSONTemplateResolver(plugin.kind, plugin.factory); err != nil {
-			return fmt.Errorf("goark-log: register JSON template resolver plugin %q: %w", plugin.kind, err)
+			return fmt.Errorf(
+				"goark-log: register JSON template resolver plugin %q: %w",
+				plugin.kind,
+				err,
+			)
 		}
 	}
 	return nil

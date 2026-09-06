@@ -86,7 +86,11 @@ func (r *ConfigReloader) ReloadIfChanged(ctx context.Context) (bool, *ConfigResu
 }
 
 // Watch 轮询配置文件并在变化时 reload，返回的 channel 会在 ctx 结束后关闭。
-func (r *ConfigReloader) Watch(ctx context.Context, interval time.Duration, onError func(error)) <-chan struct{} {
+func (r *ConfigReloader) Watch(
+	ctx context.Context,
+	interval time.Duration,
+	onError func(error),
+) <-chan struct{} {
 	done := make(chan struct{})
 	if interval <= 0 {
 		interval = DefaultReloadInterval
@@ -109,7 +113,10 @@ func (r *ConfigReloader) Watch(ctx context.Context, interval time.Duration, onEr
 	return done
 }
 
-func (c *LoggerContext) startConfigMonitor(interval time.Duration, options ...ConfigLoadOption) error {
+func (c *LoggerContext) startConfigMonitor(
+	interval time.Duration,
+	options ...ConfigLoadOption,
+) error {
 	if c == nil || c.handler == nil || interval <= 0 {
 		return nil
 	}
@@ -138,7 +145,12 @@ func (c *LoggerContext) startConfigMonitor(interval time.Duration, options ...Co
 	return nil
 }
 
-func (c *LoggerContext) watchConfig(ctx context.Context, done chan<- struct{}, reloader *ConfigReloader, interval time.Duration) {
+func (c *LoggerContext) watchConfig(
+	ctx context.Context,
+	done chan<- struct{},
+	reloader *ConfigReloader,
+	interval time.Duration,
+) {
 	defer close(done)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -203,7 +215,11 @@ func (r *ConfigReloader) currentSignature() (configSignature, error) {
 	signature.size = info.Size()
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return configSignature{}, fmt.Errorf("goark-log: read config file %q for signature: %w", path, err)
+		return configSignature{}, fmt.Errorf(
+			"goark-log: read config file %q for signature: %w",
+			path,
+			err,
+		)
 	}
 	signature.digest = sha256.Sum256(content)
 	return signature, nil

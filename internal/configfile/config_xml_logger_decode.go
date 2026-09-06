@@ -47,7 +47,10 @@ func (l xmlLogger) config(named bool) (loggerConfig, error) {
 	if strings.TrimSpace(l.Additivity) != "" {
 		value, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(l.Additivity)))
 		if err != nil {
-			return loggerConfig{}, fmt.Errorf("goark-log: XML logger %q additivity is invalid", l.Name)
+			return loggerConfig{}, fmt.Errorf(
+				"goark-log: XML logger %q additivity is invalid",
+				l.Name,
+			)
 		}
 		config.Additivity = &value
 	}

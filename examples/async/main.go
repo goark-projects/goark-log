@@ -27,7 +27,11 @@ func main() {
 
 	logger = log.WithName(logger, "goark.demo.async")
 	for index := 0; index < 5; index++ {
-		logger.Info("queued event", slog.Int("index", index), slog.Duration("elapsed", time.Duration(index)*time.Millisecond))
+		logger.Info(
+			"queued event",
+			slog.Int("index", index),
+			slog.Duration("elapsed", time.Duration(index)*time.Millisecond),
+		)
 	}
 	fmt.Println("dropped=" + fmt.Sprint(handler.AsyncDropped()))
 	fmt.Println("failed=" + fmt.Sprint(handler.AsyncFailed()))

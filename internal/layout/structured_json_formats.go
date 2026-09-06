@@ -24,13 +24,19 @@ func (l *StructuredJSONLayout) appendECS(writer *structuredWriter, event Event) 
 		}
 		writer.endObject()
 	}
-	serviceConfigured := strings.TrimSpace(l.ecs.ServiceName) != "" || strings.TrimSpace(l.ecs.ServiceVersion) != "" ||
-		strings.TrimSpace(l.ecs.ServiceEnvironment) != "" || strings.TrimSpace(l.ecs.ServiceNodeName) != ""
+	serviceConfigured := strings.TrimSpace(l.ecs.ServiceName) != "" ||
+		strings.TrimSpace(l.ecs.ServiceVersion) != "" ||
+		strings.TrimSpace(l.ecs.ServiceEnvironment) != "" ||
+		strings.TrimSpace(l.ecs.ServiceNodeName) != ""
 	if writer.beginObjectIf(serviceConfigured, "service", "service") {
 		writer.addNonEmptyPath("service.name", "name", l.ecs.ServiceName)
 		writer.addNonEmptyPath("service.version", "version", l.ecs.ServiceVersion)
 		writer.addNonEmptyPath("service.environment", "environment", l.ecs.ServiceEnvironment)
-		if writer.beginObjectIf(strings.TrimSpace(l.ecs.ServiceNodeName) != "", "service.node", "node") {
+		if writer.beginObjectIf(
+			strings.TrimSpace(l.ecs.ServiceNodeName) != "",
+			"service.node",
+			"node",
+		) {
 			writer.addNonEmptyPath("service.node.name", "name", l.ecs.ServiceNodeName)
 			writer.endObject()
 		}
@@ -45,7 +51,11 @@ func (l *StructuredJSONLayout) appendECS(writer *structuredWriter, event Event) 
 		if writer.beginObject("error", "error") {
 			writer.addNonEmptyPath("error.type", "type", event.Throwable.Type)
 			writer.addNonEmptyPath("error.message", "message", event.Throwable.Message)
-			writer.addPath("error.stack_trace", "stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
+			writer.addPath(
+				"error.stack_trace",
+				"stack_trace",
+				slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)),
+			)
 			writer.endObject()
 		}
 	}
@@ -75,7 +85,10 @@ func (l *StructuredJSONLayout) appendGELF(writer *structuredWriter, event Event)
 	writer.Add("_log_logger", slog.StringValue(event.Logger))
 	l.appendError(writer, event, "_error_type", "_error_message", "_error_stack_trace")
 	if event.Throwable != nil {
-		fullMessage := event.Message + "\n\n" + formatStructuredStacktrace(event.Throwable, l.stacktrace)
+		fullMessage := event.Message + "\n\n" + formatStructuredStacktrace(
+			event.Throwable,
+			l.stacktrace,
+		)
 		writer.Add("full_message", slog.StringValue(fullMessage))
 	}
 }
@@ -90,7 +103,10 @@ func (l *StructuredJSONLayout) appendLogstash(writer *structuredWriter, event Ev
 	writer.Add("level_value", slog.IntValue(logstashLevelValue(event.Level)))
 	writer.addMarkerTags(event)
 	if event.Throwable != nil {
-		writer.Add("stack_trace", slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
+		writer.Add(
+			"stack_trace",
+			slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)),
+		)
 	}
 }
 
@@ -125,13 +141,20 @@ func appendMarkerNames(names *[]string, seen map[string]struct{}, marker logcont
 	}
 }
 
-func (l *StructuredJSONLayout) appendError(writer *structuredWriter, event Event, typeKey, messageKey, stackKey string) {
+func (l *StructuredJSONLayout) appendError(
+	writer *structuredWriter,
+	event Event,
+	typeKey, messageKey, stackKey string,
+) {
 	if event.Throwable == nil {
 		return
 	}
 	writer.addNonEmpty(typeKey, event.Throwable.Type)
 	writer.addNonEmpty(messageKey, event.Throwable.Message)
-	writer.Add(stackKey, slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)))
+	writer.Add(
+		stackKey,
+		slog.StringValue(formatStructuredStacktrace(event.Throwable, l.stacktrace)),
+	)
 }
 
 func logstashLevelValue(level slog.Level) int {

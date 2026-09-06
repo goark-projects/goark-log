@@ -36,7 +36,13 @@ func newThrowable(err error, withStack bool, skip int) *Throwable {
 
 const maxThrowableCauseDepth = 64
 
-func newThrowableSnapshot(err error, withStack bool, skip int, seen map[error]struct{}, depth int) *Throwable {
+func newThrowableSnapshot(
+	err error,
+	withStack bool,
+	skip int,
+	seen map[error]struct{},
+	depth int,
+) *Throwable {
 	if err == nil {
 		return nil
 	}
@@ -85,7 +91,11 @@ func ThrowableStackString(throwable *Throwable) string {
 	return builder.String()
 }
 
-func appendThrowableStackString(builder *strings.Builder, throwable *Throwable, seen map[*Throwable]struct{}) {
+func appendThrowableStackString(
+	builder *strings.Builder,
+	throwable *Throwable,
+	seen map[*Throwable]struct{},
+) {
 	if throwable == nil {
 		return
 	}

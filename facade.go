@@ -170,16 +170,49 @@ func NewMapMessage(attrs ...slog.Attr) MapMessage {
 }
 
 // NewStructuredDataMessage 创建结构化数据消息。
-func NewStructuredDataMessage(id string, msgType string, message string, attrs ...slog.Attr) StructuredDataMessage {
+func NewStructuredDataMessage(
+	id string,
+	msgType string,
+	message string,
+	attrs ...slog.Attr,
+) StructuredDataMessage {
 	return logmessage.NewStructuredDataMessage(id, msgType, message, attrs...)
 }
 
-func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
+func newEvent(
+	ctx context.Context,
+	logger string,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	record slog.Record,
+) Event {
 	return logevent.New(ctx, logger, handlerAttrs, groups, record)
 }
 
-func newEventFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr, copyAttrs bool) Event {
-	return logevent.NewFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, copyAttrs)
+func newEventFromAttrs(
+	ctx context.Context,
+	logger string,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	when time.Time,
+	level slog.Level,
+	message string,
+	pc uintptr,
+	attrs []slog.Attr,
+	copyAttrs bool,
+) Event {
+	return logevent.NewFromAttrs(
+		ctx,
+		logger,
+		handlerAttrs,
+		groups,
+		when,
+		level,
+		message,
+		pc,
+		attrs,
+		copyAttrs,
+	)
 }
 
 func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {

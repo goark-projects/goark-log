@@ -64,7 +64,10 @@ func WithLoggerContextStatus(status *StatusLogger) LoggerContextOption {
 }
 
 // NewLoggerContext 基于显式 Options 创建日志上下文。
-func NewLoggerContext(options Options, contextOptions ...LoggerContextOption) (*LoggerContext, error) {
+func NewLoggerContext(
+	options Options,
+	contextOptions ...LoggerContextOption,
+) (*LoggerContext, error) {
 	settings := newLoggerContextSettings(contextOptions...)
 	handler, err := NewHandler(options)
 	if err != nil {
@@ -79,7 +82,10 @@ func NewLoggerContext(options Options, contextOptions ...LoggerContextOption) (*
 }
 
 // NewConfiguredLoggerContext 从配置创建日志上下文。
-func NewConfiguredLoggerContext(ctx context.Context, configOptions ...ConfigLoadOption) (*LoggerContext, *ConfigResult, error) {
+func NewConfiguredLoggerContext(
+	ctx context.Context,
+	configOptions ...ConfigLoadOption,
+) (*LoggerContext, *ConfigResult, error) {
 	handlerOptions, result, err := LoadOptions(ctx, configOptions...)
 	status := NewStatusLogger()
 	if err != nil {
@@ -170,7 +176,10 @@ func (c *LoggerContext) Reload(options Options) error {
 }
 
 // ReloadConfigured 从配置重新加载日志上下文。
-func (c *LoggerContext) ReloadConfigured(ctx context.Context, options ...ConfigLoadOption) (*ConfigResult, error) {
+func (c *LoggerContext) ReloadConfigured(
+	ctx context.Context,
+	options ...ConfigLoadOption,
+) (*ConfigResult, error) {
 	if c == nil || c.handler == nil {
 		return nil, fmt.Errorf("goark-log: logger context is nil")
 	}

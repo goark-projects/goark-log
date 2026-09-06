@@ -142,7 +142,11 @@ type LevelRangeFilter struct {
 }
 
 // NewLevelRangeFilter 创建级别区间过滤器。
-func NewLevelRangeFilter(min slog.Level, max slog.Level, options ...FilterOption) (*LevelRangeFilter, error) {
+func NewLevelRangeFilter(
+	min slog.Level,
+	max slog.Level,
+	options ...FilterOption,
+) (*LevelRangeFilter, error) {
 	if min > max {
 		return nil, fmt.Errorf("goark-log: filter level range min must be <= max")
 	}
@@ -205,7 +209,10 @@ type ThreadContextStackFilter struct {
 }
 
 // NewThreadContextStackFilter 创建 context stack 过滤器。
-func NewThreadContextStackFilter(value string, options ...FilterOption) (*ThreadContextStackFilter, error) {
+func NewThreadContextStackFilter(
+	value string,
+	options ...FilterOption,
+) (*ThreadContextStackFilter, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, fmt.Errorf("goark-log: thread context stack filter value is empty")
@@ -241,7 +248,11 @@ func NewThrowableFilter(pattern string, options ...FilterOption) (*ThrowableFilt
 	}
 	compiled, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("goark-log: throwable filter pattern %q is invalid: %w", pattern, err)
+		return nil, fmt.Errorf(
+			"goark-log: throwable filter pattern %q is invalid: %w",
+			pattern,
+			err,
+		)
 	}
 	settings := newSettings(FilterNeutral, FilterDeny, options...)
 	return &ThrowableFilter{pattern: compiled, outcome: settings.outcome}, nil
@@ -261,7 +272,10 @@ type StructuredDataFilter struct {
 }
 
 // NewStructuredDataFilter 创建结构化属性过滤器。
-func NewStructuredDataFilter(values map[string]string, options ...MapFilterOption) (*StructuredDataFilter, error) {
+func NewStructuredDataFilter(
+	values map[string]string,
+	options ...MapFilterOption,
+) (*StructuredDataFilter, error) {
 	filter, err := NewMapFilter(values, options...)
 	if err != nil {
 		return nil, err

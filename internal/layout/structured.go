@@ -105,7 +105,14 @@ func appendJSONCompleteFooter(buf *bytes.Buffer, options LayoutOptions) {
 }
 
 // AppendJSONEvent 用零额外状态编码 JSON 单行事件。
-func AppendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
+func AppendJSONEvent(
+	buf *bytes.Buffer,
+	when time.Time,
+	level slog.Level,
+	logger string,
+	message string,
+	attrs []slog.Attr,
+) {
 	buf.WriteByte('{')
 	logvalue.AppendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
 	logvalue.AppendJSONFieldString(buf, "level", levelName(level), true)
@@ -143,7 +150,15 @@ func appendJSONLayoutEvent(buf *bytes.Buffer, event Event, options LayoutOptions
 }
 
 // AppendJSONFixedEvent 编码最多三个属性的固定数组事件，避免热路径切片分配。
-func AppendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
+func AppendJSONFixedEvent(
+	buf *bytes.Buffer,
+	when time.Time,
+	level slog.Level,
+	logger string,
+	message string,
+	attrs [3]slog.Attr,
+	count int,
+) {
 	buf.WriteByte('{')
 	logvalue.AppendJSONFieldTime(buf, "time", when, defaultTimeFormat, false)
 	logvalue.AppendJSONFieldString(buf, "level", levelName(level), true)

@@ -36,14 +36,21 @@ func applyLevelOverrides(base *runtimeConfig, levels map[string]slog.Level) *run
 			continue
 		}
 		route := routePlanFromConfig(base, name).Route
-		config.loggers = append(config.loggers, loggerRuntime{name: name, configuredLevel: levelPointer(level), route: route})
+		config.loggers = append(
+			config.loggers,
+			loggerRuntime{name: name, configuredLevel: levelPointer(level), route: route},
+		)
 	}
 	sort.Slice(config.loggers, func(i, j int) bool {
 		return loggerSpecificity(config.loggers[i].name) > loggerSpecificity(config.loggers[j].name)
 	})
 	config.root.Level = effectiveRootLevel(base.root.Level, levels)
 	for index := range config.loggers {
-		config.loggers[index].route.Level = effectiveLoggerLevel(config.root.Level, config.loggers[index].name, config.loggers)
+		config.loggers[index].route.Level = effectiveLoggerLevel(
+			config.root.Level,
+			config.loggers[index].name,
+			config.loggers,
+		)
 	}
 	return &config
 }

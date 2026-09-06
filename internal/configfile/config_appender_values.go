@@ -98,7 +98,13 @@ func (c appenderConfig) rewriteConfig() RewriteBuildConfig {
 	}
 }
 
-func (c appenderConfig) appenderBuildConfig(name string, layout Layout, delegates []Appender, routes map[string]Appender, defaultRoute Appender) AppenderBuildConfig {
+func (c appenderConfig) appenderBuildConfig(
+	name string,
+	layout Layout,
+	delegates []Appender,
+	routes map[string]Appender,
+	defaultRoute Appender,
+) AppenderBuildConfig {
 	return AppenderBuildConfig{
 		Name:             name,
 		Type:             c.Type,

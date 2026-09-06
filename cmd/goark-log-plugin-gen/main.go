@@ -26,13 +26,22 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	flags := flag.NewFlagSet("goark-log-plugin-gen", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&config.PackageName, "package", config.PackageName, "generated Go package name")
-	flags.StringVar(&config.RegistrarName, "registrar", config.RegistrarName, "registrar function name")
+	flags.StringVar(
+		&config.RegistrarName,
+		"registrar",
+		config.RegistrarName,
+		"registrar function name",
+	)
 	flags.StringVar(&outputPath, "out", "", "output file path; stdout when empty")
 	flags.Var(&appenders, "appender", "appender binding in kind=factory form")
 	flags.Var(&layouts, "layout", "layout binding in kind=factory form")
 	flags.Var(&filters, "filter", "filter binding in kind=factory form")
 	flags.Var(&lookups, "lookup", "lookup binding in namespace=factory form")
-	flags.Var(&resolvers, "json-template-resolver", "JSON Template resolver binding in kind=factory form")
+	flags.Var(
+		&resolvers,
+		"json-template-resolver",
+		"JSON Template resolver binding in kind=factory form",
+	)
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}

@@ -49,7 +49,9 @@ type JSONTemplateResolver interface {
 }
 
 // JSONTemplateResolverFactory 从配置构建 JSON Template resolver。
-type JSONTemplateResolverFactory func(config JSONTemplateResolverBuildConfig) (JSONTemplateResolver, error)
+type JSONTemplateResolverFactory func(
+	config JSONTemplateResolverBuildConfig,
+) (JSONTemplateResolver, error)
 
 // JSONTemplateResolverLookup 按规范化前的名称查找自定义 resolver 工厂。
 type JSONTemplateResolverLookup func(kind string) (JSONTemplateResolverFactory, bool)
@@ -79,7 +81,10 @@ type jsonTemplateField struct {
 	resolver JSONTemplateResolver
 }
 
-func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
+func NewJSONTemplateLayout(
+	template string,
+	options ...JSONTemplateLayoutOption,
+) (*JSONTemplateLayout, error) {
 	settings := newJSONTemplateLayoutOptions(options...)
 	if strings.TrimSpace(template) == "" {
 		template = defaultJSONEventTemplate
@@ -93,7 +98,11 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 	}
 	fields := make([]jsonTemplateField, 0, len(rawFields))
 	for _, rawField := range rawFields {
-		resolver, err := compileJSONTemplateResolver(rawField.Raw, settings.resolverLookup, settings.layoutOptions)
+		resolver, err := compileJSONTemplateResolver(
+			rawField.Raw,
+			settings.resolverLookup,
+			settings.layoutOptions,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("goark-log: JSON template field %q: %w", rawField.Key, err)
 		}
@@ -107,7 +116,10 @@ func NewJSONTemplateLayout(template string, options ...JSONTemplateLayoutOption)
 }
 
 // NewJSONTemplateLayoutFromFile 从本地文件编译 JSON 事件模板。
-func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOption) (*JSONTemplateLayout, error) {
+func NewJSONTemplateLayoutFromFile(
+	path string,
+	options ...JSONTemplateLayoutOption,
+) (*JSONTemplateLayout, error) {
 	template, err := jsontemplate.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -125,7 +137,11 @@ func newJSONTemplateLayoutOptions(options ...JSONTemplateLayoutOption) jsonTempl
 	return settings
 }
 
-func compileJSONTemplateResolver(raw sonic.NoCopyRawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+func compileJSONTemplateResolver(
+	raw sonic.NoCopyRawMessage,
+	lookup JSONTemplateResolverLookup,
+	layoutOptions LayoutOptions,
+) (JSONTemplateResolver, error) {
 	var object map[string]sonic.NoCopyRawMessage
 	if err := jsoncodec.Unmarshal(raw, &object); err == nil {
 		if resolverRaw, ok := object["$resolver"]; ok {
@@ -139,7 +155,12 @@ func compileJSONTemplateResolver(raw sonic.NoCopyRawMessage, lookup JSONTemplate
 	return rawJSONResolver{raw: append([]byte(nil), raw...)}, nil
 }
 
-func newJSONTemplateResolver(name string, options map[string]sonic.NoCopyRawMessage, lookup JSONTemplateResolverLookup, layoutOptions LayoutOptions) (JSONTemplateResolver, error) {
+func newJSONTemplateResolver(
+	name string,
+	options map[string]sonic.NoCopyRawMessage,
+	lookup JSONTemplateResolverLookup,
+	layoutOptions LayoutOptions,
+) (JSONTemplateResolver, error) {
 	switch textutil.NormalizeKind(name) {
 	case "timestamp", "time":
 		format := jsonTemplateStringOption(options, "format")
@@ -178,8 +199,9 @@ func newJSONTemplateResolver(name string, options map[string]sonic.NoCopyRawMess
 		return contextStackJSONResolver{}, nil
 	case "mdc", "contextmap", "attrs":
 		return attrsJSONResolver{
-			flatten:          jsonTemplateBoolOption(options, "flatten"),
-			propertiesAsList: layoutOptions.PropertiesAsList || jsonTemplateBoolOption(options, "propertiesAsList"),
+			flatten: jsonTemplateBoolOption(options, "flatten"),
+			propertiesAsList: layoutOptions.PropertiesAsList ||
+				jsonTemplateBoolOption(options, "propertiesAsList"),
 		}, nil
 	case "attr":
 		key := jsonTemplateStringOption(options, "key")
@@ -192,7 +214,12 @@ func newJSONTemplateResolver(name string, options map[string]sonic.NoCopyRawMess
 	default:
 		if lookup != nil {
 			if factory, ok := lookup(name); ok {
-				return factory(JSONTemplateResolverBuildConfig{Name: name, Options: copyJSONRawOptions(options)})
+				return factory(
+					JSONTemplateResolverBuildConfig{
+						Name:    name,
+						Options: copyJSONRawOptions(options),
+					},
+				)
 			}
 		}
 		return nil, fmt.Errorf("unsupported resolver %q", name)
@@ -240,7 +267,9 @@ func jsonTemplateIntOption(options map[string]sonic.NoCopyRawMessage, key string
 	return parsed
 }
 
-func copyJSONRawOptions(options map[string]sonic.NoCopyRawMessage) map[string]sonic.NoCopyRawMessage {
+func copyJSONRawOptions(
+	options map[string]sonic.NoCopyRawMessage,
+) map[string]sonic.NoCopyRawMessage {
 	copied := make(map[string]sonic.NoCopyRawMessage, len(options))
 	for key, raw := range options {
 		copied[key] = append([]byte(nil), raw...)

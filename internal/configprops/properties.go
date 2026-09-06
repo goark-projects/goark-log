@@ -139,7 +139,11 @@ func Int(value string, field string) (int, error) {
 func Bool(value string, field string) (bool, error) {
 	parsed, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(value)))
 	if err != nil {
-		return false, fmt.Errorf("goark-log: properties %s value %q is invalid boolean", field, value)
+		return false, fmt.Errorf(
+			"goark-log: properties %s value %q is invalid boolean",
+			field,
+			value,
+		)
 	}
 	return parsed, nil
 }

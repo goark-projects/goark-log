@@ -8,7 +8,21 @@ import (
 	"goark.dev/log/internal/textutil"
 )
 
-func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key string, value string) error {
+func propertyAppenderRefs(value string) appenderRefs {
+	values := configprops.List(value)
+	refs := make(appenderRefs, 0, len(values))
+	for _, ref := range values {
+		refs = append(refs, appenderRefConfig{Ref: ref})
+	}
+	return refs
+}
+
+func applyAppenderProperty(
+	config *fileConfig,
+	aliases configprops.Aliases,
+	key string,
+	value string,
+) error {
 	id, field, ok := configprops.SplitID(key)
 	if !ok {
 		return nil
@@ -16,7 +30,8 @@ func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key 
 	id = aliases.AppenderName(id)
 	appender := config.Appenders[id]
 	if strings.HasPrefix(field, "layout.") {
-		if err := applyLayoutProperty(&appender.Layout, strings.TrimPrefix(field, "layout."), value); err != nil {
+		layoutField := strings.TrimPrefix(field, "layout.")
+		if err := applyLayoutProperty(&appender.Layout, layoutField, value); err != nil {
 			return err
 		}
 		config.Appenders[id] = appender
@@ -35,14 +50,16 @@ func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key 
 		return nil
 	}
 	if strings.HasPrefix(field, "rewrite.") {
-		if err := applyRewriteProperty(&appender.Rewrite, strings.TrimPrefix(field, "rewrite."), value); err != nil {
+		rewriteField := strings.TrimPrefix(field, "rewrite.")
+		if err := applyRewriteProperty(&appender.Rewrite, rewriteField, value); err != nil {
 			return err
 		}
 		config.Appenders[id] = appender
 		return nil
 	}
 	if strings.HasPrefix(field, "appenderRef.") {
-		if err := applyAppenderRefProperty(&appender.AppenderRefs, strings.TrimPrefix(field, "appenderRef."), value); err != nil {
+		refName := strings.TrimPrefix(field, "appenderRef.")
+		if err := applyAppenderRefProperty(&appender.AppenderRefs, refName, value); err != nil {
 			return err
 		}
 		config.Appenders[id] = appender
@@ -139,7 +156,12 @@ func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key 
 		appender.Rolling.MaxSize = value
 	case "rolling.interval":
 		appender.Rolling.Interval = value
-	case "rolling.cron", "rolling.cronSchedule", "rolling.cron-schedule", "rolling.policies.cron.schedule", "rolling.policies.cronTriggeringPolicy.schedule", "rolling.policies.cron-triggering-policy.schedule":
+	case "rolling.cron",
+		"rolling.cronSchedule",
+		"rolling.cron-schedule",
+		"rolling.policies.cron.schedule",
+		"rolling.policies.cronTriggeringPolicy.schedule",
+		"rolling.policies.cron-triggering-policy.schedule":
 		appender.Rolling.CronSchedule = value
 	case "rolling.strategy.delete.maxCount", "rolling.strategy.delete.max-count":
 		parsed, err := configprops.Int(value, key)
@@ -149,19 +171,24 @@ func applyAppenderProperty(config *fileConfig, aliases configprops.Aliases, key 
 		appender.Rolling.Strategy.Delete.MaxCount = &parsed
 	case "rolling.strategy.delete.maxSize", "rolling.strategy.delete.max-size":
 		appender.Rolling.Strategy.Delete.MaxSize = value
-	case "rolling.strategy.delete.ifAccumulatedFileCount.exceeds", "rolling.strategy.delete.if-accumulated-file-count.exceeds":
+	case "rolling.strategy.delete.ifAccumulatedFileCount.exceeds",
+		"rolling.strategy.delete.if-accumulated-file-count.exceeds":
 		parsed, err := configprops.Int(value, key)
 		if err != nil {
 			return err
 		}
 		appender.Rolling.Strategy.Delete.IfAccumulatedFileCount.Exceeds = parsed
-	case "rolling.strategy.delete.ifAccumulatedFileSize.exceeds", "rolling.strategy.delete.if-accumulated-file-size.exceeds":
+	case "rolling.strategy.delete.ifAccumulatedFileSize.exceeds",
+		"rolling.strategy.delete.if-accumulated-file-size.exceeds":
 		appender.Rolling.Strategy.Delete.IfAccumulatedFileSize.Exceeds = value
 	case "rolling.strategy.type":
 		appender.Rolling.Strategy.Type = value
 	case "rolling.strategy.fileIndex", "rolling.strategy.file-index":
 		appender.Rolling.Strategy.FileIndex = value
-	case "rolling.directWrite", "rolling.direct-write", "rolling.strategy.directWrite", "rolling.strategy.direct-write":
+	case "rolling.directWrite",
+		"rolling.direct-write",
+		"rolling.strategy.directWrite",
+		"rolling.strategy.direct-write":
 		parsed, err := configprops.Bool(value, key)
 		if err != nil {
 			return err
@@ -225,7 +252,11 @@ func applyFilterProperty(config *fileConfig, key string, value string) error {
 	case strings.HasPrefix(field, "thresholds."):
 		mapKey := strings.TrimSpace(strings.TrimPrefix(field, "thresholds."))
 		if mapKey == "" {
-			return fmt.Errorf("goark-log: properties filter.%s.%s has empty thresholds key", id, field)
+			return fmt.Errorf(
+				"goark-log: properties filter.%s.%s has empty thresholds key",
+				id,
+				field,
+			)
 		}
 		if filter.Thresholds == nil {
 			filter.Thresholds = make(map[string]string)
@@ -286,7 +317,11 @@ func applyFilterKeyValuePairs(config *fileConfig, values map[string]string) erro
 				continue
 			}
 			if !pair.hasKey || strings.TrimSpace(pair.key) == "" || !pair.hasValue {
-				return fmt.Errorf("goark-log: properties filter.%s.%s requires key and value", filterID, pairID)
+				return fmt.Errorf(
+					"goark-log: properties filter.%s.%s requires key and value",
+					filterID,
+					pairID,
+				)
 			}
 			filter.KeyValuePair = append(filter.KeyValuePair, keyValuePairConfig{
 				Key:   pair.key,

@@ -33,7 +33,9 @@ func TestParseCronSchedule_whenExpressionInvalid_shouldReject(t *testing.T) {
 	}
 }
 
-func TestDeleteArchivesByAction_whenAccumulatedLimitsSet_shouldKeepNewestWithinLimits(t *testing.T) {
+func TestDeleteArchivesByAction_whenAccumulatedLimitsSet_shouldKeepNewestWithinLimits(
+	t *testing.T,
+) {
 	now := time.Date(2026, 8, 25, 10, 15, 30, 0, time.FixedZone("CST", 8*3600))
 	dir := t.TempDir()
 	files := []struct {

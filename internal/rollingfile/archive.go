@@ -39,13 +39,21 @@ func (a *RollingFileAppender) nextArchivePath(now time.Time) (string, error) {
 		}
 		if a.compress && compressedCandidate != candidate {
 			if exists, err := logfile.Exists(compressedCandidate); err != nil {
-				return "", fmt.Errorf("goark-log: stat archive log file %q: %w", compressedCandidate, err)
+				return "", fmt.Errorf(
+					"goark-log: stat archive log file %q: %w",
+					compressedCandidate,
+					err,
+				)
 			} else if exists {
 				continue
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
-			return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+			return "", fmt.Errorf(
+				"goark-log: create archive directory %q: %w",
+				filepath.Dir(candidate),
+				err,
+			)
 		}
 		return candidate, nil
 	}
@@ -61,7 +69,11 @@ func (a *RollingFileAppender) nextMinIndexArchivePath(now time.Time) (string, er
 		if archivePathAvailable(candidate, compressedCandidate, a.compress) {
 			a.archiveIndex = index + 1
 			if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
-				return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+				return "", fmt.Errorf(
+					"goark-log: create archive directory %q: %w",
+					filepath.Dir(candidate),
+					err,
+				)
 			}
 			return candidate, nil
 		}
@@ -75,7 +87,11 @@ func (a *RollingFileAppender) nextMinIndexArchivePath(now time.Time) (string, er
 	}
 	a.archiveIndex = 2
 	if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
-		return "", fmt.Errorf("goark-log: create archive directory %q: %w", filepath.Dir(candidate), err)
+		return "", fmt.Errorf(
+			"goark-log: create archive directory %q: %w",
+			filepath.Dir(candidate),
+			err,
+		)
 	}
 	return candidate, nil
 }
@@ -125,7 +141,12 @@ func (a *RollingFileAppender) rotateMinIndexArchives(now time.Time) error {
 			target = nextCompressed
 		}
 		if err := os.Rename(source, target); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("goark-log: rename archive log file %q to %q: %w", source, target, err)
+			return fmt.Errorf(
+				"goark-log: rename archive log file %q to %q: %w",
+				source,
+				target,
+				err,
+			)
 		}
 	}
 	return nil
@@ -285,7 +306,15 @@ func (a *RollingFileAppender) archiveFiles() ([]archiveFile, error) {
 		for _, match := range matches {
 			info, err := os.Stat(match)
 			if err == nil && !info.IsDir() {
-				archives = append(archives, archiveFile{path: match, name: filepath.ToSlash(match), size: info.Size(), modTime: info.ModTime()})
+				archives = append(
+					archives,
+					archiveFile{
+						path:    match,
+						name:    filepath.ToSlash(match),
+						size:    info.Size(),
+						modTime: info.ModTime(),
+					},
+				)
 			}
 		}
 		return archives, nil

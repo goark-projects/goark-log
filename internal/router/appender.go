@@ -101,7 +101,10 @@ func NewFilteredAppender(delegate Appender, filters ...Filter) (*FilteredAppende
 }
 
 // NewAppenderControl 解析结构化 appender 引用。
-func NewAppenderControl(appenderByName map[string]Appender, ref AppenderRef) (AppenderControl, error) {
+func NewAppenderControl(
+	appenderByName map[string]Appender,
+	ref AppenderRef,
+) (AppenderControl, error) {
 	name := strings.TrimSpace(ref.Ref)
 	if name == "" {
 		return AppenderControl{}, fmt.Errorf("appender ref is empty")
@@ -217,7 +220,10 @@ func (a *FilteredAppender) Close() error {
 	return a.delegate.Close()
 }
 
-func resolveAppenderControls(appenderByName map[string]Appender, refs []AppenderRef) ([]AppenderControl, error) {
+func resolveAppenderControls(
+	appenderByName map[string]Appender,
+	refs []AppenderRef,
+) ([]AppenderControl, error) {
 	controls := make([]AppenderControl, 0, len(refs))
 	for _, ref := range refs {
 		control, err := NewAppenderControl(appenderByName, ref)

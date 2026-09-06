@@ -130,7 +130,14 @@ func (r *Router) Configurations() []LoggerConfiguration {
 	}
 	result := make([]LoggerConfiguration, 0, len(config.loggers)+1)
 	rootLevel := config.root.Level
-	result = append(result, LoggerConfiguration{Name: "ROOT", ConfiguredLevel: levelPointer(rootLevel), EffectiveLevel: rootLevel})
+	result = append(
+		result,
+		LoggerConfiguration{
+			Name:            "ROOT",
+			ConfiguredLevel: levelPointer(rootLevel),
+			EffectiveLevel:  rootLevel,
+		},
+	)
 	for _, logger := range config.loggers {
 		result = append(result, LoggerConfiguration{
 			Name:            logger.name,

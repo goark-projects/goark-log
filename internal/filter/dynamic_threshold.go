@@ -18,7 +18,12 @@ type DynamicThresholdFilter struct {
 }
 
 // NewDynamicThresholdFilter 创建动态级别阈值过滤器。
-func NewDynamicThresholdFilter(key string, defaultThreshold slog.Level, thresholds map[string]slog.Level, options ...FilterOption) (*DynamicThresholdFilter, error) {
+func NewDynamicThresholdFilter(
+	key string,
+	defaultThreshold slog.Level,
+	thresholds map[string]slog.Level,
+	options ...FilterOption,
+) (*DynamicThresholdFilter, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, fmt.Errorf("goark-log: dynamic threshold filter key is empty")

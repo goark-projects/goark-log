@@ -155,13 +155,21 @@ func (c *layoutConfig) resolveLookups(lookups *LookupResolver) error {
 	if c.EventTemplateURI, err = resolveStringLookup(lookups, c.EventTemplateURI); err != nil {
 		return fmt.Errorf("eventTemplateUri: %w", err)
 	}
-	if c.EventTemplateURIKebab, err = resolveStringLookup(lookups, c.EventTemplateURIKebab); err != nil {
+	c.EventTemplateURIKebab, err = resolveStringLookup(
+		lookups,
+		c.EventTemplateURIKebab,
+	)
+	if err != nil {
 		return fmt.Errorf("event-template-uri: %w", err)
 	}
 	if c.EventTemplatePath, err = resolveStringLookup(lookups, c.EventTemplatePath); err != nil {
 		return fmt.Errorf("eventTemplatePath: %w", err)
 	}
-	if c.EventTemplatePathKebab, err = resolveStringLookup(lookups, c.EventTemplatePathKebab); err != nil {
+	c.EventTemplatePathKebab, err = resolveStringLookup(
+		lookups,
+		c.EventTemplatePathKebab,
+	)
+	if err != nil {
 		return fmt.Errorf("event-template-path: %w", err)
 	}
 	if c.Header, err = resolveStringLookup(lookups, c.Header); err != nil {

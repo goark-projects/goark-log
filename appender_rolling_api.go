@@ -35,7 +35,10 @@ type RollingFileOption = internalrollingfile.RollingFileOption
 type RollingDeleteAction = internalrollingfile.RollingDeleteAction
 
 // NewRollingFileAppender 创建滚动文件 appender。
-func NewRollingFileAppender(path string, options ...RollingFileOption) (*RollingFileAppender, error) {
+func NewRollingFileAppender(
+	path string,
+	options ...RollingFileOption,
+) (*RollingFileAppender, error) {
 	return internalrollingfile.NewRollingFileAppender(path, options...)
 }
 

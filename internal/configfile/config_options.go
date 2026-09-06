@@ -118,7 +118,12 @@ func (c layoutConfig) eventTemplate() string {
 }
 
 func (c layoutConfig) eventTemplateURI() string {
-	return textutil.FirstNonBlank(c.EventTemplateURI, c.EventTemplateURIKebab, c.EventTemplatePath, c.EventTemplatePathKebab)
+	return textutil.FirstNonBlank(
+		c.EventTemplateURI,
+		c.EventTemplateURIKebab,
+		c.EventTemplatePath,
+		c.EventTemplatePathKebab,
+	)
 }
 
 func (c layoutConfig) options() LayoutOptions {
@@ -144,7 +149,9 @@ func (c *fileConfig) validateAsyncLoggerConfig() error {
 		}
 	}
 	if used > 1 {
-		return fmt.Errorf("goark-log: config must use only one of asyncLogger, async-logger, or async")
+		return fmt.Errorf(
+			"goark-log: config must use only one of asyncLogger, async-logger, or async",
+		)
 	}
 	config := c.asyncLoggerConfig()
 	if config.empty() {

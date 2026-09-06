@@ -30,7 +30,11 @@ func (a *RollingFileAppender) validate() error {
 	if strings.TrimSpace(a.cronExpression) != "" {
 		cron, err := rolling.ParseCronSchedule(a.cronExpression)
 		if err != nil {
-			return fmt.Errorf("goark-log: rolling cron schedule %q is invalid: %w", a.cronExpression, err)
+			return fmt.Errorf(
+				"goark-log: rolling cron schedule %q is invalid: %w",
+				a.cronExpression,
+				err,
+			)
 		}
 		a.cron = cron
 	}
@@ -68,7 +72,9 @@ func (a *RollingFileAppender) validate() error {
 	}
 	if a.filePattern != "" {
 		if a.maxSize > 0 && !rolling.PatternHasIndex(a.filePattern) {
-			return fmt.Errorf("goark-log: rolling filePattern requires %%i when size policy is enabled")
+			return fmt.Errorf(
+				"goark-log: rolling filePattern requires %%i when size policy is enabled",
+			)
 		}
 		if strings.HasSuffix(strings.ToLower(a.filePattern), ".gz") {
 			a.compress = true
@@ -81,7 +87,10 @@ func (a *RollingFileAppender) validate() error {
 			return err
 		}
 		if !a.directWrite && filepath.Clean(candidate) == filepath.Clean(a.path) {
-			return fmt.Errorf("goark-log: rolling filePattern must not resolve to active log file %q", a.path)
+			return fmt.Errorf(
+				"goark-log: rolling filePattern must not resolve to active log file %q",
+				a.path,
+			)
 		}
 	}
 	if a.maxSize == 0 && a.interval == 0 && a.cron == nil && !a.rolloverOnStartup {

@@ -8,7 +8,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginRegistry) ([]Appender, error) {
+func (c *fileConfig) buildAppenders(
+	filters map[string]Filter,
+	registry *PluginRegistry,
+) ([]Appender, error) {
 	if len(c.Appenders) == 0 {
 		return DefaultOptions().Appenders, nil
 	}
@@ -34,7 +37,14 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginR
 		progress := false
 		remaining := compositeNames[:0]
 		for _, name := range compositeNames {
-			appender, waiting, err := buildCompositeAppender(name, c.Appenders[name], c.Appenders, built, filters, registry)
+			appender, waiting, err := buildCompositeAppender(
+				name,
+				c.Appenders[name],
+				c.Appenders,
+				built,
+				filters,
+				registry,
+			)
 			if err != nil {
 				_ = closeAppenderList(appenders)
 				return nil, err
@@ -49,14 +59,22 @@ func (c *fileConfig) buildAppenders(filters map[string]Filter, registry *PluginR
 		}
 		if !progress {
 			_ = closeAppenderList(appenders)
-			return nil, fmt.Errorf("goark-log: appender dependencies are unresolved: %s", strings.Join(remaining, ", "))
+			return nil, fmt.Errorf(
+				"goark-log: appender dependencies are unresolved: %s",
+				strings.Join(remaining, ", "),
+			)
 		}
 		compositeNames = remaining
 	}
 	return appenders, nil
 }
 
-func buildConcreteAppender(name string, spec appenderConfig, filters map[string]Filter, registry *PluginRegistry) (Appender, error) {
+func buildConcreteAppender(
+	name string,
+	spec appenderConfig,
+	filters map[string]Filter,
+	registry *PluginRegistry,
+) (Appender, error) {
 	layout, err := buildLayout(spec.Layout, registry)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: appender %q: %w", name, err)

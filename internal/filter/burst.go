@@ -21,7 +21,12 @@ type BurstFilter struct {
 }
 
 // NewBurstFilter 创建突发限流过滤器。
-func NewBurstFilter(level slog.Level, ratePerSecond float64, maxBurst int, options ...FilterOption) (*BurstFilter, error) {
+func NewBurstFilter(
+	level slog.Level,
+	ratePerSecond float64,
+	maxBurst int,
+	options ...FilterOption,
+) (*BurstFilter, error) {
 	if ratePerSecond <= 0 {
 		return nil, fmt.Errorf("goark-log: burst filter rate must be > 0")
 	}

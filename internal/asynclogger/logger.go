@@ -62,7 +62,10 @@ func New(dispatch DispatchFunc, options asyncruntime.LoggerOptions) (*Logger, er
 		wait:      normalized.WaitStrategy,
 		waitOpts:  normalized.WaitOptions,
 	}
-	async.queue, err = disruptor.NewRingBuffer[entry](normalized.QueueSize, asyncruntime.NewWaitStrategyWithOptions(normalized.WaitStrategy, normalized.WaitOptions))
+	async.queue, err = disruptor.NewRingBuffer[entry](
+		normalized.QueueSize,
+		asyncruntime.NewWaitStrategyWithOptions(normalized.WaitStrategy, normalized.WaitOptions),
+	)
 	if err != nil {
 		return nil, err
 	}

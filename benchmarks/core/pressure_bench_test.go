@@ -19,12 +19,49 @@ func BenchmarkPressureAsyncLoggerQueueMatrix(b *testing.B) {
 		wait     AsyncWaitStrategy
 		options  AsyncWaitOptions
 	}{
-		{name: "q1024-b64-block-block", queue: 1024, batch: 64, overflow: AsyncOverflowBlock, wait: AsyncWaitBlock},
-		{name: "q8192-b256-block-yield", queue: 8192, batch: 256, overflow: AsyncOverflowBlock, wait: AsyncWaitYield},
-		{name: "q8192-b256-block-timeout", queue: 8192, batch: 256, overflow: AsyncOverflowBlock, wait: AsyncWaitBlock, options: AsyncWaitOptions{Timeout: time.Millisecond}},
-		{name: "q65536-b1024-block-yield", queue: 65536, batch: 1024, overflow: AsyncOverflowBlock, wait: AsyncWaitYield},
-		{name: "q8192-b256-drop-yield", queue: 8192, batch: 256, overflow: AsyncOverflowDrop, wait: AsyncWaitYield},
-		{name: "q8192-b256-sync-yield", queue: 8192, batch: 256, overflow: AsyncOverflowSyncFallback, wait: AsyncWaitYield},
+		{
+			name:     "q1024-b64-block-block",
+			queue:    1024,
+			batch:    64,
+			overflow: AsyncOverflowBlock,
+			wait:     AsyncWaitBlock,
+		},
+		{
+			name:     "q8192-b256-block-yield",
+			queue:    8192,
+			batch:    256,
+			overflow: AsyncOverflowBlock,
+			wait:     AsyncWaitYield,
+		},
+		{
+			name:     "q8192-b256-block-timeout",
+			queue:    8192,
+			batch:    256,
+			overflow: AsyncOverflowBlock,
+			wait:     AsyncWaitBlock,
+			options:  AsyncWaitOptions{Timeout: time.Millisecond},
+		},
+		{
+			name:     "q65536-b1024-block-yield",
+			queue:    65536,
+			batch:    1024,
+			overflow: AsyncOverflowBlock,
+			wait:     AsyncWaitYield,
+		},
+		{
+			name:     "q8192-b256-drop-yield",
+			queue:    8192,
+			batch:    256,
+			overflow: AsyncOverflowDrop,
+			wait:     AsyncWaitYield,
+		},
+		{
+			name:     "q8192-b256-sync-yield",
+			queue:    8192,
+			batch:    256,
+			overflow: AsyncOverflowSyncFallback,
+			wait:     AsyncWaitYield,
+		},
 	}
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
@@ -193,7 +230,11 @@ func BenchmarkPressureAsyncAppenderOverflow(b *testing.B) {
 func BenchmarkPressureNativeLoggerWithCaller(b *testing.B) {
 	handler, err := NewHandler(Options{
 		Appenders: []Appender{NewJSONAppender(WithJSONAppenderWriter(io.Discard))},
-		Root:      RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}, IncludeLocation: true},
+		Root: RootLogger{
+			Level:           slog.LevelInfo,
+			AppenderRefs:    []string{"json"},
+			IncludeLocation: true,
+		},
 	})
 	if err != nil {
 		b.Fatalf("NewHandler() error = %v", err)

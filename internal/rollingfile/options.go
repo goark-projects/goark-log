@@ -235,7 +235,11 @@ func (a *RollingFileAppender) closeActionWorker() error {
 	return err
 }
 
-func (a *RollingFileAppender) runRolloverActions(now time.Time, target string, archiveIndex int) error {
+func (a *RollingFileAppender) runRolloverActions(
+	now time.Time,
+	target string,
+	archiveIndex int,
+) error {
 	_, compressedTarget, err := a.archivePaths(now, archiveIndex)
 	if err != nil {
 		return err
@@ -274,7 +278,10 @@ func (a *RollingFileAppender) enqueueRolloverAction(action func() error) error {
 func (a *RollingFileAppender) runDeleteActions(now time.Time) error {
 	var joined error
 	for _, action := range a.deleteActions {
-		joined = errors.Join(joined, rolling.DeleteArchivesByAction(now, toRollingDeleteAction(action)))
+		joined = errors.Join(
+			joined,
+			rolling.DeleteArchivesByAction(now, toRollingDeleteAction(action)),
+		)
 	}
 	return joined
 }

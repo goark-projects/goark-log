@@ -84,7 +84,13 @@ func ThreadNameFromAttrs(attrs []slog.Attr) string {
 }
 
 // New 从 slog.Record 创建事件快照。
-func New(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
+func New(
+	ctx context.Context,
+	logger string,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	record slog.Record,
+) Event {
 	if logger == "" {
 		logger = DefaultLoggerName
 	}
@@ -96,11 +102,30 @@ func New(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []
 		attrs = AppendAttr(attrs, groups, attr)
 		return true
 	})
-	return NewFromCollected(ctx, logger, record.Time, record.Level, record.Message, record.PC, attrs)
+	return NewFromCollected(
+		ctx,
+		logger,
+		record.Time,
+		record.Level,
+		record.Message,
+		record.PC,
+		attrs,
+	)
 }
 
 // NewFromAttrs 从已给定属性创建事件快照。
-func NewFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, when time.Time, level slog.Level, message string, pc uintptr, attrs []slog.Attr, copyAttrs bool) Event {
+func NewFromAttrs(
+	ctx context.Context,
+	logger string,
+	handlerAttrs []slog.Attr,
+	groups []string,
+	when time.Time,
+	level slog.Level,
+	message string,
+	pc uintptr,
+	attrs []slog.Attr,
+	copyAttrs bool,
+) Event {
 	if logger == "" {
 		logger = DefaultLoggerName
 	}
@@ -110,7 +135,15 @@ func NewFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.Attr, 
 }
 
 // NewFromCollected 从已合并属性创建事件快照。
-func NewFromCollected(ctx context.Context, logger string, when time.Time, level slog.Level, message string, pc uintptr, collected []slog.Attr) Event {
+func NewFromCollected(
+	ctx context.Context,
+	logger string,
+	when time.Time,
+	level slog.Level,
+	message string,
+	pc uintptr,
+	collected []slog.Attr,
+) Event {
 	marker := MarkerFromAttrs(collected)
 	if marker == nil {
 		if contextMarker, ok := logcontext.ContextMarker(ctx); ok {
@@ -141,12 +174,19 @@ func NewFromCollected(ctx context.Context, logger string, when time.Time, level 
 }
 
 // MakeAttrs 合并 handler、context 和调用方属性。
-func MakeAttrs(handlerAttrs []slog.Attr, contextAttrs []slog.Attr, groups []string, attrs []slog.Attr, copyAttrs bool) []slog.Attr {
+func MakeAttrs(
+	handlerAttrs []slog.Attr,
+	contextAttrs []slog.Attr,
+	groups []string,
+	attrs []slog.Attr,
+	copyAttrs bool,
+) []slog.Attr {
 	total := len(handlerAttrs) + len(contextAttrs) + len(attrs)
 	if total == 0 {
 		return nil
 	}
-	if !copyAttrs && len(handlerAttrs) == 0 && len(contextAttrs) == 0 && len(groups) == 0 && AttrsCanShare(attrs) {
+	if !copyAttrs && len(handlerAttrs) == 0 && len(contextAttrs) == 0 && len(groups) == 0 &&
+		AttrsCanShare(attrs) {
 		return attrs
 	}
 	collected := make([]slog.Attr, 0, total)

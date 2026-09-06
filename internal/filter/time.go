@@ -21,14 +21,24 @@ func NewTimeFilter(start string, end string, options ...FilterOption) (*TimeFilt
 }
 
 // NewTimeFilterInLocation 创建固定时区的时间区间过滤器。
-func NewTimeFilterInLocation(start string, end string, location *time.Location, options ...FilterOption) (*TimeFilter, error) {
+func NewTimeFilterInLocation(
+	start string,
+	end string,
+	location *time.Location,
+	options ...FilterOption,
+) (*TimeFilter, error) {
 	if location == nil {
 		return nil, fmt.Errorf("goark-log: time filter location is nil")
 	}
 	return newTimeFilter(start, end, location, options...)
 }
 
-func newTimeFilter(start string, end string, location *time.Location, options ...FilterOption) (*TimeFilter, error) {
+func newTimeFilter(
+	start string,
+	end string,
+	location *time.Location,
+	options ...FilterOption,
+) (*TimeFilter, error) {
 	startTime, err := parseTimeOfDay(start)
 	if err != nil {
 		return nil, fmt.Errorf("goark-log: time filter start: %w", err)
@@ -38,7 +48,12 @@ func newTimeFilter(start string, end string, location *time.Location, options ..
 		return nil, fmt.Errorf("goark-log: time filter end: %w", err)
 	}
 	settings := newSettings(FilterNeutral, FilterDeny, options...)
-	return &TimeFilter{start: startTime, end: endTime, location: location, outcome: settings.outcome}, nil
+	return &TimeFilter{
+		start:    startTime,
+		end:      endTime,
+		location: location,
+		outcome:  settings.outcome,
+	}, nil
 }
 
 func (f *TimeFilter) Decide(_ context.Context, event Event) FilterDecision {
