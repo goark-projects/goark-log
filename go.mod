@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/bytedance/sonic v1.15.3
 	github.com/pelletier/go-toml/v2 v2.4.3
-	golang.org/x/text v0.39.0
+	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
