@@ -20,6 +20,7 @@
 - JSON 路径统一使用 Sonic，并将 Go 基线提升至 1.26。
 - 将运行时、配置、布局、Appender、Filter、滚动和测试职责拆分到聚焦的包和文件。
 - 新增跨平台 CI 和 benchmark smoke 门禁。
+- 将核心模块和独立比较模块的 `golang.org/x` 依赖对齐到最新稳定版本。
 
 ### 修复
 

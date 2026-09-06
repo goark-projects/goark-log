@@ -22,6 +22,8 @@ branch is `dev`; release tags are cut from `main` after validation.
 - Split runtime, configuration, layout, appender, filter, rolling, and test
   responsibilities into focused packages and files.
 - Added cross-platform CI and benchmark smoke gates.
+- Aligned the core and independent comparison modules with the latest stable
+  `golang.org/x` releases.
 
 ### Fixed
 
