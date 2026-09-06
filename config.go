@@ -132,15 +132,6 @@ func ParseMonitorInterval(value string) (time.Duration, error) {
 	return configvalue.MonitorInterval(value)
 }
 
-func levelName(level slog.Level) string {
-	return LevelName(level)
-}
-
-func levelPointer(level slog.Level) *slog.Level {
-	copied := level
-	return &copied
-}
-
 // ConfigResult 描述配置解析结果。
 type ConfigResult struct {
 	Source          ConfigSource

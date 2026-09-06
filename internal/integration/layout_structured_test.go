@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -359,15 +358,6 @@ func TestBuildLayout_whenStructuredLayoutTypesUsed_shouldResolveBuiltIns(t *test
 			t.Fatalf("buildLayout(%q) returned nil layout", kind)
 		}
 	}
-}
-
-func mustAtoi(t *testing.T, value string) int {
-	t.Helper()
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		t.Fatalf("Atoi(%q) error = %v", value, err)
-	}
-	return parsed
 }
 
 func assertCompleteJSONMessages(t *testing.T, path string, want ...string) {

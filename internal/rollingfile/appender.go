@@ -365,11 +365,6 @@ func (a *RollingFileAppender) validate() error {
 	return nil
 }
 
-func (a *RollingFileAppender) open() error {
-	_, err := a.openAt(a.now())
-	return err
-}
-
 func (a *RollingFileAppender) openAt(now time.Time) (int64, error) {
 	if a.directWrite {
 		if err := a.initArchiveIndex(); err != nil {

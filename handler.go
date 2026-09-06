@@ -447,7 +447,3 @@ func (h nativeHandler) Log3Attrs(ctx context.Context, logger string, handlerAttr
 func (h nativeHandler) SlogHandler() slog.Handler {
 	return h.handler
 }
-
-func callerPC(skip int) uintptr {
-	return internalnativelogger.CallerPC(skip)
-}

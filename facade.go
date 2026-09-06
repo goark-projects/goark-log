@@ -6,9 +6,7 @@
 package goarklog
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"log/slog"
 	"time"
 
@@ -174,10 +172,6 @@ type JSONTemplateResolverBuildConfig = internallayout.JSONTemplateResolverBuildC
 // NewMarker 创建不可变语义的 marker 值对象。
 func NewMarker(name string, parents ...Marker) Marker {
 	return logcontext.NewMarker(name, parents...)
-}
-
-func markerPointer(marker Marker) *Marker {
-	return logevent.MarkerPointer(marker)
 }
 
 // WithContextAttrs 返回携带日志上下文属性的新 context。
@@ -353,38 +347,6 @@ func NewJSONTemplateLayoutFromFile(path string, options ...JSONTemplateLayoutOpt
 	return internallayout.NewJSONTemplateLayoutFromFile(path, jsonTemplateLayoutOptions(options...)...)
 }
 
-func normalizeContext(ctx context.Context) context.Context {
-	return logevent.NormalizeContext(ctx)
-}
-
-func throwableStackString(throwable *Throwable) string {
-	return logevent.ThrowableStackString(throwable)
-}
-
-func throwableFromAttrs(attrs []slog.Attr) *Throwable {
-	return logevent.ThrowableFromAttrs(attrs)
-}
-
-func appendContextStackValues(dst []string, values ...string) []string {
-	return logevent.AppendContextStackValues(dst, values...)
-}
-
-func contextStackFromAttrs(attrs []slog.Attr) []string {
-	return logevent.ContextStackFromAttrs(attrs)
-}
-
-func contextStackString(values []string) string {
-	return logevent.ContextStackString(values)
-}
-
-func markerFromAttrs(attrs []slog.Attr) *Marker {
-	return logevent.MarkerFromAttrs(attrs)
-}
-
-func threadNameFromAttrs(attrs []slog.Attr) string {
-	return logevent.ThreadNameFromAttrs(attrs)
-}
-
 func newEvent(ctx context.Context, logger string, handlerAttrs []slog.Attr, groups []string, record slog.Record) Event {
 	return logevent.New(ctx, logger, handlerAttrs, groups, record)
 }
@@ -393,52 +355,16 @@ func newEventFromAttrs(ctx context.Context, logger string, handlerAttrs []slog.A
 	return logevent.NewFromAttrs(ctx, logger, handlerAttrs, groups, when, level, message, pc, attrs, copyAttrs)
 }
 
-func newEventFromCollected(ctx context.Context, logger string, when time.Time, level slog.Level, message string, pc uintptr, collected []slog.Attr) Event {
-	return logevent.NewFromCollected(ctx, logger, when, level, message, pc, collected)
-}
-
-func makeEventAttrs(handlerAttrs []slog.Attr, contextAttrs []slog.Attr, groups []string, attrs []slog.Attr, copyAttrs bool) []slog.Attr {
-	return logevent.MakeAttrs(handlerAttrs, contextAttrs, groups, attrs, copyAttrs)
-}
-
-func attrsCanShare(attrs []slog.Attr) bool {
-	return logevent.AttrsCanShare(attrs)
-}
-
 func appendAttrs(dst []slog.Attr, groups []string, attrs []slog.Attr) []slog.Attr {
 	return logevent.AppendAttrs(dst, groups, attrs)
-}
-
-func appendAttr(dst []slog.Attr, groups []string, attr slog.Attr) []slog.Attr {
-	return logevent.AppendAttr(dst, groups, attr)
 }
 
 func normalizeAttr(attr slog.Attr) slog.Attr {
 	return logevent.NormalizeAttr(attr)
 }
 
-func groupKey(groups []string, key string) string {
-	return logevent.GroupKey(groups, key)
-}
-
 func jsonTemplateLayoutOptions(options ...JSONTemplateLayoutOption) []JSONTemplateLayoutOption {
 	merged := make([]JSONTemplateLayoutOption, 0, len(options)+1)
 	merged = append(merged, WithJSONTemplateResolverRegistry(DefaultPluginRegistry()))
 	return append(merged, options...)
-}
-
-func appendJSONEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs []slog.Attr) {
-	internallayout.AppendJSONEvent(buf, when, level, logger, message, attrs)
-}
-
-func appendJSONFixedEvent(buf *bytes.Buffer, when time.Time, level slog.Level, logger string, message string, attrs [3]slog.Attr, count int) {
-	internallayout.AppendJSONFixedEvent(buf, when, level, logger, message, attrs, count)
-}
-
-func writeLayoutHeader(writer io.Writer, layout Layout) (int, error) {
-	return internallayout.WriteHeader(writer, layout)
-}
-
-func writeLayoutFooter(writer io.Writer, layout Layout) (int, error) {
-	return internallayout.WriteFooter(writer, layout)
 }

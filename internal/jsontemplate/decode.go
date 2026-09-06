@@ -22,7 +22,7 @@ func DecodeRawFields(template string) ([]RawField, error) {
 	if err != nil {
 		return nil, err
 	}
-	if root.Type() != ast.V_OBJECT {
+	if root.TypeSafe() != ast.V_OBJECT {
 		return nil, fmt.Errorf("event template must be a JSON object")
 	}
 	if err := root.Load(); err != nil {

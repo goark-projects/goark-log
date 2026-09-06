@@ -64,16 +64,6 @@ func (c rollingConfig) onStartup() bool {
 	return c.OnStartup || c.OnStartupKebab
 }
 
-func (c rollingConfig) maxBackups() (int, bool) {
-	if c.MaxBackups != nil {
-		return *c.MaxBackups, true
-	}
-	if c.MaxBackupsKebab != nil {
-		return *c.MaxBackupsKebab, true
-	}
-	return 0, false
-}
-
 func (c rollingConfig) maxBackupsPointer() *int {
 	if c.Strategy.Max != nil {
 		value := *c.Strategy.Max

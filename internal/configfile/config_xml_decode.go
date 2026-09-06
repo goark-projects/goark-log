@@ -382,10 +382,7 @@ func xmlKeyValuePairMap(pairs []xmlKeyValuePair) map[string]string {
 func xmlKeyValuePairs(pairs []xmlKeyValuePair) []keyValuePairConfig {
 	out := make([]keyValuePairConfig, 0, len(pairs))
 	for _, pair := range pairs {
-		out = append(out, keyValuePairConfig{
-			Key:   pair.Key,
-			Value: pair.Value,
-		})
+		out = append(out, keyValuePairConfig(pair))
 	}
 	return out
 }

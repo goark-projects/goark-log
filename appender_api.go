@@ -531,20 +531,8 @@ func normalizeAsyncLoggerOptions(options AsyncLoggerOptions) (AsyncLoggerOptions
 	return internalasync.NormalizeLoggerOptions(options)
 }
 
-func validateAsyncWaitOptions(options AsyncWaitOptions) error {
-	return internalasync.ValidateWaitOptions(options)
-}
-
-func normalizeAsyncQueueSize(size int, fallback int) (int, error) {
-	return internalasync.NormalizeQueueSize(size, fallback)
-}
-
 func sameAsyncLoggerRuntimeOptions(left AsyncLoggerOptions, right AsyncLoggerOptions) bool {
 	return internalasync.SameLoggerRuntimeOptions(left, right)
-}
-
-func withRollingClock(clock func() time.Time) RollingFileOption {
-	return internalrollingfile.WithRollingClock(clock)
 }
 
 func isAsyncAppender(appender Appender) bool {

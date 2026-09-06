@@ -285,18 +285,6 @@ func NewRegexFilter(pattern string, options ...RegexFilterOption) (*RegexFilter,
 	return logfilter.NewRegexFilter(pattern, options...)
 }
 
-func parseFloat(value string, field string) (float64, error) {
-	return logfilter.ParseFloat(value, field)
-}
-
-func normalizeFilters(scope string, filters []Filter) ([]Filter, error) {
-	return logfilter.Normalize(scope, filters)
-}
-
-func appendFilters(dst []Filter, src []Filter) []Filter {
-	return logfilter.Append(dst, src)
-}
-
 func applyFilters(ctx context.Context, filters []Filter, event Event) FilterDecision {
 	return logfilter.Apply(ctx, filters, event)
 }

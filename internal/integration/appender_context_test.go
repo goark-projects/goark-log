@@ -11,6 +11,11 @@ import (
 
 var errNilContextObserved = errors.New("nil context observed")
 
+func appendWithNilContext(appender Appender, event Event) error {
+	//lint:ignore SA1012 该辅助函数专门验证 Appender 对 nil 上下文的防御性处理。
+	return appender.Append(nil, event)
+}
+
 func TestAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 	event := testEvent("nil context", fixedTestTime())
 
@@ -20,7 +25,7 @@ func TestAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 			WithConsoleWriter(&out),
 			WithConsoleLayout(TextLayout{}),
 		)
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if out.Len() == 0 {
@@ -37,7 +42,7 @@ func TestAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 			t.Fatalf("NewFileAppender() error = %v", err)
 		}
 		defer appender.Close()
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 	})
@@ -51,7 +56,7 @@ func TestAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 			t.Fatalf("NewRollingFileAppender() error = %v", err)
 		}
 		defer appender.Close()
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 	})
@@ -59,7 +64,7 @@ func TestAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 	t.Run("json", func(t *testing.T) {
 		var out bytes.Buffer
 		appender := NewJSONAppender(WithJSONAppenderWriter(&out))
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if out.Len() == 0 {
@@ -78,7 +83,7 @@ func TestDelegatingAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewFilteredAppender() error = %v", err)
 		}
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if !delegate.called {
@@ -93,7 +98,7 @@ func TestDelegatingAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewFailoverAppender() error = %v", err)
 		}
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if !primary.called || failover.called {
@@ -112,7 +117,7 @@ func TestDelegatingAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewRoutingAppender() error = %v", err)
 		}
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if !route.called {
@@ -131,7 +136,7 @@ func TestDelegatingAppenders_whenNilContext_shouldUseBackground(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewRewriteAppender() error = %v", err)
 		}
-		if err := appender.Append(nil, event); err != nil {
+		if err := appendWithNilContext(appender, event); err != nil {
 			t.Fatalf("Append(nil) error = %v", err)
 		}
 		if !delegate.called {
