@@ -13,43 +13,43 @@ import (
 	"github.com/rs/zerolog"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func BenchmarkCompareDiscard(b *testing.B) {
 	b.Run("goark-logattrs-json", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewConsoleAppender(
-					goarklog.WithConsoleWriter(io.Discard),
-					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewConsoleAppender(
+					log.WithConsoleWriter(io.Discard),
+					log.WithConsoleLayout(log.JSONLayout{}),
 				),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger := goarklog.NewLogger(handler, "bench.compare")
+		logger := log.NewLogger(handler, "bench.compare")
 		benchmarkGoarkLogAttrs(b, logger)
 	})
 
 	b.Run("goark-native-json", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewConsoleAppender(
-					goarklog.WithConsoleWriter(io.Discard),
-					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewConsoleAppender(
+					log.WithConsoleWriter(io.Discard),
+					log.WithConsoleLayout(log.JSONLayout{}),
 				),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -57,17 +57,17 @@ func BenchmarkCompareDiscard(b *testing.B) {
 	})
 
 	b.Run("goark-native-direct-json", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewJSONAppender(log.WithJSONAppenderWriter(io.Discard)),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -75,17 +75,17 @@ func BenchmarkCompareDiscard(b *testing.B) {
 	})
 
 	b.Run("goark-native-direct-json3", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewJSONAppender(log.WithJSONAppenderWriter(io.Discard)),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -93,17 +93,17 @@ func BenchmarkCompareDiscard(b *testing.B) {
 	})
 
 	b.Run("goark-builder-direct-json", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewJSONAppender(log.WithJSONAppenderWriter(io.Discard)),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -111,20 +111,20 @@ func BenchmarkCompareDiscard(b *testing.B) {
 	})
 
 	b.Run("goark-info-json", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewConsoleAppender(
-					goarklog.WithConsoleWriter(io.Discard),
-					goarklog.WithConsoleLayout(goarklog.JSONLayout{}),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewConsoleAppender(
+					log.WithConsoleWriter(io.Discard),
+					log.WithConsoleLayout(log.JSONLayout{}),
 				),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"console"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger := goarklog.NewLogger(handler, "bench.compare")
+		logger := log.NewLogger(handler, "bench.compare")
 		benchmarkGoarkInfo(b, logger)
 	})
 
@@ -142,46 +142,46 @@ func BenchmarkCompareDiscard(b *testing.B) {
 
 func BenchmarkCompareBufferedFile(b *testing.B) {
 	b.Run("goark-file-json", func(b *testing.B) {
-		appender, err := goarklog.NewFileAppender(
+		appender, err := log.NewFileAppender(
 			filePath(b, "goark.log"),
-			goarklog.WithFileLayout(goarklog.JSONLayout{}),
-			goarklog.WithFileBufferSize(256*1024),
+			log.WithFileLayout(log.JSONLayout{}),
+			log.WithFileBufferSize(256*1024),
 		)
 		if err != nil {
 			b.Fatalf("NewFileAppender() error = %v", err)
 		}
 		defer appender.Close()
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger := goarklog.NewLogger(handler, "bench.compare")
+		logger := log.NewLogger(handler, "bench.compare")
 		benchmarkGoarkLogAttrs(b, logger)
 	})
 
 	b.Run("goark-native-file-json", func(b *testing.B) {
-		appender, err := goarklog.NewFileAppender(
+		appender, err := log.NewFileAppender(
 			filePath(b, "goark-native.log"),
-			goarklog.WithFileLayout(goarklog.JSONLayout{}),
-			goarklog.WithFileBufferSize(256*1024),
+			log.WithFileLayout(log.JSONLayout{}),
+			log.WithFileBufferSize(256*1024),
 		)
 		if err != nil {
 			b.Fatalf("NewFileAppender() error = %v", err)
 		}
 		defer appender.Close()
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"file"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -189,22 +189,22 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 	})
 
 	b.Run("goark-native-direct-file-json3", func(b *testing.B) {
-		appender, err := goarklog.NewJSONFileAppender(
+		appender, err := log.NewJSONFileAppender(
 			filePath(b, "goark-direct-native.log"),
-			goarklog.WithJSONAppenderBufferSize(256*1024),
+			log.WithJSONAppenderBufferSize(256*1024),
 		)
 		if err != nil {
 			b.Fatalf("NewJSONFileAppender() error = %v", err)
 		}
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -212,26 +212,26 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 	})
 
 	b.Run("goark-rolling-json", func(b *testing.B) {
-		appender, err := goarklog.NewRollingFileAppender(
+		appender, err := log.NewRollingFileAppender(
 			filePath(b, "goark-rolling.log"),
-			goarklog.WithRollingFileLayout(goarklog.JSONLayout{}),
-			goarklog.WithRollingFileBufferSize(256*1024),
-			goarklog.WithRollingMaxSize(1<<62),
-			goarklog.WithRollingMaxBackups(1),
+			log.WithRollingFileLayout(log.JSONLayout{}),
+			log.WithRollingFileBufferSize(256*1024),
+			log.WithRollingMaxSize(1<<62),
+			log.WithRollingMaxBackups(1),
 		)
 		if err != nil {
 			b.Fatalf("NewRollingFileAppender() error = %v", err)
 		}
 		defer appender.Close()
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"rollingFile"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"rollingFile"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
 		defer handler.Close()
-		logger := goarklog.NewLogger(handler, "bench.compare")
+		logger := log.NewLogger(handler, "bench.compare")
 		benchmarkGoarkLogAttrs(b, logger)
 	})
 
@@ -253,16 +253,16 @@ func BenchmarkCompareBufferedFile(b *testing.B) {
 
 func BenchmarkCompareParallelDiscard(b *testing.B) {
 	b.Run("goark-native-direct-json3", func(b *testing.B) {
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{
-				goarklog.NewJSONAppender(goarklog.WithJSONAppenderWriter(io.Discard)),
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{
+				log.NewJSONAppender(log.WithJSONAppenderWriter(io.Discard)),
 			},
-			Root: goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+			Root: log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
-		logger, err := goarklog.NewNativeLogger(handler, "bench.compare")
+		logger, err := log.NewNativeLogger(handler, "bench.compare")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -298,7 +298,7 @@ func benchmarkGoarkLogAttrs(b *testing.B, logger *slog.Logger) {
 	}
 }
 
-func benchmarkGoarkNative(b *testing.B, logger *goarklog.Logger) {
+func benchmarkGoarkNative(b *testing.B, logger *log.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for index := 0; index < b.N; index++ {
@@ -312,7 +312,7 @@ func benchmarkGoarkNative(b *testing.B, logger *goarklog.Logger) {
 	}
 }
 
-func benchmarkGoarkNative3(b *testing.B, logger *goarklog.Logger) {
+func benchmarkGoarkNative3(b *testing.B, logger *log.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for index := 0; index < b.N; index++ {
@@ -326,7 +326,7 @@ func benchmarkGoarkNative3(b *testing.B, logger *goarklog.Logger) {
 	}
 }
 
-func benchmarkGoarkNativeParallel3(b *testing.B, logger *goarklog.Logger) {
+func benchmarkGoarkNativeParallel3(b *testing.B, logger *log.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -345,7 +345,7 @@ func benchmarkGoarkNativeParallel3(b *testing.B, logger *goarklog.Logger) {
 	b.StopTimer()
 }
 
-func benchmarkGoarkBuilder(b *testing.B, logger *goarklog.Logger) {
+func benchmarkGoarkBuilder(b *testing.B, logger *log.Logger) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for index := 0; index < b.N; index++ {

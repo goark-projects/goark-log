@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 	"goark.dev/log/examples/internal/exampleutil"
 )
 
@@ -17,15 +17,15 @@ func main() {
 	}
 	defer cleanup()
 
-	handler, result, err := goarklog.NewConfiguredHandler(context.Background(),
-		goarklog.WithConfigPath(exampleutil.ConfigPath("production-service.yml")),
+	handler, result, err := log.NewConfiguredHandler(context.Background(),
+		log.WithConfigPath(exampleutil.ConfigPath("production-service.yml")),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer handler.Close()
 
-	logger, err := goarklog.NewNativeLogger(handler, "goark.demo.sql")
+	logger, err := log.NewNativeLogger(handler, "goark.demo.sql")
 	if err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package goarklog
+package log
 
 import (
 	internalasyncappender "goark.dev/log/internal/asyncappender"

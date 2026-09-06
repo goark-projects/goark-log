@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 	"goark.dev/log/examples/internal/exampleutil"
 )
 
@@ -17,15 +17,15 @@ func main() {
 	}
 	defer cleanup()
 
-	logger, handler, _, err := goarklog.NewConfigured(context.Background(),
-		goarklog.WithConfigPath(exampleutil.ConfigPath("async-failover.yml")),
+	logger, handler, _, err := log.NewConfigured(context.Background(),
+		log.WithConfigPath(exampleutil.ConfigPath("async-failover.yml")),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer handler.Close()
 
-	logger = goarklog.WithName(logger, "goark.demo.async")
+	logger = log.WithName(logger, "goark.demo.async")
 	for index := 0; index < 5; index++ {
 		logger.Info("queued event", slog.Int("index", index), slog.Duration("elapsed", time.Duration(index)*time.Millisecond))
 	}

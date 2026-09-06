@@ -1,4 +1,4 @@
-package goarklog
+package log
 
 import (
 	"io"

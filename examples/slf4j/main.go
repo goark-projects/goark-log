@@ -5,27 +5,27 @@ import (
 	"log/slog"
 	"time"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 	"goark.dev/log/examples/internal/exampleutil"
 )
 
 func main() {
-	handler, _, err := goarklog.NewConfiguredHandler(context.Background(),
-		goarklog.WithConfigPath(exampleutil.ConfigPath("container-json.yml")),
+	handler, _, err := log.NewConfiguredHandler(context.Background(),
+		log.WithConfigPath(exampleutil.ConfigPath("container-json.yml")),
 	)
 	if err != nil {
 		panic(err)
 	}
 	defer handler.Close()
 
-	logger, err := goarklog.NewNativeLogger(handler, "goark.demo.slf4j",
-		goarklog.WithLoggerMessageFactory(goarklog.ParameterizedMessageFactory{}),
+	logger, err := log.NewNativeLogger(handler, "goark.demo.slf4j",
+		log.WithLoggerMessageFactory(log.ParameterizedMessageFactory{}),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	ctx := goarklog.WithContextAttrs(context.Background(), slog.String("trace_id", "trace-slf4j-1"))
+	ctx := log.WithContextAttrs(context.Background(), slog.String("trace_id", "trace-slf4j-1"))
 	_ = logger.AtInfo().
 		WithContext(ctx).
 		WithString("user", "alice").

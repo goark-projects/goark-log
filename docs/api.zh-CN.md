@@ -8,7 +8,7 @@
 ## 引入
 
 ```go
-import goarklog "goark.dev/log"
+import "goark.dev/log"
 ```
 
 模块要求 Go 1.26 或更新版本，并实现标准 `log/slog` handler 契约。
@@ -30,8 +30,8 @@ import goarklog "goark.dev/log"
 | `NewConfiguredLoggerContext(ctx, opts...)` | 从配置创建上下文，并在配置启用时启动轮询重载。 |
 
 ```go
-loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
+loggerContext, result, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
@@ -72,7 +72,7 @@ footer。`Handler.Reload(options)` 在新运行期构建成功后原子替换路
 nil 时使用 `slog.Default()`。
 
 ```go
-logger := goarklog.NewLogger(handler, "goark.orm.mapper")
+logger := log.NewLogger(handler, "goark.orm.mapper")
 logger.Info("query finished", slog.Int("rows", 12))
 ```
 

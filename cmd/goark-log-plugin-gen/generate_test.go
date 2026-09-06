@@ -23,9 +23,9 @@ func TestGeneratePluginRegistrar_whenBindingsConfigured_shouldEmitRegistrar(t *t
 	output := string(data)
 	for _, want := range []string{
 		"package httpappender",
-		"func Registrar() goarklog.PluginRegistrar",
-		`goarklog.WithPluginAppender("http", buildHTTPAppender)`,
-		`goarklog.WithPluginLayout("compactJson", newCompactJSONLayout)`,
+		"func Registrar() log.PluginRegistrar",
+		`log.WithPluginAppender("http", buildHTTPAppender)`,
+		`log.WithPluginLayout("compactJson", newCompactJSONLayout)`,
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated output missing %q:\n%s", want, output)
@@ -53,7 +53,7 @@ func TestRun_whenStdoutRequested_shouldGenerateRegistrar(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run() exit = %d, stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `goarklog.WithPluginAppender("kafka", buildKafkaAppender)`) {
+	if !strings.Contains(stdout.String(), `log.WithPluginAppender("kafka", buildKafkaAppender)`) {
 		t.Fatalf("stdout = %s, want generated appender binding", stdout.String())
 	}
 }

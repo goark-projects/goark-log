@@ -24,10 +24,10 @@
 测试、demo 或应用需要隔离注册时，使用 `NewPluginRegistry()`：
 
 ```go
-registry := goarklog.NewPluginRegistry()
-plugins := goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", tenantLookup),
-	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+registry := log.NewPluginRegistry()
+plugins := log.NewPluginSet(
+	log.WithPluginLookup("tenant", tenantLookup),
+	log.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
 )
 if err := registry.RegisterPlugins(plugins); err != nil {
 	return err
@@ -37,9 +37,9 @@ if err := registry.RegisterPlugins(plugins); err != nil {
 把 registry 传入配置加载：
 
 ```go
-loggerContext, _, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-	goarklog.WithPluginRegistry(registry),
+loggerContext, _, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("conf/goark-log.yml"),
+	log.WithPluginRegistry(registry),
 )
 ```
 
@@ -111,7 +111,7 @@ Resolver 向事件输出中追加原始 JSON。
 ```go
 type constantResolver string
 
-func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
+func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ log.Event) {
 	data, err := sonic.ConfigFastest.Marshal(string(r))
 	if err != nil {
 		buf.WriteString("null")
@@ -124,7 +124,7 @@ func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
 工厂选项来自 resolver 对象中的原始 JSON 值：
 
 ```go
-func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
+func buildConstantResolver(config log.JSONTemplateResolverBuildConfig) (log.JSONTemplateResolver, error) {
 	var value string
 	if err := sonic.ConfigFastest.Unmarshal(config.Options["value"], &value); err != nil {
 		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)

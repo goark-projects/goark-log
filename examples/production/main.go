@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 	"goark.dev/log/examples/internal/exampleutil"
 )
 
@@ -24,8 +24,8 @@ func run() error {
 	}
 	defer cleanup()
 
-	loggerContext, result, err := goarklog.NewConfiguredLoggerContext(context.Background(),
-		goarklog.WithConfigPath(exampleutil.ConfigPath("production-service.yml")),
+	loggerContext, result, err := log.NewConfiguredLoggerContext(context.Background(),
+		log.WithConfigPath(exampleutil.ConfigPath("production-service.yml")),
 	)
 	if err != nil {
 		return err
@@ -34,19 +34,19 @@ func run() error {
 
 	requestLogger := loggerContext.Logger("goark.demo.http")
 	auditLogger := loggerContext.Logger("goark.audit")
-	nativeLogger, err := goarklog.NewNativeLogger(loggerContext.Handler(), "goark.demo.sql")
+	nativeLogger, err := log.NewNativeLogger(loggerContext.Handler(), "goark.demo.sql")
 	if err != nil {
 		return err
 	}
 
-	requestCtx := goarklog.WithContextAttrs(context.Background(),
+	requestCtx := log.WithContextAttrs(context.Background(),
 		slog.String("trace_id", "trace-prod-1"),
 		slog.String("tenant", "tenant-a"),
 		slog.String("component", "api"),
 	)
-	requestCtx = goarklog.WithThreadName(requestCtx, "http-worker-1")
-	requestCtx = goarklog.WithContextStack(requestCtx, "request", "checkout")
-	requestCtx = goarklog.WithMarker(requestCtx, goarklog.NewMarker("HTTP"))
+	requestCtx = log.WithThreadName(requestCtx, "http-worker-1")
+	requestCtx = log.WithContextStack(requestCtx, "request", "checkout")
+	requestCtx = log.WithMarker(requestCtx, log.NewMarker("HTTP"))
 
 	requestLogger.InfoContext(requestCtx, "request completed",
 		slog.String("method", "POST"),
@@ -56,7 +56,7 @@ func run() error {
 	)
 	requestLogger.InfoContext(requestCtx, "GET /health")
 
-	auditCtx := goarklog.WithMarker(requestCtx, goarklog.NewMarker("AUDIT"))
+	auditCtx := log.WithMarker(requestCtx, log.NewMarker("AUDIT"))
 	auditLogger.InfoContext(auditCtx, "order approved",
 		slog.String("principal", "alice"),
 		slog.String("action", "approve"),

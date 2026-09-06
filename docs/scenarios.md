@@ -119,7 +119,7 @@ configuration:
 In Go, use a marker and stable attribute names:
 
 ```go
-ctx := goarklog.WithMarker(context.Background(), goarklog.NewMarker("AUDIT"))
+ctx := log.WithMarker(context.Background(), log.NewMarker("AUDIT"))
 loggerContext.Logger("goark.audit").InfoContext(ctx, "order approved",
 	slog.String("principal", "alice"),
 	slog.String("action", "approve"),
@@ -207,8 +207,8 @@ The native logger supports `{}` placeholders without forcing attribute
 allocation when the level is disabled.
 
 ```go
-logger, err := goarklog.NewNativeLogger(handler, "goark.demo.slf4j",
-	goarklog.WithLoggerMessageFactory(goarklog.ParameterizedMessageFactory{}),
+logger, err := log.NewNativeLogger(handler, "goark.demo.slf4j",
+	log.WithLoggerMessageFactory(log.ParameterizedMessageFactory{}),
 )
 if err != nil {
 	return err
@@ -242,8 +242,8 @@ Use `LoggerContext` when you want owned lifecycle and polling reload. Use
 `ConfigReloader` for explicit reload.
 
 ```go
-reloader, err := goarklog.NewConfigReloader(handler,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
+reloader, err := log.NewConfigReloader(handler,
+	log.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
@@ -295,10 +295,10 @@ Plugins are registered explicitly. Use a custom registry when an application or
 module needs isolated plugin behavior.
 
 ```go
-registry := goarklog.NewPluginRegistry()
-plugins := goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", tenantLookup),
-	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+registry := log.NewPluginRegistry()
+plugins := log.NewPluginSet(
+	log.WithPluginLookup("tenant", tenantLookup),
+	log.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
 )
 if err := registry.RegisterPlugins(plugins); err != nil {
 	return err

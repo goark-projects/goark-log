@@ -49,14 +49,14 @@ package main
 import (
 	"log/slog"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func main() {
-	logger, handler := goarklog.NewDefault()
+	logger, handler := log.NewDefault()
 	defer handler.Close()
 
-	logger = goarklog.WithName(logger, "goark.demo")
+	logger = log.WithName(logger, "goark.demo")
 	logger.Info("service started", slog.String("profile", "dev"))
 }
 ```
@@ -76,12 +76,12 @@ import (
 	"context"
 	"log/slog"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func main() {
-	loggerContext, result, err := goarklog.NewConfiguredLoggerContext(context.Background(),
-		goarklog.WithConfigPath("conf/goark-log.yml"),
+	loggerContext, result, err := log.NewConfiguredLoggerContext(context.Background(),
+		log.WithConfigPath("conf/goark-log.yml"),
 	)
 	if err != nil {
 		panic(err)

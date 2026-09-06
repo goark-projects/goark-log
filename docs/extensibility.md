@@ -28,10 +28,10 @@ Use `NewPluginRegistry()` when tests, demos, or applications need isolated
 registrations:
 
 ```go
-registry := goarklog.NewPluginRegistry()
-plugins := goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", tenantLookup),
-	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+registry := log.NewPluginRegistry()
+plugins := log.NewPluginSet(
+	log.WithPluginLookup("tenant", tenantLookup),
+	log.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
 )
 if err := registry.RegisterPlugins(plugins); err != nil {
 	return err
@@ -41,9 +41,9 @@ if err := registry.RegisterPlugins(plugins); err != nil {
 Pass the registry to config loading:
 
 ```go
-loggerContext, _, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
-	goarklog.WithPluginRegistry(registry),
+loggerContext, _, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("conf/goark-log.yml"),
+	log.WithPluginRegistry(registry),
 )
 ```
 
@@ -122,7 +122,7 @@ Resolvers append raw JSON into the event output.
 ```go
 type constantResolver string
 
-func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
+func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ log.Event) {
 	data, err := sonic.ConfigFastest.Marshal(string(r))
 	if err != nil {
 		buf.WriteString("null")
@@ -135,7 +135,7 @@ func (r constantResolver) AppendJSON(buf *bytes.Buffer, _ goarklog.Event) {
 Factory options are raw JSON values from the resolver object:
 
 ```go
-func buildConstantResolver(config goarklog.JSONTemplateResolverBuildConfig) (goarklog.JSONTemplateResolver, error) {
+func buildConstantResolver(config log.JSONTemplateResolverBuildConfig) (log.JSONTemplateResolver, error) {
 	var value string
 	if err := sonic.ConfigFastest.Unmarshal(config.Options["value"], &value); err != nil {
 		return nil, fmt.Errorf("constant resolver value is invalid: %w", err)

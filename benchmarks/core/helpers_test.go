@@ -5,64 +5,64 @@ import (
 	"sync"
 	"sync/atomic"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 const (
-	AsyncOverflowBlock        = goarklog.AsyncOverflowBlock
-	AsyncOverflowDrop         = goarklog.AsyncOverflowDrop
-	AsyncOverflowDropDebug    = goarklog.AsyncOverflowDropDebug
-	AsyncOverflowSyncFallback = goarklog.AsyncOverflowSyncFallback
+	AsyncOverflowBlock        = log.AsyncOverflowBlock
+	AsyncOverflowDrop         = log.AsyncOverflowDrop
+	AsyncOverflowDropDebug    = log.AsyncOverflowDropDebug
+	AsyncOverflowSyncFallback = log.AsyncOverflowSyncFallback
 
-	AsyncWaitBlock = goarklog.AsyncWaitBlock
-	AsyncWaitYield = goarklog.AsyncWaitYield
+	AsyncWaitBlock = log.AsyncWaitBlock
+	AsyncWaitYield = log.AsyncWaitYield
 )
 
 type (
-	Appender              = goarklog.Appender
-	AsyncLoggerOptions    = goarklog.AsyncLoggerOptions
-	AsyncOverflowStrategy = goarklog.AsyncOverflowStrategy
-	AsyncWaitOptions      = goarklog.AsyncWaitOptions
-	AsyncWaitStrategy     = goarklog.AsyncWaitStrategy
-	Event                 = goarklog.Event
-	JSONLayout            = goarklog.JSONLayout
-	Layout                = goarklog.Layout
-	Logger                = goarklog.Logger
-	Options               = goarklog.Options
-	RootLogger            = goarklog.RootLogger
-	TextLayout            = goarklog.TextLayout
+	Appender              = log.Appender
+	AsyncLoggerOptions    = log.AsyncLoggerOptions
+	AsyncOverflowStrategy = log.AsyncOverflowStrategy
+	AsyncWaitOptions      = log.AsyncWaitOptions
+	AsyncWaitStrategy     = log.AsyncWaitStrategy
+	Event                 = log.Event
+	JSONLayout            = log.JSONLayout
+	Layout                = log.Layout
+	Logger                = log.Logger
+	Options               = log.Options
+	RootLogger            = log.RootLogger
+	TextLayout            = log.TextLayout
 )
 
 var (
-	NewAsyncAppender             = goarklog.NewAsyncAppender
-	NewConsoleAppender           = goarklog.NewConsoleAppender
-	NewDefaultLayout             = goarklog.NewDefaultLayout
-	NewFileAppender              = goarklog.NewFileAppender
-	NewHandler                   = goarklog.NewHandler
-	NewJSONAppender              = goarklog.NewJSONAppender
-	NewJSONFileAppender          = goarklog.NewJSONFileAppender
-	NewJSONTemplateLayout        = goarklog.NewJSONTemplateLayout
-	NewLogger                    = goarklog.NewLogger
-	NewNativeLogger              = goarklog.NewNativeLogger
-	NewRollingFileAppender       = goarklog.NewRollingFileAppender
-	WithAsyncOverflowStrategy    = goarklog.WithAsyncOverflowStrategy
-	WithAsyncQueueSize           = goarklog.WithAsyncQueueSize
-	WithAsyncWaitStrategy        = goarklog.WithAsyncWaitStrategy
-	WithConsoleLayout            = goarklog.WithConsoleLayout
-	WithConsoleWriter            = goarklog.WithConsoleWriter
-	WithFileBufferSize           = goarklog.WithFileBufferSize
-	WithFileLayout               = goarklog.WithFileLayout
-	WithJSONAppenderBufferSize   = goarklog.WithJSONAppenderBufferSize
-	WithJSONAppenderFlushOnWrite = goarklog.WithJSONAppenderFlushOnWrite
-	WithJSONAppenderWriter       = goarklog.WithJSONAppenderWriter
-	WithLoggerCaller             = goarklog.WithLoggerCaller
-	WithRollingAsyncActions      = goarklog.WithRollingAsyncActions
-	WithRollingFileBufferSize    = goarklog.WithRollingFileBufferSize
-	WithRollingFileLayout        = goarklog.WithRollingFileLayout
-	WithRollingFilePattern       = goarklog.WithRollingFilePattern
-	WithRollingGzip              = goarklog.WithRollingGzip
-	WithRollingMaxBackups        = goarklog.WithRollingMaxBackups
-	WithRollingMaxSize           = goarklog.WithRollingMaxSize
+	NewAsyncAppender             = log.NewAsyncAppender
+	NewConsoleAppender           = log.NewConsoleAppender
+	NewDefaultLayout             = log.NewDefaultLayout
+	NewFileAppender              = log.NewFileAppender
+	NewHandler                   = log.NewHandler
+	NewJSONAppender              = log.NewJSONAppender
+	NewJSONFileAppender          = log.NewJSONFileAppender
+	NewJSONTemplateLayout        = log.NewJSONTemplateLayout
+	NewLogger                    = log.NewLogger
+	NewNativeLogger              = log.NewNativeLogger
+	NewRollingFileAppender       = log.NewRollingFileAppender
+	WithAsyncOverflowStrategy    = log.WithAsyncOverflowStrategy
+	WithAsyncQueueSize           = log.WithAsyncQueueSize
+	WithAsyncWaitStrategy        = log.WithAsyncWaitStrategy
+	WithConsoleLayout            = log.WithConsoleLayout
+	WithConsoleWriter            = log.WithConsoleWriter
+	WithFileBufferSize           = log.WithFileBufferSize
+	WithFileLayout               = log.WithFileLayout
+	WithJSONAppenderBufferSize   = log.WithJSONAppenderBufferSize
+	WithJSONAppenderFlushOnWrite = log.WithJSONAppenderFlushOnWrite
+	WithJSONAppenderWriter       = log.WithJSONAppenderWriter
+	WithLoggerCaller             = log.WithLoggerCaller
+	WithRollingAsyncActions      = log.WithRollingAsyncActions
+	WithRollingFileBufferSize    = log.WithRollingFileBufferSize
+	WithRollingFileLayout        = log.WithRollingFileLayout
+	WithRollingFilePattern       = log.WithRollingFilePattern
+	WithRollingGzip              = log.WithRollingGzip
+	WithRollingMaxBackups        = log.WithRollingMaxBackups
+	WithRollingMaxSize           = log.WithRollingMaxSize
 )
 
 type recordingAppender struct {

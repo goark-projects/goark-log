@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 	"goark.dev/log/examples/internal/exampleutil"
 )
 
@@ -22,7 +22,7 @@ func main() {
 	logPath := filepath.Join(dir, "reload.log")
 	writeConfig(configPath, logPath, "info")
 
-	logger, handler, _, err := goarklog.NewConfigured(context.Background(), goarklog.WithConfigPath(configPath))
+	logger, handler, _, err := log.NewConfigured(context.Background(), log.WithConfigPath(configPath))
 	if err != nil {
 		panic(err)
 	}
@@ -32,7 +32,7 @@ func main() {
 	logger.Debug("hidden before reload")
 
 	writeConfig(configPath, logPath, "debug")
-	reloader, err := goarklog.NewConfigReloader(handler, goarklog.WithConfigPath(configPath))
+	reloader, err := log.NewConfigReloader(handler, log.WithConfigPath(configPath))
 	if err != nil {
 		panic(err)
 	}

@@ -24,8 +24,8 @@
 ## 加载文件
 
 ```go
-loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("docs/examples/production-service.yml"),
+loggerContext, result, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("docs/examples/production-service.yml"),
 )
 if err != nil {
 	return err

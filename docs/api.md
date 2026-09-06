@@ -8,7 +8,7 @@ configuration file structs under `internal/configfile` are not public API.
 ## Import
 
 ```go
-import goarklog "goark.dev/log"
+import "goark.dev/log"
 ```
 
 The module targets Go 1.26 or newer and implements the standard `log/slog`
@@ -31,8 +31,8 @@ handler contract.
 | `NewConfiguredLoggerContext(ctx, opts...)` | Loads config, owns the handler, and starts reload polling when configured. |
 
 ```go
-loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
+loggerContext, result, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
@@ -74,7 +74,7 @@ new runtime builds successfully.
 existing logger and uses `slog.Default()` when the input is nil.
 
 ```go
-logger := goarklog.NewLogger(handler, "goark.orm.mapper")
+logger := log.NewLogger(handler, "goark.orm.mapper")
 logger.Info("query finished", slog.Int("rows", 12))
 ```
 

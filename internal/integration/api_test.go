@@ -9,23 +9,23 @@ import (
 	"path/filepath"
 	"testing"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func TestPublicAPICompile(t *testing.T) {
 	var out bytes.Buffer
-	handler, err := goarklog.NewHandler(goarklog.Options{
-		Appenders: []goarklog.Appender{
-			goarklog.NewConsoleAppender(
-				goarklog.WithConsoleWriter(&out),
-				goarklog.WithConsoleLayout(goarklog.TextLayout{}),
+	handler, err := log.NewHandler(log.Options{
+		Appenders: []log.Appender{
+			log.NewConsoleAppender(
+				log.WithConsoleWriter(&out),
+				log.WithConsoleLayout(log.TextLayout{}),
 			),
 		},
-		Root: goarklog.RootLogger{
+		Root: log.RootLogger{
 			Level:        slog.LevelInfo,
 			AppenderRefs: []string{"console"},
 		},
-		Loggers: []goarklog.LoggerRule{
+		Loggers: []log.LoggerRule{
 			{
 				Name:  "goark.orm",
 				Level: levelPtr(slog.LevelDebug),
@@ -37,29 +37,29 @@ func TestPublicAPICompile(t *testing.T) {
 	}
 	defer handler.Close()
 
-	logger := goarklog.NewLogger(handler, "goark.orm")
+	logger := log.NewLogger(handler, "goark.orm")
 	logger.Debug("sql prepared")
 	logger.Info("sql done")
 
-	var _ func(context.Context, ...goarklog.ConfigLoadOption) (*slog.Logger, *goarklog.Handler, *goarklog.ConfigResult, error) = goarklog.NewConfigured
-	var _ func(context.Context, ...goarklog.ConfigLoadOption) (*goarklog.Handler, *goarklog.ConfigResult, error) = goarklog.NewConfiguredHandler
-	var _ func(context.Context, ...goarklog.ConfigLoadOption) (*goarklog.Handler, *goarklog.ConfigResult, error) = goarklog.ConfigureDefault
-	var _ func(context.Context, ...goarklog.ConfigLoadOption) (goarklog.Options, *goarklog.ConfigResult, error) = goarklog.LoadOptions
-	var _ goarklog.ConfigLoadOption = goarklog.WithConfigPath("conf/goark-log.yml")
-	var _ goarklog.ConfigLoadOption = goarklog.WithPluginRegistry(goarklog.NewPluginRegistry())
-	var _ goarklog.LoggerContextOption = goarklog.WithLoggerContextStatus(goarklog.NewStatusLogger())
-	var _ *goarklog.PluginRegistry = goarklog.DefaultPluginRegistry()
+	var _ func(context.Context, ...log.ConfigLoadOption) (*slog.Logger, *log.Handler, *log.ConfigResult, error) = log.NewConfigured
+	var _ func(context.Context, ...log.ConfigLoadOption) (*log.Handler, *log.ConfigResult, error) = log.NewConfiguredHandler
+	var _ func(context.Context, ...log.ConfigLoadOption) (*log.Handler, *log.ConfigResult, error) = log.ConfigureDefault
+	var _ func(context.Context, ...log.ConfigLoadOption) (log.Options, *log.ConfigResult, error) = log.LoadOptions
+	var _ log.ConfigLoadOption = log.WithConfigPath("conf/goark-log.yml")
+	var _ log.ConfigLoadOption = log.WithPluginRegistry(log.NewPluginRegistry())
+	var _ log.LoggerContextOption = log.WithLoggerContextStatus(log.NewStatusLogger())
+	var _ *log.PluginRegistry = log.DefaultPluginRegistry()
 }
 
 func TestPublicAPI_whenPatternLayoutOptionsUsed_shouldCompileAndRender(t *testing.T) {
-	layout, err := goarklog.NewPatternLayoutWithOptions("%style{%m}{red}%n", goarklog.LayoutOptions{DisableANSI: true})
+	layout, err := log.NewPatternLayoutWithOptions("%style{%m}{red}%n", log.LayoutOptions{DisableANSI: true})
 	if err != nil {
 		t.Fatalf("NewPatternLayoutWithOptions() error = %v", err)
 	}
-	var _ goarklog.Layout = layout
+	var _ log.Layout = layout
 
 	var out bytes.Buffer
-	if err := layout.Format(&out, goarklog.Event{Level: slog.LevelInfo, Logger: "goark.api", Message: "plain"}); err != nil {
+	if err := layout.Format(&out, log.Event{Level: slog.LevelInfo, Logger: "goark.api", Message: "plain"}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
 	if out.String() != "plain\n" {
@@ -68,21 +68,21 @@ func TestPublicAPI_whenPatternLayoutOptionsUsed_shouldCompileAndRender(t *testin
 }
 
 func TestPublicAPI_whenPluginBuildConfigUsed_shouldExposeStableFields(t *testing.T) {
-	registry := goarklog.NewPluginRegistry()
-	var capturedLayout goarklog.LayoutBuildConfig
-	if err := registry.RegisterLayout("apiCapture", func(config goarklog.LayoutBuildConfig) (goarklog.Layout, error) {
+	registry := log.NewPluginRegistry()
+	var capturedLayout log.LayoutBuildConfig
+	if err := registry.RegisterLayout("apiCapture", func(config log.LayoutBuildConfig) (log.Layout, error) {
 		capturedLayout = config
-		return goarklog.TextLayout{}, nil
+		return log.TextLayout{}, nil
 	}); err != nil {
 		t.Fatalf("RegisterLayout() error = %v", err)
 	}
 
-	var capturedAppender goarklog.AppenderBuildConfig
-	if err := registry.RegisterAppender("apiCapture", func(config goarklog.AppenderBuildConfig) (goarklog.Appender, error) {
+	var capturedAppender log.AppenderBuildConfig
+	if err := registry.RegisterAppender("apiCapture", func(config log.AppenderBuildConfig) (log.Appender, error) {
 		capturedAppender = config
-		return goarklog.NewConsoleAppender(
-			goarklog.WithConsoleName(config.Name),
-			goarklog.WithConsoleWriter(io.Discard),
+		return log.NewConsoleAppender(
+			log.WithConsoleName(config.Name),
+			log.WithConsoleWriter(io.Discard),
 		), nil
 	}); err != nil {
 		t.Fatalf("RegisterAppender() error = %v", err)
@@ -147,9 +147,9 @@ root:
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	handler, _, err := goarklog.NewConfiguredHandler(context.Background(),
-		goarklog.WithConfigPath(configPath),
-		goarklog.WithPluginRegistry(registry),
+	handler, _, err := log.NewConfiguredHandler(context.Background(),
+		log.WithConfigPath(configPath),
+		log.WithPluginRegistry(registry),
 	)
 	if err != nil {
 		t.Fatalf("NewConfiguredHandler() error = %v", err)

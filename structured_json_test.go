@@ -1,4 +1,4 @@
-package goarklog_test
+package log_test
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/bytedance/sonic"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 type cyclicUnwrapError struct {
@@ -24,16 +24,16 @@ func (e *cyclicUnwrapError) Unwrap() error { return e.cause }
 
 func TestStructuredJSONLayoutFormats(t *testing.T) {
 	tests := []struct {
-		format goarklog.StructuredFormat
+		format log.StructuredFormat
 		want   []string
 	}{
-		{goarklog.StructuredFormatECS, []string{"@timestamp", "log", "ecs"}},
-		{goarklog.StructuredFormatGELF, []string{"version", "short_message", "_level_name"}},
-		{goarklog.StructuredFormatLogstash, []string{"@version", "logger_name", "level_value"}},
+		{log.StructuredFormatECS, []string{"@timestamp", "log", "ecs"}},
+		{log.StructuredFormatGELF, []string{"version", "short_message", "_level_name"}},
+		{log.StructuredFormatLogstash, []string{"@version", "logger_name", "level_value"}},
 	}
 	for _, test := range tests {
 		t.Run(string(test.format), func(t *testing.T) {
-			layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
+			layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
 				Format:         test.format,
 				IncludeContext: true,
 			})
@@ -41,7 +41,7 @@ func TestStructuredJSONLayoutFormats(t *testing.T) {
 				t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 			}
 			var output bytes.Buffer
-			event := goarklog.Event{
+			event := log.Event{
 				Time:       time.Date(2026, 9, 4, 10, 20, 30, 123000000, time.FixedZone("CST", 8*60*60)),
 				Level:      slog.LevelInfo,
 				Message:    "started",
@@ -61,20 +61,20 @@ func TestStructuredJSONLayoutFormats(t *testing.T) {
 					t.Fatalf("output missing %q: %s", key, output.String())
 				}
 			}
-			if test.format == goarklog.StructuredFormatECS {
+			if test.format == log.StructuredFormatECS {
 				logFields, ok := decoded["log"].(map[string]any)
 				if !ok || logFields["level"] != "INFO" || logFields["logger"] != "goark.dev.admin" {
 					t.Fatalf("ECS log object = %#v", decoded["log"])
 				}
 			}
 			contextKey := "trace_id"
-			if test.format == goarklog.StructuredFormatGELF {
+			if test.format == log.StructuredFormatGELF {
 				contextKey = "_trace_id"
 			}
 			if decoded[contextKey] != "trace-1" {
 				t.Fatalf("context field %q = %#v", contextKey, decoded[contextKey])
 			}
-			if test.format == goarklog.StructuredFormatECS && decoded["@timestamp"] != "2026-09-04T02:20:30.123Z" {
+			if test.format == log.StructuredFormatECS && decoded["@timestamp"] != "2026-09-04T02:20:30.123Z" {
 				t.Fatalf("ECS timestamp = %#v", decoded["@timestamp"])
 			}
 		})
@@ -82,13 +82,13 @@ func TestStructuredJSONLayoutFormats(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutTransformsAndCustomizer(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format:  goarklog.StructuredFormatLogstash,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format:  log.StructuredFormatLogstash,
 		Include: []string{"message", "fixed", "custom"},
 		Rename:  map[string]string{"message": "msg"},
 		Add:     map[string]string{"fixed": "value"},
-		Customizers: []goarklog.StructuredJSONCustomizer{
-			goarklog.StructuredJSONCustomizerFunc(func(_ goarklog.Event, fields goarklog.StructuredJSONFieldAppender) {
+		Customizers: []log.StructuredJSONCustomizer{
+			log.StructuredJSONCustomizerFunc(func(_ log.Event, fields log.StructuredJSONFieldAppender) {
 				fields.Add("custom", slog.StringValue("ok"))
 			}),
 		},
@@ -97,7 +97,7 @@ func TestStructuredJSONLayoutTransformsAndCustomizer(t *testing.T) {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Message: "hello"}); err != nil {
+	if err := layout.Format(&output, log.Event{Message: "hello"}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
@@ -110,12 +110,12 @@ func TestStructuredJSONLayoutTransformsAndCustomizer(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutKeepsFirstMemberOnNameCollision(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format: goarklog.StructuredFormatLogstash,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format: log.StructuredFormatLogstash,
 		Rename: map[string]string{"logger_name": "message"},
 		Add:    map[string]string{"message": "added"},
-		Customizers: []goarklog.StructuredJSONCustomizer{
-			goarklog.StructuredJSONCustomizerFunc(func(_ goarklog.Event, fields goarklog.StructuredJSONFieldAppender) {
+		Customizers: []log.StructuredJSONCustomizer{
+			log.StructuredJSONCustomizerFunc(func(_ log.Event, fields log.StructuredJSONFieldAppender) {
 				fields.Add("message", slog.StringValue("customized"))
 			}),
 		},
@@ -124,7 +124,7 @@ func TestStructuredJSONLayoutKeepsFirstMemberOnNameCollision(t *testing.T) {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Message: "original", Logger: "logger"}); err != nil {
+	if err := layout.Format(&output, log.Event{Message: "original", Logger: "logger"}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
 	if strings.Count(output.String(), `"message":`) != 1 {
@@ -154,14 +154,14 @@ func TestStructuredJSONLayoutECSFieldFilters(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-				Format: goarklog.StructuredFormatECS, Include: test.include, Exclude: test.exclude,
+			layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+				Format: log.StructuredFormatECS, Include: test.include, Exclude: test.exclude,
 			})
 			if err != nil {
 				t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 			}
 			var output bytes.Buffer
-			if err := layout.Format(&output, goarklog.Event{}); err != nil {
+			if err := layout.Format(&output, log.Event{}); err != nil {
 				t.Fatalf("Format() error = %v", err)
 			}
 			var decoded map[string]any
@@ -179,8 +179,8 @@ func TestStructuredJSONLayoutECSFieldFilters(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutRejectsConflictingNestedAddPaths(t *testing.T) {
-	_, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format: goarklog.StructuredFormatECS,
+	_, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format: log.StructuredFormatECS,
 		Add:    map[string]string{"build": "42", "build.version": "1.2.3"},
 	})
 	if err == nil {
@@ -189,9 +189,9 @@ func TestStructuredJSONLayoutRejectsConflictingNestedAddPaths(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutStacktraceLimits(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format: goarklog.StructuredFormatECS,
-		Stacktrace: goarklog.StructuredStacktraceOptions{
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format: log.StructuredFormatECS,
+		Stacktrace: log.StructuredStacktraceOptions{
 			RootFirst:         true,
 			MaxThrowableDepth: 1,
 			IncludeHashes:     true,
@@ -201,9 +201,9 @@ func TestStructuredJSONLayoutStacktraceLimits(t *testing.T) {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	event := goarklog.Event{Throwable: &goarklog.Throwable{
+	event := log.Event{Throwable: &log.Throwable{
 		Type: "outer", Message: "outer error", Stack: []string{"outer.go:10", "outer.go:11"},
-		Cause: &goarklog.Throwable{Type: "root", Message: "root error", Stack: []string{"root.go:20", "root.go:21"}},
+		Cause: &log.Throwable{Type: "root", Message: "root error", Stack: []string{"root.go:20", "root.go:21"}},
 	}}
 	if err := layout.Format(&output, event); err != nil {
 		t.Fatalf("Format() error = %v", err)
@@ -225,15 +225,15 @@ func TestStructuredJSONLayoutStacktraceLimits(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutStacktraceMaximumLengthUsesEllipsis(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format:     goarklog.StructuredFormatECS,
-		Stacktrace: goarklog.StructuredStacktraceOptions{MaxLength: 14},
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format:     log.StructuredFormatECS,
+		Stacktrace: log.StructuredStacktraceOptions{MaxLength: 14},
 	})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Throwable: &goarklog.Throwable{Type: "错误类型", Message: "异常消息"}}); err != nil {
+	if err := layout.Format(&output, log.Event{Throwable: &log.Throwable{Type: "错误类型", Message: "异常消息"}}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
@@ -248,16 +248,16 @@ func TestStructuredJSONLayoutStacktraceMaximumLengthUsesEllipsis(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutStacktraceOmitsCommonFrames(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format: goarklog.StructuredFormatECS,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format: log.StructuredFormatECS,
 	})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	event := goarklog.Event{Throwable: &goarklog.Throwable{
+	event := log.Event{Throwable: &log.Throwable{
 		Type: "outer", Message: "outer error", Stack: []string{"outer.go:10", "shared.go:30"},
-		Cause: &goarklog.Throwable{Type: "root", Message: "root error", Stack: []string{"root.go:20", "shared.go:30"}},
+		Cause: &log.Throwable{Type: "root", Message: "root error", Stack: []string{"root.go:20", "shared.go:30"}},
 	}}
 	if err := layout.Format(&output, event); err != nil {
 		t.Fatalf("Format() error = %v", err)
@@ -274,17 +274,17 @@ func TestStructuredJSONLayoutStacktraceOmitsCommonFrames(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutRootFirstComparesCommonFramesWithWrapper(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format:     goarklog.StructuredFormatECS,
-		Stacktrace: goarklog.StructuredStacktraceOptions{RootFirst: true},
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format:     log.StructuredFormatECS,
+		Stacktrace: log.StructuredStacktraceOptions{RootFirst: true},
 	})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Throwable: &goarklog.Throwable{
+	if err := layout.Format(&output, log.Event{Throwable: &log.Throwable{
 		Type: "outer", Message: "outer", Stack: []string{"outer.go:10", "shared.go:30"},
-		Cause: &goarklog.Throwable{Type: "root", Message: "root", Stack: []string{"root.go:20", "shared.go:30"}},
+		Cause: &log.Throwable{Type: "root", Message: "root", Stack: []string{"root.go:20", "shared.go:30"}},
 	}}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
@@ -300,8 +300,8 @@ func TestStructuredJSONLayoutRootFirstComparesCommonFramesWithWrapper(t *testing
 }
 
 func TestStructuredJSONLayoutECSUsesNestedPathsAndMarkerArrays(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format:         goarklog.StructuredFormatECS,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format:         log.StructuredFormatECS,
 		IncludeContext: true,
 		ContextPrefix:  "metadata",
 		Add:            map[string]string{"build.version": "1.2.3"},
@@ -309,9 +309,9 @@ func TestStructuredJSONLayoutECSUsesNestedPathsAndMarkerArrays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
-	marker := goarklog.NewMarker("HTTP", goarklog.NewMarker("REQUEST"))
+	marker := log.NewMarker("HTTP", log.NewMarker("REQUEST"))
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{
+	if err := layout.Format(&output, log.Event{
 		Message: "handled",
 		Attrs:   []slog.Attr{slog.String("request.id", "request-1")},
 		Marker:  &marker,
@@ -335,13 +335,13 @@ func TestStructuredJSONLayoutECSUsesNestedPathsAndMarkerArrays(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutLogstashUsesMarkerArray(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{Format: goarklog.StructuredFormatLogstash})
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{Format: log.StructuredFormatLogstash})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
-	marker := goarklog.NewMarker("HTTP")
+	marker := log.NewMarker("HTTP")
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Message: "handled", Marker: &marker}); err != nil {
+	if err := layout.Format(&output, log.Event{Message: "handled", Marker: &marker}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
 	var decoded map[string]any
@@ -355,14 +355,14 @@ func TestStructuredJSONLayoutLogstashUsesMarkerArray(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutGELFFullMessageIncludesLogMessage(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{Format: goarklog.StructuredFormatGELF})
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{Format: log.StructuredFormatGELF})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{
+	if err := layout.Format(&output, log.Event{
 		Message:   "request failed",
-		Throwable: &goarklog.Throwable{Type: "failure", Message: "broken"},
+		Throwable: &log.Throwable{Type: "failure", Message: "broken"},
 	}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
@@ -376,19 +376,19 @@ func TestStructuredJSONLayoutGELFFullMessageIncludesLogMessage(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutLoggingSystemPrinterKeepsCommonFrames(t *testing.T) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format: goarklog.StructuredFormatECS,
-		Stacktrace: goarklog.StructuredStacktraceOptions{
-			Printer: goarklog.StructuredStacktracePrinterLoggingSystem,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format: log.StructuredFormatECS,
+		Stacktrace: log.StructuredStacktraceOptions{
+			Printer: log.StructuredStacktracePrinterLoggingSystem,
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := layout.Format(&output, goarklog.Event{Throwable: &goarklog.Throwable{
+	if err := layout.Format(&output, log.Event{Throwable: &log.Throwable{
 		Type: "outer", Message: "outer", Stack: []string{"outer.go:10", "shared.go:30"},
-		Cause: &goarklog.Throwable{Type: "root", Message: "root", Stack: []string{"root.go:20", "shared.go:30"}},
+		Cause: &log.Throwable{Type: "root", Message: "root", Stack: []string{"root.go:20", "shared.go:30"}},
 	}}); err != nil {
 		t.Fatalf("Format() error = %v", err)
 	}
@@ -404,21 +404,21 @@ func TestStructuredJSONLayoutLoggingSystemPrinterKeepsCommonFrames(t *testing.T)
 }
 
 func TestStructuredJSONLayoutHandlesCircularThrowable(t *testing.T) {
-	for _, printer := range []goarklog.StructuredStacktracePrinter{
-		goarklog.StructuredStacktracePrinterStandard,
-		goarklog.StructuredStacktracePrinterLoggingSystem,
+	for _, printer := range []log.StructuredStacktracePrinter{
+		log.StructuredStacktracePrinterStandard,
+		log.StructuredStacktracePrinterLoggingSystem,
 	} {
 		t.Run(string(printer), func(t *testing.T) {
-			layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-				Format: goarklog.StructuredFormatECS, Stacktrace: goarklog.StructuredStacktraceOptions{Printer: printer},
+			layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+				Format: log.StructuredFormatECS, Stacktrace: log.StructuredStacktraceOptions{Printer: printer},
 			})
 			if err != nil {
 				t.Fatalf("NewStructuredJSONLayout() error = %v", err)
 			}
-			throwable := &goarklog.Throwable{Type: "cycle", Message: "broken"}
+			throwable := &log.Throwable{Type: "cycle", Message: "broken"}
 			throwable.Cause = throwable
 			var output bytes.Buffer
-			if err := layout.Format(&output, goarklog.Event{Throwable: throwable}); err != nil {
+			if err := layout.Format(&output, log.Event{Throwable: throwable}); err != nil {
 				t.Fatalf("Format() error = %v", err)
 			}
 			var decoded map[string]any
@@ -439,7 +439,7 @@ func TestNewThrowableStopsCircularErrorChain(t *testing.T) {
 	inner := &cyclicUnwrapError{message: "inner"}
 	outer.cause = inner
 	inner.cause = outer
-	throwable := goarklog.NewThrowable(outer)
+	throwable := log.NewThrowable(outer)
 	if throwable == nil || throwable.Message != "outer" || throwable.Cause == nil || throwable.Cause.Message != "inner" {
 		t.Fatalf("throwable = %#v", throwable)
 	}
@@ -449,20 +449,20 @@ func TestNewThrowableStopsCircularErrorChain(t *testing.T) {
 }
 
 func TestStructuredJSONLayoutRejectsUnknownFormat(t *testing.T) {
-	if _, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{Format: "custom"}); err == nil {
+	if _, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{Format: "custom"}); err == nil {
 		t.Fatal("NewStructuredJSONLayout() error = nil")
 	}
 }
 
 func BenchmarkStructuredJSONLayoutECS(b *testing.B) {
-	layout, err := goarklog.NewStructuredJSONLayout(goarklog.StructuredJSONOptions{
-		Format:         goarklog.StructuredFormatECS,
+	layout, err := log.NewStructuredJSONLayout(log.StructuredJSONOptions{
+		Format:         log.StructuredFormatECS,
 		IncludeContext: true,
 	})
 	if err != nil {
 		b.Fatalf("NewStructuredJSONLayout() error = %v", err)
 	}
-	event := goarklog.Event{
+	event := log.Event{
 		Time:    time.Date(2026, 9, 4, 10, 20, 30, 123000000, time.UTC),
 		Level:   slog.LevelInfo,
 		Logger:  "goark.dev.admin",

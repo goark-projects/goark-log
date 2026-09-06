@@ -116,7 +116,7 @@ configuration:
 Go 代码中使用 marker 和稳定属性名：
 
 ```go
-ctx := goarklog.WithMarker(context.Background(), goarklog.NewMarker("AUDIT"))
+ctx := log.WithMarker(context.Background(), log.NewMarker("AUDIT"))
 loggerContext.Logger("goark.audit").InfoContext(ctx, "order approved",
 	slog.String("principal", "alice"),
 	slog.String("action", "approve"),
@@ -201,8 +201,8 @@ configuration:
 原生 logger 支持 `{}` 占位符。级别关闭时，builder 会跳过属性构造和写入路径。
 
 ```go
-logger, err := goarklog.NewNativeLogger(handler, "goark.demo.slf4j",
-	goarklog.WithLoggerMessageFactory(goarklog.ParameterizedMessageFactory{}),
+logger, err := log.NewNativeLogger(handler, "goark.demo.slf4j",
+	log.WithLoggerMessageFactory(log.ParameterizedMessageFactory{}),
 )
 if err != nil {
 	return err
@@ -235,8 +235,8 @@ GOWORK=off go run ./examples/log4j2_config
 `ConfigReloader`。
 
 ```go
-reloader, err := goarklog.NewConfigReloader(handler,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
+reloader, err := log.NewConfigReloader(handler,
+	log.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
@@ -286,10 +286,10 @@ GOWORK=off go run ./examples/file
 插件必须显式注册。应用或外部模块需要隔离插件行为时，使用独立 registry。
 
 ```go
-registry := goarklog.NewPluginRegistry()
-plugins := goarklog.NewPluginSet(
-	goarklog.WithPluginLookup("tenant", tenantLookup),
-	goarklog.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
+registry := log.NewPluginRegistry()
+plugins := log.NewPluginSet(
+	log.WithPluginLookup("tenant", tenantLookup),
+	log.WithPluginJSONTemplateResolver("constant", buildConstantResolver),
 )
 if err := registry.RegisterPlugins(plugins); err != nil {
 	return err

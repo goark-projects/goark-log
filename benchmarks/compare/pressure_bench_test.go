@@ -8,26 +8,26 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func BenchmarkPressureParallelFile(b *testing.B) {
 	b.Run("goark-native-direct-file-json3", func(b *testing.B) {
-		appender, err := goarklog.NewJSONFileAppender(
+		appender, err := log.NewJSONFileAppender(
 			filePath(b, "goark-pressure.json"),
-			goarklog.WithJSONAppenderBufferSize(256*1024),
+			log.WithJSONAppenderBufferSize(256*1024),
 		)
 		if err != nil {
 			b.Fatalf("NewJSONFileAppender() error = %v", err)
 		}
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"json"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
-		logger, err := goarklog.NewNativeLogger(handler, "bench.pressure")
+		logger, err := log.NewNativeLogger(handler, "bench.pressure")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}
@@ -39,25 +39,25 @@ func BenchmarkPressureParallelFile(b *testing.B) {
 
 	b.Run("goark-rolling-json", func(b *testing.B) {
 		dir := b.TempDir()
-		appender, err := goarklog.NewRollingFileAppender(
+		appender, err := log.NewRollingFileAppender(
 			filepath.Join(dir, "goark-pressure-rolling.log"),
-			goarklog.WithRollingFileLayout(goarklog.JSONLayout{}),
-			goarklog.WithRollingFileBufferSize(256*1024),
-			goarklog.WithRollingMaxSize(4*1024*1024),
-			goarklog.WithRollingMaxBackups(8),
-			goarklog.WithRollingFilePattern(filepath.Join(dir, "archive", "goark-%06i.log")),
+			log.WithRollingFileLayout(log.JSONLayout{}),
+			log.WithRollingFileBufferSize(256*1024),
+			log.WithRollingMaxSize(4*1024*1024),
+			log.WithRollingMaxBackups(8),
+			log.WithRollingFilePattern(filepath.Join(dir, "archive", "goark-%06i.log")),
 		)
 		if err != nil {
 			b.Fatalf("NewRollingFileAppender() error = %v", err)
 		}
-		handler, err := goarklog.NewHandler(goarklog.Options{
-			Appenders: []goarklog.Appender{appender},
-			Root:      goarklog.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"rollingFile"}},
+		handler, err := log.NewHandler(log.Options{
+			Appenders: []log.Appender{appender},
+			Root:      log.RootLogger{Level: slog.LevelInfo, AppenderRefs: []string{"rollingFile"}},
 		})
 		if err != nil {
 			b.Fatalf("NewHandler() error = %v", err)
 		}
-		logger, err := goarklog.NewNativeLogger(handler, "bench.pressure")
+		logger, err := log.NewNativeLogger(handler, "bench.pressure")
 		if err != nil {
 			b.Fatalf("NewNativeLogger() error = %v", err)
 		}

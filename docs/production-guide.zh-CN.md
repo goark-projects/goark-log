@@ -10,8 +10,8 @@
 status event，并在 `monitorInterval` 大于零时启动配置轮询。
 
 ```go
-loggerContext, result, err := goarklog.NewConfiguredLoggerContext(ctx,
-	goarklog.WithConfigPath("conf/goark-log.yml"),
+loggerContext, result, err := log.NewConfiguredLoggerContext(ctx,
+	log.WithConfigPath("conf/goark-log.yml"),
 )
 if err != nil {
 	return err
@@ -88,13 +88,13 @@ logger.InfoContext(ctx, "logging ready", slog.String("source", string(result.Sou
 请求级数据使用 context API：
 
 ```go
-ctx = goarklog.WithContextAttrs(ctx,
+ctx = log.WithContextAttrs(ctx,
 	slog.String("trace_id", traceID),
 	slog.String("tenant", tenantID),
 )
-ctx = goarklog.WithThreadName(ctx, "http-worker-1")
-ctx = goarklog.WithContextStack(ctx, "request", "checkout")
-ctx = goarklog.WithMarker(ctx, goarklog.NewMarker("HTTP"))
+ctx = log.WithThreadName(ctx, "http-worker-1")
+ctx = log.WithContextStack(ctx, "request", "checkout")
+ctx = log.WithMarker(ctx, log.NewMarker("HTTP"))
 ```
 
 事件级数据继续使用普通 `slog.Attr` 参数。

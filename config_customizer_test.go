@@ -1,21 +1,21 @@
-package goarklog_test
+package log_test
 
 import (
 	"context"
 	"log/slog"
 	"testing"
 
-	goarklog "goark.dev/log"
+	"goark.dev/log"
 )
 
 func TestLoadOptions_whenCustomizerConfigured_shouldApplyAfterDefaultLoading(t *testing.T) {
 	called := false
-	options, result, err := goarklog.LoadOptions(
+	options, result, err := log.LoadOptions(
 		context.Background(),
-		goarklog.WithDefaultConfigPaths(),
-		goarklog.WithOptionsCustomizer(func(_ context.Context, current goarklog.Options, source *goarklog.ConfigResult) (goarklog.Options, error) {
+		log.WithDefaultConfigPaths(),
+		log.WithOptionsCustomizer(func(_ context.Context, current log.Options, source *log.ConfigResult) (log.Options, error) {
 			called = true
-			if source.Source != goarklog.ConfigSourceDefault {
+			if source.Source != log.ConfigSourceDefault {
 				t.Fatalf("source = %q, want default", source.Source)
 			}
 			current.Root.Level = slog.LevelDebug
@@ -29,12 +29,12 @@ func TestLoadOptions_whenCustomizerConfigured_shouldApplyAfterDefaultLoading(t *
 	if !called {
 		t.Fatal("customizer was not called")
 	}
-	if result.Source != goarklog.ConfigSourceDefault || options.Root.Level != slog.LevelDebug {
+	if result.Source != log.ConfigSourceDefault || options.Root.Level != slog.LevelDebug {
 		t.Fatalf("result/options = %#v/%#v", result, options.Root)
 	}
 }
 
-func closeAppenders(t *testing.T, appenders []goarklog.Appender) {
+func closeAppenders(t *testing.T, appenders []log.Appender) {
 	t.Helper()
 	for _, appender := range appenders {
 		if appender != nil {

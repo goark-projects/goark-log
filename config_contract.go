@@ -1,4 +1,4 @@
-package goarklog
+package log
 
 import configlookup "goark.dev/log/internal/lookup"
 
