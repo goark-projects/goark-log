@@ -36,9 +36,9 @@ go get goark.dev/log@v0.0.3
 
 ## :white_check_mark: 验证
 
-候选版本已在 Windows Go 1.26 和 Debian Linux Go 1.27 上通过测试、vet、race、
-配置集成和指定 benchmark smoke。Windows 验证机上的原生 direct JSON 三属性
-benchmark 保持零分配；本版本不作普遍性能领先声明。
+候选版本已在 Windows Go 1.26 和 Debian Linux Go 1.27 上通过测试、vet、race 和
+配置集成，并在 Windows 上通过指定 benchmark smoke。该验证机上的原生 direct JSON
+三属性 benchmark 保持零分配；本版本不作普遍性能领先声明。
 
 ## :heart: 贡献者
 

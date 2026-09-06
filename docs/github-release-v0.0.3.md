@@ -39,10 +39,11 @@ go get goark.dev/log@v0.0.3
 
 ## :white_check_mark: Verification
 
-The candidate passed tests, vet, race tests, configuration integration, and
-named benchmark smoke gates on Windows Go 1.26 and Debian Linux Go 1.27.
-The native direct JSON three-attribute benchmark remained zero-allocation on
-the Windows validation host; no universal performance claim is made.
+The candidate passed tests, vet, race tests, and configuration integration on
+Windows Go 1.26 and Debian Linux Go 1.27. Named benchmark smoke gates also
+passed on Windows. The native direct JSON three-attribute benchmark remained
+zero-allocation on that validation host; no universal performance claim is
+made.
 
 ## :heart: Contributors
 
