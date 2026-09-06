@@ -1,49 +1,93 @@
-name: ci
+name: CI
 
 on:
   push:
-    branches:
-      - dev
-      - main
+    branches: [dev, main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      GOWORK: "off"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
-
+      - name: Check formatting
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+      - name: Verify core module
+        run: go mod verify
       - name: Test core module
-        run: go test ./...
-
+        run: go test ./... -count=1
+      - name: Vet core module
+        run: go vet ./...
       - name: Test comparison module
         working-directory: benchmarks/compare
-        run: go test ./...
+        run: go test ./... -count=1
+      - name: Vet comparison module
+        working-directory: benchmarks/compare
+        run: go vet ./...
 
-      - name: Race focused hot paths
-        run: go test -race -run 'TestAsync(Logger|Appender)|TestRollingFileAppender|TestFileAppender|TestJSON' -count=1 -timeout=10m ./...
-
-  bench-smoke:
+  race:
+    name: Race detector
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GOWORK: "off"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
+      - name: Run race detector
+        run: go test -race ./... -count=1
 
-      - name: Benchmark smoke
-        run: go test -run '^$' -bench 'BenchmarkLayout/json$|BenchmarkNativeLoggerDirectJSON3$|BenchmarkAsyncLoggerParallel3$|BenchmarkFileAppenderParallel$' -benchmem -benchtime=1s -count=1 ./benchmarks/core
-
-      - name: Internal benchmark smoke
-        run: go test -run '^$' -bench . -benchmem -benchtime=1s -count=1 ./internal/disruptor ./internal/jsoncodec
+  benchmark-smoke:
+    name: Benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOWORK: "off"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run public benchmark smoke
+        shell: bash
+        run: |
+          benchmark_pattern='BenchmarkLayout/json$|BenchmarkNativeLoggerDirectJSON3$|'
+          benchmark_pattern+='BenchmarkAsyncLoggerParallel3$|BenchmarkFileAppenderParallel$'
+          go test -run '^$' -bench "$benchmark_pattern" \
+            -benchmem -benchtime=1s -count=1 ./benchmarks/core
+      - name: Run internal benchmark smoke
+        run: >-
+          go test -run '^$' -bench . -benchmem -benchtime=1s -count=1
+          ./internal/disruptor ./internal/jsoncodec
