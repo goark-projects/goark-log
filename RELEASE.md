@@ -50,7 +50,7 @@ GOWORK=off go run ./examples/log4j2_config
 
 1. Update `CHANGELOG.md` and `CHANGELOG.zh-CN.md`.
 2. Update the version checklist and GitHub release notes, such as
-   `docs/release-v0.0.2.md` and `docs/github-release-v0.0.2.md`.
+   `docs/release-v0.0.3.md` and `docs/github-release-v0.0.3.md`.
 3. Verify that every English public Markdown file has a `.zh-CN.md` counterpart.
 4. Verify that every file under `docs/examples` with extension `.yml`, `.yaml`, `.json`, `.toml`, `.xml`, or `.properties` loads through `LoadOptions`.
 5. Confirm the core dependency boundary: zap and zerolog remain confined to `benchmarks/compare`.

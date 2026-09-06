@@ -5,6 +5,32 @@
 This changelog records source-backed user-facing changes. The current working
 branch is `dev`; release tags are cut from `main` after validation.
 
+## v0.0.3 - 2026-09-06
+
+### Added
+
+- Spring Boot-style console layout, logger-name abbreviations, structured JSON
+  formats, configurable output charsets, and runtime level control.
+- In-memory configuration loading and loaded-options customizers for Boot
+  integration without temporary files.
+- Stronger startup, size-based rolling, and retention behavior.
+
+### Changed
+
+- Renamed the root package to `log`, matching the module's public identity.
+- Standardized JSON paths on Sonic and raised the Go baseline to 1.26.
+- Split runtime, configuration, layout, appender, filter, rolling, and test
+  responsibilities into focused packages and files.
+- Added cross-platform CI and benchmark smoke gates.
+
+### Fixed
+
+- Default console logging now writes to stdout.
+- Configuration reload detects content changes even when file metadata is
+  unchanged.
+- Boot properties are available to logging lookups, and structured stack trace
+  output follows the configured semantics.
+
 ## v0.0.2 - 2026-08-28
 
 ### Added

@@ -48,8 +48,8 @@ GOWORK=off go run ./examples/log4j2_config
 ## 版本检查清单
 
 1. 更新 `CHANGELOG.md` 和 `CHANGELOG.zh-CN.md`。
-2. 更新版本检查清单和 GitHub release notes，例如 `docs/release-v0.0.2.md` 和
-   `docs/github-release-v0.0.2.md`。
+2. 更新版本检查清单和 GitHub release notes，例如 `docs/release-v0.0.3.md` 和
+   `docs/github-release-v0.0.3.md`。
 3. 确认每个英文公开 Markdown 文件都有 `.zh-CN.md` 对应版本。
 4. 确认 `docs/examples` 下 `.yml`、`.yaml`、`.json`、`.toml`、`.xml`、`.properties` 文件都能通过 `LoadOptions` 加载。
 5. 确认核心依赖边界：zap 和 zerolog 仍只在 `benchmarks/compare`。

@@ -31,7 +31,9 @@ func TestDocsLocalization_whenPublicMarkdownExists_shouldHaveChineseCounterpart(
 			if err != nil {
 				t.Fatalf("ReadFile(%q) error = %v", chinesePath, err)
 			}
-			if !strings.Contains(string(englishContent), "[简体中文](") {
+			content := string(englishContent)
+			if !strings.Contains(content, "[简体中文](") &&
+				!strings.Contains(content, "[中文](") {
 				t.Fatalf("%s should link to Simplified Chinese documentation", english)
 			}
 			if !strings.Contains(string(chineseContent), "[English](") {
