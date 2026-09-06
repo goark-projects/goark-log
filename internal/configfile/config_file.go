@@ -1,6 +1,7 @@
 package configfile
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
 	"goark.dev/log/internal/textutil"
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +35,32 @@ type fileConfig struct {
 	Goark             struct {
 		Log *fileConfig `yaml:"log"`
 	} `yaml:"goark"`
+}
+
+type loggerConfig struct {
+	Level                string       `yaml:"level"`
+	AppenderRefs         appenderRefs `yaml:"appenderRefs"`
+	AppenderRefsKebab    appenderRefs `yaml:"appender-refs"`
+	Refs                 appenderRefs `yaml:"refs"`
+	Filters              []string     `yaml:"filters"`
+	FilterRefs           []string     `yaml:"filterRefs"`
+	FilterRefsKebab      []string     `yaml:"filter-refs"`
+	Additivity           *bool        `yaml:"additivity"`
+	IncludeLocation      *bool        `yaml:"includeLocation"`
+	IncludeLocationKebab *bool        `yaml:"include-location"`
+}
+
+type appenderRefs []appenderRefConfig
+
+type appenderRefConfig struct {
+	ID                   string   `yaml:"-"`
+	Ref                  string   `yaml:"ref"`
+	Level                string   `yaml:"level"`
+	IncludeLocation      *bool    `yaml:"includeLocation"`
+	IncludeLocationKebab *bool    `yaml:"include-location"`
+	Filters              []string `yaml:"filters"`
+	FilterRefs           []string `yaml:"filterRefs"`
+	FilterRefsKebab      []string `yaml:"filter-refs"`
 }
 
 func loadConfigFile(ctx context.Context, path string, lookups *LookupResolver) (*fileConfig, error) {
@@ -84,6 +112,25 @@ func decodeStructuredConfig(reader io.Reader, lookups *LookupResolver) (*fileCon
 		return nil, err
 	}
 	return finalizeDecodedConfig(config, lookups)
+}
+
+func decodeTOMLConfig(reader io.Reader, lookups *LookupResolver) (*fileConfig, error) {
+	var raw map[string]any
+	decoder := toml.NewDecoder(reader)
+	if err := decoder.Decode(&raw); err != nil {
+		if errors.Is(err, io.EOF) {
+			return &fileConfig{}, nil
+		}
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return finalizeDecodedConfig(fileConfig{}, lookups)
+	}
+	data, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	return decodeStructuredConfig(bytes.NewReader(data), lookups)
 }
 
 func (c *fileConfig) effective() (*fileConfig, error) {
