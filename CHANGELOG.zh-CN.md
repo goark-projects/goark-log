@@ -1,11 +1,13 @@
 # 更新日志
 
-[English](CHANGELOG.md)
+语言：[English](CHANGELOG.md) | 简体中文
 
 本文件只记录基于源码确认的用户可见变更。当前工作分支为 `dev`；release tag
 应在验证完成后从 `main` 打出。
 
-## v0.0.3 - 2026-09-06
+发行说明：[v0.0.3](docs/releases/v0.0.3.zh-CN.md)
+
+## v0.0.3 - 2026-09-07
 
 ### 新增
 

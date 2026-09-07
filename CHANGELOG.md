@@ -1,11 +1,13 @@
 # Changelog
 
-[简体中文](CHANGELOG.zh-CN.md)
+Language: English | [简体中文](CHANGELOG.zh-CN.md)
 
 This changelog records source-backed user-facing changes. The current working
 branch is `dev`; release tags are cut from `main` after validation.
 
-## v0.0.3 - 2026-09-06
+Release notes: [v0.0.3](docs/releases/v0.0.3.md)
+
+## v0.0.3 - 2026-09-07
 
 ### Added
 
